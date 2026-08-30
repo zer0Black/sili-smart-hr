@@ -1,0 +1,25 @@
+feature_id: "P1_ACC_001_FEAT_登录与用户管理"
+name: "登录与用户管理"
+created_at: "2026-08-11"
+finalized: true
+
+sub_plans:
+  - id: "01"
+    name: "登录安全"
+    file: "01_登录安全.md"
+    status: "completed"
+
+  - id: "02"
+    name: "账号台账API"
+    file: "02_账号台账API.md"
+    status: "completed"
+
+  - id: "03"
+    name: "用户管理界面"
+    file: "03_用户管理界面.md"
+    status: "completed"
+
+execution_order:
+  - "01"
+  - "02"
+  - "03"

@@ -1,0 +1,19 @@
+feature_id: "P2_DIM_001_FEAT_维度与权重配置"
+name: "维度与权重配置"
+created_at: "2026-08-11"
+finalized: true
+
+sub_plans:
+  - id: "01"
+    name: "后端维度域"
+    file: "01_后端维度域.md"
+    status: "completed"
+
+  - id: "02"
+    name: "前端配置页"
+    file: "02_前端配置页.md"
+    status: "completed"
+
+execution_order:
+  - "01"
+  - "02"

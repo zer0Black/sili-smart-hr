@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bug 报告 · P2_SYS_001_FEAT_系统参数与大模型配置</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #24292f; background: #f6f8fa; line-height: 1.6; }
+  header { padding: 24px 32px; background: #fff; border-bottom: 1px solid #d0d7de; }
+  header h1 { margin: 0 0 8px; font-size: 20px; }
+  .meta { color: #57606a; font-size: 14px; }
+  .meta strong { color: #cf222e; }
+  .hint { margin: 8px 0 0; color: #6e7781; font-size: 13px; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+  article { background: #fff; border: 1px solid #d0d7de; border-radius: 8px; padding: 20px 24px; margin-bottom: 20px; }
+  .card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .card-head h2 { margin: 0; font-size: 16px; color: #1f2328; }
+  .suite { color: #6e7781; font-size: 12px; margin: 4px 0 12px; }
+  .copy-btn { flex-shrink: 0; background: #1f6feb; color: #fff; border: none; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .copy-btn:hover { background: #1158c7; }
+  .copy-btn.ok { background: #1a7f37; }
+  h3 { margin: 16px 0 6px; font-size: 13px; color: #57606a; font-weight: 600; }
+  ol { margin: 0; padding-left: 22px; }
+  ol li { margin: 4px 0; }
+  .placeholder { color: #9aa4ad; font-style: italic; }
+  .expectation { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
+  .col { background: #f6f8fa; border-radius: 6px; padding: 10px 12px; }
+  .col.expected { border-left: 3px solid #1a7f37; }
+  .col.actual { border-left: 3px solid #cf222e; }
+  .col h4 { margin: 0 0 6px; font-size: 12px; color: #57606a; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 13px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .shots { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+  .shots a { display: block; border: 1px solid #d0d7de; border-radius: 6px; overflow: hidden; }
+  .shots img { display: block; max-width: 240px; max-height: 160px; object-fit: cover; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bug 报告 · P2_SYS_001_FEAT_系统参数与大模型配置</h1>
+  <div class="meta">模块 <strong>P2_SYS_001_FEAT_系统参数与大模型配置</strong> ｜ 失败 <strong>1</strong> 项</div>
+  <p class="hint">每张卡片可一键复制为工单文案。调试用的原始堆栈、trace、完整调用树见同目录的 a-playwright-report.html。</p>
+</header>
+<main>
+<article>
+  <div class="card-head">
+    <div>
+      <h2>1. 切换周期长度联动触发日与评估区间</h2>
+      <div class="suite"> › chromium › P2_SYS_001_FEAT_系统参数与大模型配置\P2_SYS_001_FEAT_系统参数与大模型配置.spec.ts › 系统参数页 › 加载与联动 · 失败 · 1.5s</div>
+    </div>
+    <button class="copy-btn" data-plain="【模块】P2_SYS_001_FEAT_系统参数与大模型配置
+【场景】chromium &gt; P2_SYS_001_FEAT_系统参数与大模型配置\P2_SYS_001_FEAT_系统参数与大模型配置.spec.ts &gt; 系统参数页 &gt; 加载与联动 &gt; 切换周期长度联动触发日与评估区间
+【状态】失败
+
+【复现步骤】
+1. 切换为每天
+2. 验证触发日联动为每日文案
+
+【期望】每日
+【现状】systemParams.triggerDay.daily
+
+【截图】z-screenshots/P2_SYS_001_FEAT_系统参数与大模型配置-切换周期长度联动触发日与评估区间-1.png">复制工单文案</button>
+  </div>
+  <h3>复现步骤</h3>
+  <ol><li>切换为每天</li><li>验证触发日联动为每日文案</li></ol>
+  <h3>期望 / 现状</h3>
+  <div class="expectation">
+    <div class="col expected"><h4>期望</h4><pre>每日</pre></div>
+    <div class="col actual"><h4>现状</h4><pre>systemParams.triggerDay.daily</pre></div>
+  </div>
+  <h3>截图</h3>
+  <div class="shots"><a href="z-screenshots/P2_SYS_001_FEAT_系统参数与大模型配置-切换周期长度联动触发日与评估区间-1.png" target="_blank"><img src="z-screenshots/P2_SYS_001_FEAT_系统参数与大模型配置-切换周期长度联动触发日与评估区间-1.png" alt="失败截图"></a></div>
+</article>
+</main>
+<script>
+  document.querySelectorAll('.copy-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var plain = btn.getAttribute('data-plain') || '';
+      var done = function () { btn.classList.add('ok'); btn.textContent = '已复制'; setTimeout(function () { btn.classList.remove('ok'); btn.textContent = '复制工单文案'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(plain).then(done, function () { fallback(plain, done); });
+      } else { fallback(plain, done); }
+    });
+  });
+  function fallback(text, cb) {
+    var ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); cb(); } catch (e) {} document.body.removeChild(ta);
+  }
+</script>
+</body>
+</html>

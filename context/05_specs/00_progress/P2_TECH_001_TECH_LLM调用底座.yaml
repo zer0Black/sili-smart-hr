@@ -1,0 +1,41 @@
+feature_id: "P2_TECH_001_TECH_LLM调用底座"                    # [阶段]_[模块代号]_[序号]_[类型]_[组件简述]
+module_code: "TECH"                                       # 模块代号（2-4位大写字母）：通用技术能力；LLM 调用底座归入 TECH
+phase: "P2"                                               # 阶段：P0/P1/P2/P3/P4，随依赖的 P2_SYS_001 配置域同阶段
+type: "TECH"                                              # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
+root_base: null                                           # 变更根节点（原始需求的feature_id），首次创建为null
+base_on: null                                             # 直接基线 feature_id，新建时为null
+change_group: null                                        # 跨模块变更组，单模块变更时为null
+change_history: []                                        # 完整变更链：[root_base → ... → base_on → 当前]
+dependencies:                                             # 直接依赖的feature_id列表
+  - "P2_SYS_001_FEAT_系统参数与大模型配置"                  # 读取排他启用模型的服务商/地址/API Key 作为统一调用出口；平台运行基座 T1（Wire 装配、错误码体系）为工程前置
+feature_name: "LLM调用底座"
+creator: "lixuetao"
+created_at: "2026-08-14T01:43:56Z"
+updated_at: "2026-08-14T09:36:14Z"
+stages:
+  specs:
+    status: "completed"
+    started_at: "2026-08-14T01:43:56Z"
+    completed_at: "2026-08-14T02:45:27Z"
+    check_owner: "lixuetao"
+  interface:
+    status: "skipped"
+    started_at: "2026-08-14T02:45:27Z"
+    completed_at: null
+    check_owner: "lixuetao"
+  dev_plan:
+    status: "completed"
+    started_at: "2026-08-14T02:50:58Z"
+    completed_at: "2026-08-14T09:36:14Z"
+    check_owner: "lixuetao"
+  dev_exec:
+    status: "in_progress"
+    started_at: "2026-08-14T09:36:14Z"
+    completed_at: null
+    check_owner: null
+rollback_history:
+  - timestamp: "2026-08-14T02:50:58Z"
+    from_stage: "interface"
+    to_stage: "dev_plan"
+    reason: "本组件为进程内 Go 组件，无 HTTP 接口与数据库表可设计，技术契约已由 specs 覆盖"
+    type: "skip"

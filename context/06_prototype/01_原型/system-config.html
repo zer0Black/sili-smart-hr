@@ -1,0 +1,986 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统参数 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      /* 主色 */
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      /* 侧栏 */
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      /* 内容区与卡片 */
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      /* 文字色阶 */
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      /* 边框 */
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      /* 表格 */
+      --table-header-bg: #fafafa;
+
+      /* 状态色 */
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      /* 圆角与间距 */
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      /* 布局尺寸 */
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 页面标题 ========== */
+    .page-title-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .page-title-bar h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+    }
+
+    .page-title-bar h1::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 20px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .page-title-bar .page-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ========== 配置卡片 ========== */
+    .config-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+
+    .config-card .el-tabs__header {
+      margin: 0;
+      background: var(--table-header-bg);
+    }
+
+    .config-card .el-tabs--border-card > .el-tabs__header {
+      background: #fafafa;
+      border-bottom: 1px solid var(--border-color-split);
+    }
+
+    .config-card .el-tabs--border-card > .el-tabs__header .el-tabs__item.is-active {
+      background: #fff;
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+
+    .config-card .el-tabs__item {
+      height: 48px;
+      line-height: 48px;
+      font-size: 14px;
+      color: var(--text-regular);
+      padding: 0 24px;
+      transition: color 0.2s ease;
+    }
+
+    .config-card .el-tabs__item:hover {
+      color: var(--primary-color);
+    }
+
+    .config-card .el-tabs__item .el-icon {
+      margin-right: 6px;
+      vertical-align: -2px;
+    }
+
+    .tab-body {
+      padding: 28px 32px 8px;
+    }
+
+    /* ========== 表单区段 ========== */
+    .section-label {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 18px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed var(--border-color-split);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-label .el-icon {
+      color: var(--primary-color);
+      font-size: 16px;
+    }
+
+    .config-form .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    .config-form .el-form-item {
+      margin-bottom: 22px;
+    }
+
+    .field-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-top: 4px;
+      width: 100%;
+    }
+
+    .field-hint a {
+      color: var(--primary-color);
+      text-decoration: none;
+    }
+
+    .field-hint a:hover {
+      text-decoration: underline;
+    }
+
+    .inline-suffix {
+      margin-left: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .readonly-info {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      background: #fafafa;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      font-size: 13px;
+      color: var(--text-regular);
+    }
+
+    .readonly-info .el-icon {
+      color: var(--text-secondary);
+    }
+
+    /* ========== 表单底部操作 ========== */
+    .form-footer {
+      margin-top: 12px;
+      padding: 20px 32px;
+      background: #fafafa;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .form-footer .footer-tip {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .form-footer .footer-tip .el-icon {
+      color: var(--warning-color);
+      font-size: 15px;
+    }
+
+    /* ========== 只读基准说明 ========== */
+    .anchor-block {
+      padding: 18px 20px;
+      background: #fafafa;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      margin-bottom: 18px;
+      line-height: 1.8;
+      font-size: 13.5px;
+      color: var(--text-regular);
+    }
+
+    .anchor-block strong {
+      color: var(--text-primary);
+    }
+
+    .anchor-flow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .anchor-flow .flow-step {
+      padding: 6px 14px;
+      background: #fff;
+      border: 1px solid var(--border-color-split);
+      border-radius: 20px;
+      font-size: 12.5px;
+      color: var(--text-regular);
+    }
+
+    .anchor-flow .flow-arrow {
+      color: var(--primary-color);
+      font-size: 14px;
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 16px;
+      }
+
+      .tab-body {
+        padding: 20px 16px 4px;
+      }
+
+      .form-footer {
+        padding: 16px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>系统配置</el-breadcrumb-item>
+            <el-breadcrumb-item>系统参数</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper">
+        <!-- 页面标题 -->
+        <div class="page-title-bar">
+          <h1>AI 使用能力评估区间</h1>
+          <span class="page-sub">配置评估对象 AI 对话会话定期抽取与评分的节奏，评估区间同时作为使用活跃度的统计范围</span>
+        </div>
+
+        <!-- 配置卡片 -->
+        <div class="config-card">
+          <div class="tab-body">
+                <el-form label-width="120px" class="config-form">
+                  <div class="section-label">
+                    <el-icon><Calendar></Calendar></el-icon>周期与触发
+                  </div>
+
+                  <el-form-item label="周期长度">
+                    <el-select v-model="batchForm.period" style="width: 200px;" @change="onPeriodChange">
+                      <el-option label="每天" value="daily"></el-option>
+                      <el-option label="每周" value="weekly"></el-option>
+                      <el-option label="每月" value="monthly"></el-option>
+                    </el-select>
+                    <div class="field-hint">默认每周一次。周期越短，LLM 调用量与成本越高。本评估区间同时作为使用活跃度的统计范围，区间内 0 轮对话判为未使用。</div>
+                  </el-form-item>
+
+                  <el-form-item label="触发时点">
+                    <div class="readonly-info" style="margin-right: 10px;">
+                      <el-icon><Calendar></Calendar></el-icon>
+                      <span>{{ triggerDayLabel }}</span>
+                    </div>
+                    <el-time-picker
+                      v-model="batchForm.time"
+                      value-format="HH:mm"
+                      format="HH:mm"
+                      placeholder="选择时间"
+                      style="width: 150px;"
+                    ></el-time-picker>
+                    <span class="inline-suffix">{{ triggerTextPreview }}</span>
+                    <div class="field-hint">评估在每个自然周期结束时触发：日周期每日、周周期每周日、月周期每月最后一天，默认 23:00 避开业务时段。</div>
+                  </el-form-item>
+
+                  <el-form-item label="评估数据范围">
+                    <div class="anchor-block" style="width: 100%;">
+                      <strong>{{ dataRangePreview.rule }}</strong>
+                      <div style="margin-top: 6px; font-size: 12.5px;">{{ dataRangePreview.example }}</div>
+                    </div>
+                    <div class="field-hint">每次评估抽取该区间内产生的全员会话，结果归属该区间。评估区间之间不重叠、不遗漏，保证同一人跨评估区间评分可比。</div>
+                  </el-form-item>
+
+                  <div class="section-label" style="margin-top: 8px;">
+                    <el-icon><UserFilled></UserFilled></el-icon>评估对象
+                  </div>
+                  <el-form-item label="评估对象">
+                    <el-select
+                      v-model="batchForm.targets"
+                      multiple
+                      filterable
+                      collapse-tags
+                      collapse-tags-tooltip
+                      placeholder="选择全员或指定人员"
+                      style="width: 100%;"
+                      @change="onTargetsChange"
+                    >
+                      <el-option label="全员（全部在册员工）" value="all"></el-option>
+                      <el-option v-for="e in employees" :key="e.id" :label="e.name" :value="e.id"></el-option>
+                    </el-select>
+                    <div class="field-hint">{{ targetHint }}</div>
+                  </el-form-item>
+
+                  <div class="section-label" style="margin-top: 8px;">
+                    <el-icon><InfoFilled></InfoFilled></el-icon>成本说明
+                  </div>
+                  <el-form-item label="调用量与节流">
+                    <el-alert
+                      type="warning"
+                      :closable="false"
+                      show-icon
+                    >
+                      <template #title>
+                        每个评估区间会对评估对象本期 AI 对话做一次全量抽取与评分，LLM 调用量与成本随周期缩短而上升。
+                      </template>
+                      <div style="font-size: 12.5px; line-height: 1.7; margin-top: 2px;">
+                        当前评估对象 {{ assessCount }} 人，周频评估调用量可观，系统已内置节流队列与并发控制，平滑消化本期全部会话。
+                      </div>
+                    </el-alert>
+                  </el-form-item>
+                </el-form>
+              </div>
+              <div class="form-footer">
+                <div class="footer-tip">
+                  <el-icon><AlarmClock></AlarmClock></el-icon>
+                  <span>配置将在下次评估生效</span>
+                </div>
+                <div>
+                  <el-button @click="resetBatch">恢复默认</el-button>
+                  <el-button type="primary" :loading="saving === 'batch'" @click="saveBatch">保存</el-button>
+                </div>
+              </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单 ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['system'];
+        const activeMenu = ref('system-config');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else if (command === 'profile') {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 表单状态 ==========
+        const saving = ref('');
+        const headcount = ref(326);
+
+        // ========== 评估区间表单 ==========
+        const employees = [
+          { id: 'u1', name: '张敏' }, { id: 'u2', name: '李芳' },
+          { id: 'u3', name: '王志远' }, { id: 'u4', name: '陈晓' },
+          { id: 'u5', name: '刘洋' }, { id: 'u6', name: '赵敏' },
+          { id: 'u7', name: '孙浩' }, { id: 'u8', name: '周婷' },
+          { id: 'u9', name: '陈思远' }, { id: 'u10', name: '林晓彤' }
+        ];
+
+        const batchDefaults = {
+          period: 'weekly',
+          time: '23:00',
+          targets: ['all']
+        };
+        const batchForm = reactive({ ...batchDefaults });
+
+        const triggerDayLabel = computed(() => {
+          if (batchForm.period === 'daily') return '每日';
+          if (batchForm.period === 'weekly') return '每周日';
+          return '每月最后一天';
+        });
+        const triggerTextPreview = computed(() => '即' + triggerDayLabel.value + ' ' + batchForm.time + ' 触发');
+
+        const dataRangePreview = computed(() => {
+          const t = batchForm.time;
+          if (batchForm.period === 'daily') {
+            return {
+              rule: '每日 ' + t + ' 触发，抽取当日 00:00 起至触发时刻的全员会话',
+              example: '如 2026-08-09 触发，将抽取 2026-08-09 全天的会话'
+            };
+          }
+          if (batchForm.period === 'weekly') {
+            return {
+              rule: '每周日 ' + t + ' 触发，抽取本周一至本周日（截至触发）的全员会话',
+              example: '如 2026-08-09 触发，将抽取 2026-08-03 ~ 08-09 的会话'
+            };
+          }
+          return {
+            rule: '每月最后一天 ' + t + ' 触发，抽取本月 1 日至月末（截至触发）的全员会话',
+            example: '如 2026-08-31 触发，将抽取 2026-08-01 ~ 08-31 的会话'
+          };
+        });
+
+        const onPeriodChange = () => {
+          if (!batchForm.time) batchForm.time = '23:00';
+        };
+
+        const onTargetsChange = (val) => {
+          if (!val || val.length === 0) return;
+          if (val[val.length - 1] === 'all') {
+            batchForm.targets = ['all'];
+          } else if (val.includes('all')) {
+            batchForm.targets = val.filter(v => v !== 'all');
+          }
+        };
+
+        const isAllStaff = computed(() => batchForm.targets.includes('all'));
+        const assessCount = computed(() => isAllStaff.value ? headcount.value : batchForm.targets.length);
+        const targetHint = computed(() => {
+          if (isAllStaff.value) {
+            return `评估面向全公司在册员工 ${headcount.value} 人，按评估区间对每人本期 AI 对话会话统一抽取评分。`;
+          }
+          if (batchForm.targets.length === 0) {
+            return '请选择评估对象，可设为全员或指定部分人员。';
+          }
+          return `仅评估所选 ${batchForm.targets.length} 人本期 AI 对话会话，未选中人员不参与本期评估。`;
+        });
+
+        const resetBatch = () => {
+          Object.assign(batchForm, batchDefaults);
+          ElMessage.info('已恢复评估区间默认配置');
+        };
+
+        const saveBatch = () => {
+          saving.value = 'batch';
+          setTimeout(() => {
+            saving.value = '';
+            ElMessage.success('评估区间配置已保存，将在下次评估生效');
+          }, 500);
+        };
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 表单
+          saving, headcount,
+          batchForm, triggerDayLabel, triggerTextPreview, dataRangePreview,
+          employees, onTargetsChange, assessCount, targetHint,
+          onPeriodChange, resetBatch, saveBatch
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

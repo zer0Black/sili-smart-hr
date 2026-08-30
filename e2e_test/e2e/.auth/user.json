@@ -1,0 +1,18 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://[::1]:3000",
+      "localStorage": [
+        {
+          "name": "sili-smart-hr-auth",
+          "value": "{\"state\":{\"token\":\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50X2lkIjoyMDg3MDY0OTI2NDYyOTM5MTM2LCJ1c2VybmFtZSI6ImFkbWluIiwiaXNzIjoic2lsaS1zbWFydC1ociIsInN1YiI6ImFkbWluIiwiZXhwIjoxNzg3MDMxNDg3LCJpYXQiOjE3ODY5NDUwODd9.zGuLm223kQs86aQB2AEbrROHnGcZ6YvS1YrmSDOK6B8\",\"account\":{\"id\":\"2087064926462939136\",\"username\":\"admin\",\"name\":\"管理员\",\"enabled\":true}},\"version\":0}"
+        },
+        {
+          "name": "sili-smart-hr-lang",
+          "value": "zh"
+        }
+      ]
+    }
+  ]
+}

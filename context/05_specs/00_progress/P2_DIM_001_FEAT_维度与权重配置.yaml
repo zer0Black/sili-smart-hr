@@ -1,0 +1,41 @@
+feature_id: "P2_DIM_001_FEAT_维度与权重配置"      # [阶段]_[模块代号]_[序号]_[类型]_[功能简述]
+module_code: "DIM"                                  # 模块代号（2-4位大写字母）：能力模型维度域，维度构成/评分提示词/聚合权重/活跃度阈值维护
+phase: "P2"                                         # 阶段：P0/P1/P2/P3/P4
+type: "FEAT"                                        # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
+root_base: null                                     # 变更根节点（原始需求的feature_id），首次创建为null
+base_on: null                                       # 直接基线 feature_id，新建时为null
+change_group: null                                  # 跨模块变更组，单模块变更时为null
+change_history: []                                  # 完整变更链：[root_base → ... → base_on → 当前]
+dependencies:                                       # 直接依赖的feature_id列表
+  - "P1_ACC_001_FEAT_登录与用户管理"                 # 本页挂 _authenticated 顶栏，依赖 account 账号模型与登录鉴权基建；配置数据本身为系统自有，无其他 feature 前置
+feature_name: "维度与权重配置"
+creator: "lixuetao"
+created_at: "2026-08-11T11:38:05Z"
+updated_at: "2026-08-11T13:50:55Z"
+stages:
+  specs:
+    status: "completed"
+    started_at: "2026-08-11T11:38:05Z"
+    completed_at: "2026-08-11T12:00:00Z"
+    check_owner: "lixuetao"
+  interface:
+    status: "completed"
+    started_at: "2026-08-11T12:00:00Z"
+    completed_at: "2026-08-11T12:10:00Z"
+    check_owner: "lixuetao"
+  dev_plan:
+    status: "completed"
+    started_at: "2026-08-11T12:10:00Z"
+    completed_at: "2026-08-11T13:50:55Z"
+    check_owner: "lixuetao"
+  dev_exec:
+    status: "in_progress"
+    started_at: "2026-08-11T13:50:55Z"
+    completed_at: null
+    check_owner: null
+rollback_history: []
+  # - timestamp: "2026-01-01T00:00:00Z"
+  #   from_stage: "dev_exec"
+  #   to_stage: "specs"
+  #   reason: "用户重新执行jero3/产品Owner/业务feature生成"
+  #   type: "rollback"            # rollback（回滚）或 skip（跳过）

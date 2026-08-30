@@ -1,0 +1,50 @@
+# sili-smart-hr 后端配置（B 档可运行脚手架）
+#
+# 非敏感配置承载于此 yaml；敏感项（数据库连接串、JWT 密钥）由环境变量提供，见注释。
+
+server:
+  port: 8080
+
+cors:
+  allowed_origins:
+    # rsbuild dev 默认端口；生产走同域 Nginx 反代免跨域，或在此追加部署域。
+    - "http://localhost:3000"
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+
+jwt:
+  # 开发默认值；生产必须由 JWT_SECRET 环境变量覆盖。
+  secret: "sili-smart-hr-dev-jwt-secret-7f3a9e2b1c4d6e8a"
+  ttl: 24h
+
+asynq:
+  concurrency: 10
+
+log:
+  level: info
+
+# 数据库连接串不在 yaml，由 SQL_DSN 环境变量提供：
+#   未配置或 local 前缀走 SQLite（默认 data/sili-smart-hr.db）
+#   postgres:// 或 postgresql:// 前缀走 PostgreSQL
+#   其余走 MySQL
+# 连接池由 SQL_MAX_IDLE_CONNS、SQL_MAX_OPEN_CONNS、SQL_MAX_LIFETIME 环境变量控制。
+
+# 雪花 ID 生成器节点（全系统默认主键策略）。
+# 单进程默认 1；多实例部署由 SNOWFLAKE_NODE_ID 环境变量区分（0 到 1023，须唯一）。
+snowflake:
+  node_id: 1
+
+# LLM 对称加密派生密钥（AES）。开发默认值随源码双重公开；
+# 生产（postgres/mysql）必须由 LLM_SECRET_KEY 环境变量覆盖，否则 main.go 拒绝启动。
+llm:
+  secret_key: "sili-smart-hr-dev-llm-secret-3b7f1e9d4a2c8f60"
+
+# 外部系统集成配置。
+# SmartAPIBaseURL 指向兄弟系统 sili-smart-api（specs §7.1），
+# A3 人员列表查询与 C4 连通验证需真实调用该地址。
+# 开发默认值指向 localhost:8081，生产由 SMART_API_BASE_URL 环境变量覆盖，不熔断。
+integration:
+  smart_api_base_url: "http://localhost:8081"

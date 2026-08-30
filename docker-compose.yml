@@ -1,0 +1,43 @@
+# sili-smart-hr 基础设施编排（生产联调）：PostgreSQL + Redis。
+# 本地开发可用 SQLite 免起数据库，但 Redis 是 Asynq 硬依赖，必须单独启动。
+#
+# 启动：docker compose up -d
+# 连接串（写入后端 SQL_DSN 环境变量）：
+#   postgres://sili:sili@localhost:5432/sili_smart_hr?sslmode=disable
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sili-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sili
+      POSTGRES_PASSWORD: sili
+      POSTGRES_DB: sili_smart_hr
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sili -d sili_smart_hr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: sili-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  pgdata:
+  redisdata:

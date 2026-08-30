@@ -1,0 +1,66 @@
+# ===== 系统 / 编辑器 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+
+# ===== 日志 / 临时 =====
+*.log
+logs/
+*.tmp
+*.bak
+.claude
+
+# ===== 环境变量（含密钥，勿入库） =====
+.env
+.env.*
+!.env.example
+
+# ===== 后端（hr-backend / Go） =====
+# 编译产物
+hr-backend/*.exe
+hr-backend/*.exe~
+hr-backend/sili-smart-hr
+hr-backend/sili-smart-hr.exe
+hr-backend/bin/
+hr-backend/dist/
+# SQLite 本地数据库（开发用，PostgreSQL 由 docker 提供）
+hr-backend/data/*.db
+hr-backend/data/*.db-journal
+hr-backend/data/*.db-wal
+hr-backend/data/*.db-shm
+# 覆盖率
+hr-backend/*.out
+hr-backend/coverage.*
+
+# ===== 前端（hr-frontend / Node + Rsbuild） =====
+hr-frontend/node_modules/
+hr-frontend/dist/
+hr-frontend/.tanstack/
+hr-frontend/.rsbuild/
+hr-frontend/coverage/
+hr-frontend/*.tsbuildinfo
+
+# ===== Docker 持久化数据 =====
+pgdata/
+redisdata/
+
+# ===== Git Worktree（隔离工作区） =====
+.worktrees/
+worktrees/
+# worktree 搭建技能写入根目录的 feature 元数据，不入库
+.feature-id
+node_modules
+test-results
+.playwright-cli
+/e2e_test/**/trace
+/e2e_test/**/data

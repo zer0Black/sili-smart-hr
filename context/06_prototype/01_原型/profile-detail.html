@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>个人画像详情 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app { height: 100%; display: flex; }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+
+      --sidebar-width: 220px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar.collapsed { width: 64px; }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+    .sidebar-header .logo {
+      color: #fff; font-size: 17px; font-weight: 600;
+      white-space: nowrap; letter-spacing: 0.3px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px;
+      background: var(--primary-color); border-radius: 6px;
+      flex-shrink: 0; font-size: 16px; font-weight: 700; color: #fff;
+    }
+    .sidebar.collapsed .sidebar-header .logo { font-size: 0; }
+
+    .sidebar-menu { border-right: none; background: transparent; flex: 1; overflow-y: auto; overflow-x: hidden; }
+    .sidebar-menu:not(.el-menu--collapse) { width: 220px; }
+    .sidebar-menu::-webkit-scrollbar { width: 6px; }
+    .sidebar-menu::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+
+    .sidebar-menu .el-menu-item, .sidebar-menu .el-sub-menu__title {
+      height: 46px; line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+    .sidebar-menu .el-menu-item .el-icon, .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text); font-size: 16px; margin-right: 10px;
+    }
+    .sidebar-menu .el-menu-item:hover, .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06); color: var(--sidebar-text-hover);
+    }
+    .sidebar-menu .el-menu-item:hover .el-icon, .sidebar-menu .el-sub-menu__title:hover .el-icon { color: var(--sidebar-text-hover); }
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px; padding-left: 17px !important;
+    }
+    .sidebar-menu .el-menu-item.is-active .el-icon { color: var(--primary-color); }
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title { color: var(--sidebar-text-hover); }
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon { color: var(--sidebar-text-hover); }
+    .sidebar-menu .el-sub-menu .el-menu { background: rgba(0, 0, 0, 0.12); }
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px; line-height: 40px;
+      padding-left: 52px !important; min-width: auto; font-size: 13px;
+    }
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active { padding-left: 45px !important; }
+
+    /* ========== 主区域 ========== */
+    .main-container { flex: 1; display: flex; flex-direction: column; height: 100%; overflow: hidden; background: var(--content-bg); }
+
+    .header {
+      height: 56px; background: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0; z-index: 10;
+    }
+    .header-left { display: flex; align-items: center; gap: 16px; }
+    .header-left .collapse-btn {
+      cursor: pointer; padding: 8px; border-radius: var(--border-radius);
+      color: var(--text-regular); display: flex; align-items: center;
+    }
+    .header-left .collapse-btn:hover { background: rgba(0, 0, 0, 0.025); color: var(--primary-color); }
+    .header-right { display: flex; align-items: center; gap: 20px; }
+    .header-right .notification {
+      cursor: pointer; padding: 8px; border-radius: var(--border-radius);
+      color: var(--text-regular); display: flex; align-items: center;
+    }
+    .header-right .notification:hover { background: rgba(0, 0, 0, 0.025); color: var(--primary-color); }
+    .header-right .notification .el-badge__content { border: none; }
+    .user-info {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      padding: 6px 10px; border-radius: var(--border-radius);
+    }
+    .user-info:hover { background: rgba(0, 0, 0, 0.025); }
+    .user-info .username { font-size: 14px; color: var(--text-primary); font-weight: 500; }
+    .user-info .el-icon { color: var(--text-secondary); font-size: 12px; }
+
+    .content-wrapper { flex: 1; padding: 24px; overflow: auto; }
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner { color: var(--primary-color); font-weight: 500; }
+
+    /* ========== 顶部条 ========== */
+    .page-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; gap: 16px; flex-wrap: wrap;
+    }
+    .page-bar-left { display: flex; align-items: center; gap: 12px; }
+    .read-only-tip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; background: rgba(82, 196, 26, 0.10);
+      color: var(--success-color); border-radius: 16px; font-size: 12px;
+    }
+    .page-bar-right { display: flex; align-items: center; gap: 12px; }
+    .period-switch { display: flex; align-items: center; gap: 8px; }
+    .period-switch-label { font-size: 13px; color: var(--text-secondary); white-space: nowrap; }
+
+    /* ========== 通用面板 ========== */
+    .panel {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 20px 24px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+    }
+    .panel-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+    .panel-title { font-size: 16px; font-weight: 600; color: var(--text-primary); position: relative; padding-left: 12px; }
+    .panel-title::before {
+      content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+      width: 3px; height: 16px; background: var(--primary-color); border-radius: 2px;
+    }
+    .panel-sub { font-size: 13px; color: var(--text-secondary); }
+    .panel-note {
+      font-size: 12px; color: var(--warning-color);
+      display: inline-flex; align-items: center; gap: 4px;
+      margin-left: auto;
+    }
+
+    /* ========== 人物概览条 ========== */
+    .profile-header {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 20px 24px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 20px; flex-wrap: wrap;
+    }
+    .ph-left { display: flex; align-items: center; gap: 16px; }
+    .ph-avatar {
+      width: 52px; height: 52px; border-radius: 50%;
+      background: var(--primary-color); color: #fff;
+      font-size: 22px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .ph-name { font-size: 20px; font-weight: 600; color: var(--text-primary); }
+    .ph-tags { margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .ph-tag {
+      padding: 3px 10px; border-radius: 12px; font-size: 12px;
+      background: #f5f5f5; color: var(--text-regular);
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .ph-tag .dot { width: 6px; height: 6px; border-radius: 50%; }
+    .ph-tag.t-active .dot { background: var(--success-color); }
+    .ph-tag.t-low .dot { background: var(--warning-color); }
+    .ph-tag.t-unused .dot { background: var(--text-secondary); }
+    .ph-right { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .ph-overall-label { font-size: 12px; color: var(--text-secondary); }
+    .ph-overall-value { font-size: 13px; color: var(--text-regular); }
+    .ph-overall-value strong { font-size: 20px; font-weight: 700; }
+
+    /* ========== 核心结论 ========== */
+    .insight-body { display: grid; grid-template-columns: 1.05fr 1fr; gap: 24px; }
+    .insight-headline {
+      font-size: 15px; line-height: 1.85; color: var(--text-primary);
+      padding: 16px 18px;
+      background: linear-gradient(135deg, rgba(24,144,255,0.06), rgba(24,144,255,0.02));
+      border-radius: var(--border-radius);
+      border-left: 3px solid var(--primary-color);
+    }
+    .insight-findings { display: flex; flex-direction: column; gap: 10px; }
+    .finding-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 11px 14px; border-radius: var(--border-radius);
+      font-size: 13px; line-height: 1.65; color: var(--text-regular);
+      background: #fafafa;
+    }
+    .finding-item .el-icon { flex-shrink: 0; margin-top: 2px; font-size: 16px; }
+    .finding-item.f-strength { background: rgba(82,196,26,0.07); }
+    .finding-item.f-strength .el-icon { color: var(--success-color); }
+    .finding-item.f-weak { background: rgba(250,173,20,0.09); }
+    .finding-item.f-weak .el-icon { color: var(--warning-color); }
+    .finding-item.f-risk { background: rgba(255,77,79,0.06); }
+    .finding-item.f-risk .el-icon { color: var(--danger-color); }
+    .finding-item.f-info { background: rgba(24,144,255,0.06); }
+    .finding-item.f-info .el-icon { color: var(--primary-color); }
+
+    /* ========== 能力评分卡 ========== */
+    .score-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 8px; }
+    .score-card {
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-lg);
+      padding: 18px 20px;
+      transition: box-shadow .2s;
+    }
+    .score-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.05); }
+    .sc-head { display: flex; justify-content: space-between; align-items: center; }
+    .sc-title { font-size: 14px; color: var(--text-regular); font-weight: 500; }
+    .sc-level { padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600; }
+    .sc-main { margin-top: 12px; display: flex; align-items: baseline; gap: 12px; }
+    .sc-score { font-size: 38px; font-weight: 700; line-height: 1; }
+    .sc-score.score-na { font-size: 22px; color: var(--text-secondary); font-weight: 600; }
+    .sc-trend { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px; }
+    .sc-trend.up { color: var(--success-color); }
+    .sc-trend.down { color: var(--danger-color); }
+    .sc-trend.flat { color: var(--text-secondary); }
+    .sc-meta { margin-top: 14px; display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-secondary); }
+    .sc-status { display: inline-flex; align-items: center; gap: 5px; }
+    .sc-status .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+    .lv-high { color: var(--success-color); }
+    .lv-good { color: var(--primary-color); }
+    .lv-mid { color: var(--warning-color); }
+    .lv-low { color: var(--danger-color); }
+    .lv-na { color: var(--text-secondary); }
+    .sc-level.bg-high { background: rgba(82,196,26,0.12); }
+    .sc-level.bg-good { background: rgba(24,144,255,0.12); }
+    .sc-level.bg-mid { background: rgba(250,173,20,0.14); }
+    .sc-level.bg-low { background: rgba(255,77,79,0.12); }
+    .sc-level.bg-na { background: #f5f5f5; }
+
+    /* ========== 能力分析 tabs + 雷达 + 维度 ========== */
+    .ability-tabs { margin-top: 4px; }
+    .radar-wrap { padding: 8px 0 4px; }
+    .echart { width: 100%; }
+    .echart.radar { height: 320px; }
+
+    .dim-group { margin-top: 14px; }
+    .dim-group:first-child { margin-top: 10px; }
+    .dim-group-title {
+      font-size: 13px; font-weight: 600; color: var(--text-regular);
+      margin-bottom: 10px; display: flex; align-items: center; gap: 8px;
+    }
+    .dim-group-title .gtag {
+      padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
+    }
+    .dim-group-title .ghint { font-size: 12px; color: var(--text-secondary); font-weight: 400; }
+
+    .dim-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 14px;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      cursor: pointer; transition: all .2s;
+      margin-bottom: 8px; background: #fff;
+    }
+    .dim-row:hover { border-color: rgba(24,144,255,0.4); background: #fafcff; }
+    .dim-row.is-open { border-color: rgba(24,144,255,0.55); background: #fafcff; }
+    .dim-row.is-na { background: #fafafa; cursor: default; }
+    .dim-row.is-na:hover { background: #fafafa; border-color: var(--border-color); }
+
+    .dim-name { width: 150px; flex-shrink: 0; font-weight: 500; color: var(--text-primary); font-size: 14px; }
+    .dim-score { width: 46px; flex-shrink: 0; font-size: 18px; font-weight: 700; text-align: right; }
+    .dim-score.score-na { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+    .dim-bar { flex: 1; min-width: 80px; height: 6px; background: #f0f2f5; border-radius: 3px; overflow: hidden; }
+    .dim-bar-inner { height: 100%; border-radius: 3px; transition: width .6s ease; }
+    .dim-spark { width: 92px; height: 28px; flex-shrink: 0; }
+    .dim-spark.is-empty {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; color: var(--text-secondary);
+    }
+    .dim-flags { display: flex; gap: 6px; flex-shrink: 0; }
+    .dim-flag {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500;
+    }
+    .dim-flag.warn { background: rgba(250,173,20,0.12); color: var(--warning-color); }
+    .dim-flag.gray { background: rgba(140,140,140,0.12); color: var(--text-secondary); }
+    .dim-chevron { color: var(--text-secondary); font-size: 14px; flex-shrink: 0; transition: transform .2s; }
+    .dim-row.is-open .dim-chevron { transform: rotate(180deg); }
+
+    .dim-expand { padding: 0 14px 14px; margin-top: -4px; margin-bottom: 8px; }
+    .dim-trend-block {
+      margin-top: 10px; padding: 12px 14px 4px;
+      background: #fafafa; border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+    }
+    .dim-trend-head { display: flex; align-items: center; justify-content: space-between; }
+    .dim-trend-title { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+    .dim-trend-stats { display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); }
+    .dim-trend-stats .dts-item strong { color: var(--text-primary); font-size: 14px; font-weight: 700; margin-left: 3px; }
+    .dim-trend-stats .dts-item.up { color: var(--success-color); }
+    .dim-trend-stats .dts-item.down { color: var(--danger-color); }
+    .dim-trend { height: 128px; }
+    .dim-interp {
+      font-size: 13px; color: var(--text-regular); line-height: 1.7;
+      padding: 12px 14px; background: #fafafa; border-radius: var(--border-radius);
+      border-left: 3px solid var(--primary-color);
+    }
+    .dim-sources { margin-top: 10px; }
+    .source-item { padding: 10px 12px; border: 1px dashed var(--border-color-split); border-radius: var(--border-radius); margin-bottom: 8px; }
+    .source-item:last-child { margin-bottom: 0; }
+    .source-head { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+    .source-text { font-size: 13px; color: var(--text-regular); line-height: 1.6; }
+    .source-sample { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+
+    /* ========== 九型人格 ========== */
+    .enneagram-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px; align-items: center; }
+    .enneagram-chart { height: 210px; }
+    .enneagram-side { display: flex; flex-direction: column; gap: 12px; }
+    .enneagram-tags { display: flex; gap: 10px; }
+    .enneagram-tag-box { flex: 1; padding: 12px 14px; background: #fafafa; border-radius: var(--border-radius); }
+    .enneagram-tag-box .label { font-size: 12px; color: var(--text-secondary); }
+    .enneagram-tag-box .value { margin-top: 4px; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+    .enneagram-desc { font-size: 13px; color: var(--text-regular); line-height: 1.7; }
+
+    /* ========== element 控件圆角 ========== */
+    .el-button { border-radius: var(--border-radius); font-weight: 500; transition: all 0.2s ease; }
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+    .el-button:focus { outline: none; }
+    .el-dropdown-menu__item { padding: 8px 16px; font-size: 14px; }
+    .el-dropdown-menu__item .el-icon { margin-right: 8px; }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1200px) {
+      .insight-body { grid-template-columns: 1fr; }
+      .enneagram-row { grid-template-columns: 1fr; }
+      .dim-spark { display: none; }
+    }
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; z-index: 1000; height: 100%; }
+      .sidebar.collapsed { width: 0; padding: 0; }
+      .content-wrapper { padding: 16px; }
+      .score-cards { grid-template-columns: 1fr; }
+      .dim-name { width: auto; flex: 1; }
+      .dim-bar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>结果洞察</el-breadcrumb-item>
+            <el-breadcrumb-item>人员画像</el-breadcrumb-item>
+            <el-breadcrumb-item>个人画像详情</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile"><el-icon><User></User></el-icon>个人中心</el-dropdown-item>
+                <el-dropdown-item divided command="logout"><el-icon><SwitchButton></SwitchButton></el-icon>退出登录</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <div class="content-wrapper">
+        <!-- 顶部条：返回 + 只读 -->
+        <div class="page-bar">
+          <div class="page-bar-left">
+            <el-button @click="goBack"><el-icon><ArrowLeft></ArrowLeft></el-icon>返回列表</el-button>
+          </div>
+          <div class="page-bar-right">
+            <div class="period-switch">
+              <span class="period-switch-label">评估区间</span>
+              <el-select v-model="currentPeriodIdx" size="small" style="width: 220px;">
+                <el-option v-for="(p, i) in periodOptions" :key="i" :label="p.current ? p.range + '（本期）' : p.range" :value="i"></el-option>
+              </el-select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1. 人物概览条 -->
+        <section class="profile-header" v-if="person">
+          <div class="ph-left">
+            <div class="ph-avatar">{{ person.name.charAt(0) }}</div>
+            <div>
+              <div class="ph-name">{{ person.name }}</div>
+              <div class="ph-tags">
+                <span :class="['ph-tag', 't-' + person.activityLevel]">
+                  <span class="dot"></span>{{ activityMeta(person.activityLevel).text }}活跃
+                </span>
+                <span class="ph-tag"><el-icon><Aim></Aim></el-icon>{{ person.enneagram }}</span>
+                <span class="ph-tag"><el-icon><Calendar></Calendar></el-icon>{{ currentPeriod.current ? '本期 · ' + currentPeriod.range : currentPeriod.range }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="ph-right">
+            <span class="ph-overall-label">综合定位</span>
+            <span class="ph-overall-value">
+              使用 <strong :class="levelMeta(periodAiUse).cls">{{ formatScore(periodAiUse) }}</strong>
+              <span style="margin: 0 10px; color: var(--border-color-split);">|</span>
+              管理 <strong :class="levelMeta(periodAiMgmt).cls">{{ formatScore(periodAiMgmt) }}</strong>
+            </span>
+          </div>
+        </section>
+
+        <!-- 2. 核心结论 -->
+        <section class="panel" v-if="insight">
+          <div class="panel-header">
+            <span class="panel-title">核心结论</span>
+          </div>
+          <div class="insight-body">
+            <div class="insight-headline">{{ insight.headline }}</div>
+            <div class="insight-findings">
+              <div v-for="(f, i) in insight.findings" :key="i" :class="['finding-item', 'f-' + f.type]">
+                <el-icon>
+                  <component :is="f.type === 'strength' ? 'CircleCheckFilled' : (f.type === 'risk' ? 'WarningFilled' : (f.type === 'weak' ? 'InfoFilled' : 'TrendCharts'))"></component>
+                </el-icon>
+                <span>{{ f.text }}</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. 能力分析（评分卡 + tab + 雷达 + 维度明细） -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">能力分析</span>
+            <span class="panel-sub">从总分到维度逐层下钻，点击任一维度可查看解读与脱敏数据来源</span>
+          </div>
+
+          <!-- 评分卡 -->
+          <div class="score-cards">
+            <div class="score-card">
+              <div class="sc-head">
+                <span class="sc-title">AI 使用能力</span>
+                <span :class="['sc-level', 'bg-' + levelMeta(periodAiUse).key]">{{ levelMeta(periodAiUse).label }}</span>
+              </div>
+              <div class="sc-main">
+                <span :class="['sc-score', periodAiUse === null ? 'score-na' : '', levelMeta(periodAiUse).cls]">{{ formatScore(periodAiUse) }}</span>
+                <span v-if="usePeriodDelta !== null" :class="['sc-trend', usePeriodDelta > 0 ? 'up' : (usePeriodDelta < 0 ? 'down' : 'flat')]">
+                  <el-icon><component :is="usePeriodDelta > 0 ? 'CaretTop' : (usePeriodDelta < 0 ? 'CaretBottom' : 'Minus')"></component></el-icon>
+                  {{ Math.abs(usePeriodDelta) }} 分 / 上期
+                </span>
+              </div>
+              <div class="sc-meta">
+                <span>评估于 {{ currentPeriod.endDate }}</span>
+                <span class="sc-status">
+                  <span class="dot" :style="{ background: useStatusColor }"></span>{{ useStatusText }}
+                </span>
+              </div>
+            </div>
+
+            <div class="score-card">
+              <div class="sc-head">
+                <span class="sc-title">AI 管理能力</span>
+                <span :class="['sc-level', 'bg-' + levelMeta(periodAiMgmt).key]">{{ levelMeta(periodAiMgmt).label }}</span>
+              </div>
+              <div class="sc-main">
+                <span :class="['sc-score', periodAiMgmt === null ? 'score-na' : '', levelMeta(periodAiMgmt).cls]">{{ formatScore(periodAiMgmt) }}</span>
+                <span v-if="mgmtPeriodDelta !== null" :class="['sc-trend', mgmtPeriodDelta > 0 ? 'up' : (mgmtPeriodDelta < 0 ? 'down' : 'flat')]">
+                  <el-icon><component :is="mgmtPeriodDelta > 0 ? 'CaretTop' : (mgmtPeriodDelta < 0 ? 'CaretBottom' : 'Minus')"></component></el-icon>
+                  {{ Math.abs(mgmtPeriodDelta) }} 分 / 上期
+                </span>
+              </div>
+              <div class="sc-meta">
+                <span>{{ periodAiMgmt === null ? '尚未评估' : '评估于 ' + currentPeriod.endDate }}</span>
+                <span class="sc-status">
+                  <span class="dot" :style="{ background: mgmtStatusColor }"></span>{{ mgmtStatusText }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- tab：使用 / 管理（雷达 + 维度联动） -->
+          <el-tabs v-model="activeTab" class="ability-tabs">
+            <el-tab-pane label="AI 使用能力 · 8 维" name="use">
+              <div class="radar-wrap">
+                <div ref="radarUseRef" class="echart radar"></div>
+              </div>
+              <template v-for="sub in useGroup.subGroups" :key="sub.key">
+                <div class="dim-group">
+                  <div class="dim-group-title">
+                    <span class="gtag" :style="{ background: sub.bg, color: sub.color }">{{ sub.title }}</span>
+                    <span class="ghint">{{ sub.hint }}</span>
+                  </div>
+                  <template v-for="dim in sub.items" :key="dim.key">
+                    <div
+                      :class="['dim-row', openState[dim.key] ? 'is-open' : '', dim.status === 'na' ? 'is-na' : '']"
+                      @click="dim.status !== 'na' && toggleSource(dim)"
+                    >
+                      <span class="dim-name">{{ dim.name }}</span>
+                      <span :class="['dim-score', dim.status === 'na' ? 'score-na' : '', scoreColorClass(dim.score)]">{{ formatScore(dim.score) }}</span>
+                      <div class="dim-bar" v-if="dim.status !== 'na'">
+                        <div class="dim-bar-inner" :style="{ width: barWidth(dim), background: barColor(dim) }"></div>
+                      </div>
+                      <div class="dim-bar" v-else style="background: transparent;"></div>
+                      <div class="dim-flags">
+                        <span class="dim-flag warn" v-if="dim.status === 'downgraded'">
+                          <el-icon><WarningFilled></WarningFilled></el-icon>降权
+                        </span>
+                        <span class="dim-flag gray" v-if="dim.status === 'na'">{{ dim.naReason || '数据缺失' }}</span>
+                        <span class="dim-flag gray" v-if="dim.sources && dim.sources.length">
+                          <el-icon><Link></Link></el-icon>{{ dim.sources.length }} 条来源
+                        </span>
+                      </div>
+                      <el-icon class="dim-chevron" v-if="dim.status !== 'na'"><ArrowDown></ArrowDown></el-icon>
+                    </div>
+                    <div class="dim-expand" v-if="openState[dim.key] && dim.status !== 'na'">
+                      <div class="dim-interp">{{ dim.interpretation }}</div>
+                      <div class="dim-trend-block">
+                        <div class="dim-trend-head">
+                          <span class="dim-trend-title">近 4 期走势</span>
+                          <div class="dim-trend-stats">
+                            <span class="dts-item">本期 <strong>{{ trendLatest(dim) }}</strong></span>
+                            <span class="dts-item" v-if="trendChange(dim) !== null" :class="trendChange(dim) > 0 ? 'up' : (trendChange(dim) < 0 ? 'down' : '')">较上期 {{ trendChange(dim) > 0 ? '+' : '' }}{{ trendChange(dim) }}</span>
+                          </div>
+                        </div>
+                        <div class="dim-trend" :data-key="dim.key"></div>
+                      </div>
+                      <div class="dim-sources" v-if="dim.sources && dim.sources.length">
+                        <div class="source-item" v-for="(s, i) in dim.sources" :key="i">
+                          <div class="source-head">
+                            <el-tag size="small" :type="s.type === '对话分析' ? 'primary' : 'warning'" effect="plain">{{ s.type }}</el-tag>
+                            <span>{{ s.time }}</span>
+                            <span style="margin-left:auto;">置信度 {{ s.confidence }}</span>
+                          </div>
+                          <div class="source-text">{{ s.summary }}</div>
+                          <div class="source-sample">脱敏样本：{{ s.sample }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </el-tab-pane>
+
+            <el-tab-pane label="AI 管理能力 · 5 子能力" name="mgmt">
+              <div class="radar-wrap">
+                <div ref="radarMgmtRef" class="echart radar"></div>
+              </div>
+              <template v-for="sub in mgmtGroup.subGroups" :key="sub.key">
+                <div class="dim-group">
+                  <div class="dim-group-title">
+                    <span class="gtag" :style="{ background: sub.bg, color: sub.color }">{{ sub.title }}</span>
+                    <span class="ghint">{{ sub.hint }}</span>
+                  </div>
+                  <template v-for="dim in sub.items" :key="dim.key">
+                    <div
+                      :class="['dim-row', openState[dim.key] ? 'is-open' : '', dim.status === 'na' ? 'is-na' : '']"
+                      @click="dim.status !== 'na' && toggleSource(dim)"
+                    >
+                      <span class="dim-name">{{ dim.name }}</span>
+                      <span :class="['dim-score', dim.status === 'na' ? 'score-na' : '', scoreColorClass(dim.score)]">{{ formatScore(dim.score) }}</span>
+                      <div class="dim-bar" v-if="dim.status !== 'na'">
+                        <div class="dim-bar-inner" :style="{ width: barWidth(dim), background: barColor(dim) }"></div>
+                      </div>
+                      <div class="dim-bar" v-else style="background: transparent;"></div>
+                      <div class="dim-flags">
+                        <span class="dim-flag warn" v-if="dim.status === 'downgraded'">
+                          <el-icon><WarningFilled></WarningFilled></el-icon>降权
+                        </span>
+                        <span class="dim-flag gray" v-if="dim.status === 'na'">{{ dim.naReason || '数据缺失' }}</span>
+                        <span class="dim-flag gray" v-if="dim.sources && dim.sources.length">
+                          <el-icon><Link></Link></el-icon>{{ dim.sources.length }} 条来源
+                        </span>
+                      </div>
+                      <el-icon class="dim-chevron" v-if="dim.status !== 'na'"><ArrowDown></ArrowDown></el-icon>
+                    </div>
+                    <div class="dim-expand" v-if="openState[dim.key] && dim.status !== 'na'">
+                      <div class="dim-interp">{{ dim.interpretation }}</div>
+                      <div class="dim-trend-block">
+                        <div class="dim-trend-head">
+                          <span class="dim-trend-title">近 4 期走势</span>
+                          <div class="dim-trend-stats">
+                            <span class="dts-item">本期 <strong>{{ trendLatest(dim) }}</strong></span>
+                            <span class="dts-item" v-if="trendChange(dim) !== null" :class="trendChange(dim) > 0 ? 'up' : (trendChange(dim) < 0 ? 'down' : '')">较上期 {{ trendChange(dim) > 0 ? '+' : '' }}{{ trendChange(dim) }}</span>
+                          </div>
+                        </div>
+                        <div class="dim-trend" :data-key="dim.key"></div>
+                      </div>
+                      <div class="dim-sources" v-if="dim.sources && dim.sources.length">
+                        <div class="source-item" v-for="(s, i) in dim.sources" :key="i">
+                          <div class="source-head">
+                            <el-tag size="small" :type="s.type === '对话分析' ? 'primary' : 'warning'" effect="plain">{{ s.type }}</el-tag>
+                            <span>{{ s.time }}</span>
+                            <span style="margin-left:auto;">置信度 {{ s.confidence }}</span>
+                          </div>
+                          <div class="source-text">{{ s.summary }}</div>
+                          <div class="source-sample">脱敏样本：{{ s.sample }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+            </el-tab-pane>
+          </el-tabs>
+        </section>
+
+        <!-- 4. 九型人格（辅助） -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">九型人格</span>
+            <span class="panel-note"><el-icon><InfoFilled></InfoFilled></el-icon>辅助维度，不进入硬性评分聚合</span>
+          </div>
+          <div class="enneagram-row">
+            <div ref="enneagramRef" class="echart enneagram-chart"></div>
+            <div class="enneagram-side">
+              <div class="enneagram-tags">
+                <div class="enneagram-tag-box">
+                  <div class="label">主型</div>
+                  <div class="value">{{ person ? person.enneagram : '—' }}</div>
+                </div>
+                <div class="enneagram-tag-box">
+                  <div class="label">翼型</div>
+                  <div class="value">{{ person ? person.wing : '—' }}</div>
+                </div>
+              </div>
+              <div class="enneagram-desc">{{ person ? person.enneagramDesc : '' }}</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 导航菜单 ==========
+        const menuGroups = [
+          { key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }] },
+          { key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ] },
+          { key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ] },
+          { key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ] },
+          { key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ] }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+        const openedKeys = ['insight', 'assessment', 'model', 'system'];
+        const activeMenu = ref('profile-list');
+
+        const handleMenuSelect = (index) => { if (routeMap[index]) window.location.href = routeMap[index]; };
+
+        const isCollapse = ref(false);
+        const toggleCollapse = () => {
+          isCollapse.value = !isCollapse.value;
+          nextTick(() => { setTimeout(() => resizeAll(), 320); });
+        };
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else if (command === 'profile') {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+        const goBack = () => {
+          if (window.history.length > 1) window.history.back();
+          else window.location.href = 'profile-list.html';
+        };
+
+        // ========== 维度名称约定 ==========
+        const use8Names = ['任务适配判断力', '指令与 prompt 设计', '对话驾驭', 'Skill 调用', 'Harness 编排驾驭', 'Skill 编写能力', '价值产出质量', '知识沉淀与复用'];
+        const mgmt5Names = ['目标设定与对齐', '授权与分工', '监督与验收', '风险与担责', '人机协作设计'];
+
+        // ========== 人员数据池 ==========
+        const personPool = [
+          {
+            id: 3, name: '李芳', activityLevel: 'unused',
+            aiUseScore: 52, aiUseDowngraded: true, aiMgmtScore: null, aiMgmtDowngraded: true,
+            enneagram: '和平型', wing: '9w1（和平型 + 完美型翼）',
+            enneagramDesc: '倾向温和、回避冲突，对人际氛围敏感。AI 协作中表现为被动跟随，主动性不足，更倾向沿用既有模式。',
+            aiUseAssessTime: '2026-08-04', aiMgmtAssessTime: null,
+            useScores: [58, 52, 55, 45, 48, null, 50, null],
+            useStatus: ['normal', 'downgraded', 'normal', 'downgraded', 'downgraded', 'na', 'normal', 'na'],
+            mgmtScores: [null, null, null, null, null],
+            mgmtStatus: ['na', 'na', 'na', 'na', 'na'],
+            enneagramDist: [5, 6, 3, 4, 5, 4, 2, 2, 9],
+            trend: {
+              periods: ['07-13', '07-20', '07-27', '08-03'],
+              aiUse: [60, 56, 54, 52], aiMgmt: [null, null, null, null], activity: [0, 0, 0, 0],
+              useDims: [
+                [50, 54, 56, 58], [44, 48, 50, 52], [47, 51, 53, 55], [37, 41, 43, 45],
+                [40, 44, 46, 48], [null, null, null, null], [42, 46, 48, 50], [null, null, null, null]
+              ],
+              mgmtDims: [[null,null,null,null],[null,null,null,null],[null,null,null,null],[null,null,null,null],[null,null,null,null]]
+            }
+          },
+          {
+            id: 1, name: '张伟', activityLevel: 'active',
+            aiUseScore: 88, aiUseDowngraded: false, aiMgmtScore: 82, aiMgmtDowngraded: false,
+            enneagram: '成就型', wing: '3w2（成就型 + 助人型翼）',
+            enneagramDesc: '目标导向、追求效率与认可，在工具使用与价值产出上表现突出，短板在于 prompt 细节打磨偶有疏漏。',
+            aiUseAssessTime: '2026-08-04', aiMgmtAssessTime: '2026-08-02',
+            useScores: [86, 78, 90, 88, 82, 80, 92, 85],
+            useStatus: ['normal','normal','normal','normal','normal','normal','normal','normal'],
+            mgmtScores: [85, 80, 82, 78, 84],
+            mgmtStatus: ['normal','normal','normal','normal','normal'],
+            enneagramDist: [5, 6, 9, 3, 4, 5, 7, 4, 2],
+            trend: {
+              periods: ['07-13', '07-20', '07-27', '08-03'],
+              aiUse: [78, 82, 85, 88], aiMgmt: [72, 76, 79, 82], activity: [100, 100, 100, 100],
+              useDims: [
+                [78,82,84,86],[70,74,76,78],[82,86,88,90],[80,84,86,88],
+                [74,78,80,82],[72,76,78,80],[84,88,90,92],[77,81,83,85]
+              ],
+              mgmtDims: [
+                [77,81,83,85],[72,76,78,80],[74,78,80,82],[70,74,76,78],[76,80,82,84]
+              ]
+            }
+          },
+          {
+            id: 4, name: '刘洋', activityLevel: 'low',
+            aiUseScore: 67, aiUseDowngraded: false, aiMgmtScore: 72, aiMgmtDowngraded: false,
+            enneagram: '活跃型', wing: '7w6（活跃型 + 忠诚型翼）',
+            enneagramDesc: '思维活跃、乐于尝试新工具，监督与验收环节因流程把控不足而偏弱，整体能力处于成长期。',
+            aiUseAssessTime: '2026-08-04', aiMgmtAssessTime: '2026-08-02',
+            useScores: [70, 65, 72, 68, 60, 58, 70, 64],
+            useStatus: ['normal','normal','normal','normal','normal','normal','normal','normal'],
+            mgmtScores: [75, 70, 62, 68, 78],
+            mgmtStatus: ['normal','normal','normal','normal','normal'],
+            enneagramDist: [4, 7, 6, 5, 6, 5, 9, 3, 3],
+            trend: {
+              periods: ['07-13', '07-20', '07-27', '08-03'],
+              aiUse: [60, 63, 65, 67], aiMgmt: [66, 69, 71, 72], activity: [60, 60, 60, 60],
+              useDims: [
+                [62,66,68,70],[57,61,63,65],[64,68,70,72],[60,64,66,68],
+                [52,56,58,60],[50,54,56,58],[62,66,68,70],[56,60,62,64]
+              ],
+              mgmtDims: [
+                [67,71,73,75],[62,66,68,70],[54,58,60,62],[60,64,66,68],[70,74,76,78]
+              ]
+            }
+          },
+          {
+            id: 6, name: '杨磊', activityLevel: 'low',
+            aiUseScore: 58, aiUseDowngraded: true, aiMgmtScore: 65, aiMgmtDowngraded: false,
+            enneagram: '挑战型', wing: '8w7（挑战型 + 活跃型翼）',
+            enneagramDesc: '决断力强、敢于推进，Harness 编排与 prompt 设计因对话样本波动出现数据不足降权。',
+            aiUseAssessTime: '2026-08-04', aiMgmtAssessTime: '2026-08-02',
+            useScores: [62, 55, 60, 58, 50, 52, 58, 54],
+            useStatus: ['normal','downgraded','normal','normal','downgraded','normal','normal','normal'],
+            mgmtScores: [68, 62, 65, 60, 70],
+            mgmtStatus: ['normal','normal','normal','normal','normal'],
+            enneagramDist: [4, 3, 5, 4, 5, 6, 7, 9, 2],
+            trend: {
+              periods: ['07-13', '07-20', '07-27', '08-03'],
+              aiUse: [62, 60, 59, 58], aiMgmt: [60, 63, 64, 65], activity: [60, 60, 60, 60],
+              useDims: [
+                [54,58,60,62],[47,51,53,55],[52,56,58,60],[50,54,56,58],
+                [42,46,48,50],[44,48,50,52],[50,54,56,58],[46,50,52,54]
+              ],
+              mgmtDims: [
+                [60,64,66,68],[54,58,60,62],[57,61,63,65],[52,56,58,60],[62,66,68,70]
+              ]
+            }
+          }
+        ];
+
+        const currentId = ref(3);
+        const person = computed(() => {
+          const found = personPool.find(p => p.id === currentId.value);
+          return found || personPool[0];
+        });
+
+        // ========== 评估区间（最近 4 个周区间） ==========
+        const periodOptions = [
+          { range: '07-13 至 07-19', endDate: '2026-07-19', short: '07-13' },
+          { range: '07-20 至 07-26', endDate: '2026-07-26', short: '07-20' },
+          { range: '07-27 至 08-02', endDate: '2026-08-02', short: '07-27' },
+          { range: '08-03 至 08-09', endDate: '2026-08-09', short: '08-03', current: true }
+        ];
+        const currentPeriodIdx = ref(3);
+        const currentPeriod = computed(() => periodOptions[currentPeriodIdx.value]);
+
+        // 按当前期取数
+        const periodAiUse = computed(() => person.value.trend.aiUse[currentPeriodIdx.value]);
+        const periodAiMgmt = computed(() => person.value.trend.aiMgmt[currentPeriodIdx.value]);
+        const periodUseScores = computed(() => use8Names.map((_, i) => person.value.trend.useDims[i][currentPeriodIdx.value]));
+        const periodMgmtScores = computed(() => mgmt5Names.map((_, i) => person.value.trend.mgmtDims[i][currentPeriodIdx.value]));
+        const periodDeltaOf = (arr) => {
+          const idx = currentPeriodIdx.value;
+          if (idx <= 0) return null;
+          const cur = arr[idx];
+          const prev = arr[idx - 1];
+          if (cur === null || cur === undefined || prev === null || prev === undefined) return null;
+          return cur - prev;
+        };
+        const usePeriodDelta = computed(() => periodDeltaOf(person.value.trend.aiUse));
+        const mgmtPeriodDelta = computed(() => periodDeltaOf(person.value.trend.aiMgmt));
+
+        // ========== 等级映射 ==========
+        const levelMeta = (score) => {
+          if (score === null || score === undefined) return { label: '待评估', key: 'na', cls: 'lv-na' };
+          if (score >= 85) return { label: '优秀', key: 'high', cls: 'lv-high' };
+          if (score >= 70) return { label: '良好', key: 'good', cls: 'lv-good' };
+          if (score >= 60) return { label: '中等', key: 'mid', cls: 'lv-mid' };
+          return { label: '待提升', key: 'low', cls: 'lv-low' };
+        };
+
+        const scoreColorClass = (score) => {
+          if (score === null || score === undefined) return 'lv-na';
+          if (score >= 80) return 'lv-high';
+          if (score >= 65) return 'lv-good';
+          return 'lv-low';
+        };
+
+        // ========== 趋势辅助 ==========
+        const trendDelta = (arr) => {
+          const valid = (arr || []).filter(v => v !== null && v !== undefined);
+          if (valid.length < 2) return null;
+          return valid[valid.length - 1] - valid[valid.length - 2];
+        };
+        const trendDeltaClass = (arr) => {
+          const d = trendDelta(arr);
+          if (d === null) return 'flat';
+          if (d > 0) return 'up';
+          if (d < 0) return 'down';
+          return 'flat';
+        };
+
+        // ========== 数据状态（评分卡） ==========
+        const useStatusText = computed(() => {
+          const p = person.value;
+          const naCount = p.useScores.filter(s => s === null || s === undefined).length;
+          const downCount = p.useStatus.filter(s => s === 'downgraded').length;
+          if (downCount > 0 && naCount > 0) return '部分降权 / 部分缺失';
+          if (downCount > 0) return '部分维度已降权';
+          if (naCount > 0) return '部分维度缺失';
+          return '数据完整';
+        });
+        const useStatusColor = computed(() => {
+          const p = person.value;
+          const naCount = p.useScores.filter(s => s === null || s === undefined).length;
+          const downCount = p.useStatus.filter(s => s === 'downgraded').length;
+          if (downCount > 0 || naCount > 0) return 'var(--warning-color)';
+          return 'var(--success-color)';
+        });
+        const mgmtStatusText = computed(() => {
+          const p = person.value;
+          if (p.aiMgmtScore === null) return '待评估';
+          return p.aiMgmtDowngraded ? '部分维度已降权' : '数据完整';
+        });
+        const mgmtStatusColor = computed(() => {
+          const p = person.value;
+          if (p.aiMgmtScore === null) return 'var(--text-secondary)';
+          return p.aiMgmtDowngraded ? 'var(--warning-color)' : 'var(--success-color)';
+        });
+
+        // ========== 核心结论生成（按当前期） ==========
+        const buildInsight = (p, periodIdx) => {
+          const useDims = use8Names.map((name, i) => ({ name, score: p.trend.useDims[i][periodIdx], status: p.useStatus[i] }));
+          const useValid = useDims.filter(d => d.score !== null && d.score !== undefined);
+          const useSorted = [...useValid].sort((a, b) => b.score - a.score);
+
+          const useNaCount = useDims.filter(d => d.score === null || d.score === undefined).length;
+          const useDownCount = useDims.filter(d => d.status === 'downgraded').length;
+          const mgmtNaCount = mgmt5Names.filter((_, i) => p.trend.mgmtDims[i][periodIdx] === null || p.trend.mgmtDims[i][periodIdx] === undefined).length;
+
+          const aiUse = p.trend.aiUse[periodIdx];
+          const aiMgmt = p.trend.aiMgmt[periodIdx];
+          const prevIdx = periodIdx > 0 ? periodIdx - 1 : null;
+          const useDelta = (prevIdx !== null && aiUse !== null && p.trend.aiUse[prevIdx] !== null && p.trend.aiUse[prevIdx] !== undefined)
+            ? aiUse - p.trend.aiUse[prevIdx] : null;
+
+          const findings = [];
+
+          if (aiMgmt === null || mgmtNaCount === 5) {
+            findings.push({ type: 'risk', text: 'AI 管理能力 5 个子能力全部待评估，尚未参与主动测试，该模块结论暂缺。' });
+          }
+          if (useDownCount >= 2 || (useDownCount >= 1 && useNaCount >= 1)) {
+            findings.push({ type: 'risk', text: '使用能力有 ' + useDownCount + ' 个维度因对话样本不足已降权、' + useNaCount + ' 个维度数据缺失，当前结论需谨慎参考。' });
+          } else if (useDownCount === 1) {
+            findings.push({ type: 'risk', text: '使用能力有 1 个维度因样本不足降权，对总分影响有限。' });
+          }
+
+          if (useSorted.length && useSorted[0].score >= 75) {
+            const top = useSorted.slice(0, 2).filter(d => d.score >= 75).map(d => d.name + '（' + d.score + '）').join('、');
+            if (top) findings.push({ type: 'strength', text: '优势集中在 ' + top + '，高于团队常态水平。' });
+          }
+
+          if (useSorted.length) {
+            const bottom = useSorted[useSorted.length - 1];
+            if (bottom.score < 60) {
+              findings.push({ type: 'weak', text: '相对短板为 ' + bottom.name + '（' + bottom.score + ' 分）' + (bottom.status === 'downgraded' ? '，且该维度已降权' : '') + '，可作为下一周期辅导重点。' });
+            }
+          }
+
+          if (useDelta !== null) {
+            if (useDelta > 0) findings.push({ type: 'info', text: '使用能力较上期提升 ' + useDelta + ' 分，整体处于上升通道。' });
+            else if (useDelta < 0) findings.push({ type: 'info', text: '使用能力较上期回落 ' + Math.abs(useDelta) + ' 分，建议关注下降原因。' });
+            else findings.push({ type: 'info', text: '使用能力与上期持平，处于稳定状态。' });
+          }
+
+          let headline;
+          const dataLimited = (aiUse === null) || (useNaCount + useDownCount >= 4);
+          if (dataLimited) {
+            headline = '当前可用数据有限，使用能力结论仅供参考。建议先补充对话样本或安排主动测试，待数据充分后再做精准判断。';
+          } else {
+            const useLv = levelMeta(aiUse).label;
+            const mgmtLv = aiMgmt !== null ? levelMeta(aiMgmt).label : '待评估';
+            const strong = useSorted.length && useSorted[0].score >= 80 ? (useSorted[0].name + '是最突出项；') : '';
+            headline = 'AI 使用能力处于「' + useLv + '」水平，管理能力「' + mgmtLv + '」。' + strong + '可结合下方维度明细定位提升方向。';
+          }
+
+          return { headline, findings };
+        };
+
+        const insight = computed(() => buildInsight(person.value, currentPeriodIdx.value));
+
+        // ========== 维度明细 ==========
+        const buildDimensionGroups = (p, periodIdx) => {
+          const useInterps = {
+            0: '根据对话分析，能正确判断哪些任务适合交给 AI 处理，任务边界划分清晰。',
+            1: '指令表达较完整，结构化 prompt 使用稳定，角色设定与约束条件交代清楚。',
+            2: '多轮对话中能维持上下文连贯，会主动澄清与纠偏，驾驭较稳健。',
+            3: '合理调用 Skill，调用时机判断准确，失败时会重试或换方案。'
+          };
+          const lifangBase = {
+            0: '样本量偏少，仅观察到零星的任务适配判断行为，倾向沿用固定模式，尚不足以充分评估，初步判断处于中等偏下水平。',
+            1: '有效对话不足，prompt 多为短句式直接提问，缺乏角色设定与结构化约束，已按数据不足规则降权。',
+            2: '单轮对话为主，缺乏多轮驾驭证据，遇到偏差时倾向重开对话而非纠偏，已因样本不足降权。',
+            3: 'Skill 调用证据极少，近 7 天无可观察的有效调用，分数基于少量历史样本，已降权处理。'
+          };
+          const useUpper = {
+            4: 'Harness 编排证据不足，未见复杂多步编排行为，仅有简单串接，已降权。',
+            5: '近期无 Skill 编写产出，该维度暂无评估数据。',
+            6: '价值产出可见但数量有限，偶有可用结果，整体质量受样本不足影响。',
+            7: '近期无知识沉淀产出（如总结、模板、复用资产），暂无评估数据。'
+          };
+          const mgmtNa = ['未参与 AI 管理能力主动测试，暂无评估数据。','未参与 AI 管理能力主动测试，暂无评估数据。','未参与 AI 管理能力主动测试，暂无评估数据。','未参与 AI 管理能力主动测试，暂无评估数据。','未参与 AI 管理能力主动测试，暂无评估数据。'];
+
+          const isLi = p.id === 3;
+          const sourceDialog = (summary, sample, confidence, time) => ({ type: '对话分析', summary, sample, confidence, time });
+          const sourceTest = (summary, sample, confidence, time) => ({ type: '主动测试', summary, sample, confidence, time });
+
+          const useBaseItems = use8Names.slice(0, 4).map((name, i) => {
+            const status = p.useStatus[i];
+            const score = p.trend.useDims[i][periodIdx];
+            let interpretation, sources = [];
+            if (isLi) {
+              interpretation = lifangBase[i];
+              if (status !== 'na') {
+                sources = [sourceDialog(
+                  '近 4 周累计有效对话 5 轮，' + name + ' 相关信号出现 ' + (status === 'downgraded' ? '2 次，低于最小样本阈值 8 次，触发降权' : '4 次') + '。提取的特征包括指令结构、调用时机与纠偏行为。',
+                  '会话 #a1f3（已脱敏）：用户在 [时段] 发起 [任务摘要]，AI 回复 [结果摘要]，未观察到 [关键行为]。',
+                  status === 'downgraded' ? '低（样本不足）' : '中', '2026-07-08 ~ 2026-08-04'
+                )];
+              }
+            } else {
+              interpretation = useInterps[i];
+              sources = [sourceDialog(
+                '近 4 周累计有效对话 38 轮，' + name + ' 相关信号出现 21 次，行为一致性好，符合高分画像特征。',
+                '会话 #c7e2（已脱敏）：用户在 [任务摘要] 中展现出 [关键行为]，结果 [结果摘要]。',
+                '高', '2026-07-08 ~ 2026-08-04'
+              )];
+            }
+            return { key: 'use-base-' + i, name, score, status, naReason: '近期无该维度对话信号', interpretation, sources, _open: false, trendKey: 'use', trendIdx: i };
+          });
+
+          const useUpperItems = use8Names.slice(4).map((name, i) => {
+            const idx = i + 4;
+            const status = p.useStatus[idx];
+            const score = p.trend.useDims[idx][periodIdx];
+            let interpretation, sources = [];
+            if (isLi) {
+              interpretation = useUpper[i];
+              if (status !== 'na') {
+                sources = [sourceDialog(
+                  '近 4 周 ' + name + ' 相关信号 ' + (status === 'downgraded' ? '1 次，触发降权' : '3 次') + '，证据强度有限。',
+                  '会话 #b3d9（已脱敏）：[任务摘要] 中观察到 [行为摘要]。',
+                  status === 'downgraded' ? '低（样本不足）' : '中', '2026-07-08 ~ 2026-08-04'
+                )];
+              }
+            } else {
+              interpretation = ['Harness 编排熟练，能组合多 Skill 完成复杂任务。', 'Skill 编写规范，入参与异常处理考虑周全。', '价值产出质量稳定，结果可直接复用。', '沉淀模板与复用资产，推动团队知识积累。'][i];
+              sources = [sourceDialog(
+                '近 4 周 ' + name + ' 相关信号 16 次，产出物质量评分稳定。',
+                '产出 #d2a1（已脱敏）：[产出摘要] 经评审为可复用。',
+                '高', '2026-07-08 ~ 2026-08-04'
+              )];
+            }
+            return { key: 'use-upper-' + i, name, score, status, naReason: '近期无产出可分析', interpretation, sources, _open: false, trendKey: 'use', trendIdx: idx };
+          });
+
+          const mgmtItems = mgmt5Names.map((name, i) => {
+            const status = p.mgmtStatus[i];
+            const score = p.trend.mgmtDims[i][periodIdx];
+            let interpretation, sources = [];
+            if (status === 'na') {
+              interpretation = mgmtNa[i];
+            } else {
+              interpretation = ['目标设定清晰，与团队对齐充分。', '授权分工合理，任务粒度匹配能力。', '监督与验收节点明确，反馈及时。', '风险识别主动，担责意识强。', '人机协作设计兼顾效率与质量。'][i];
+              sources = [sourceTest(
+                'AI 管理能力场景题 Q-0' + (100 + i) + '，得分 ' + Math.round(score * 0.95) + '/' + score + '，对话作答用时 18 分钟。',
+                '题目：[场景题摘要，已脱敏]。作答摘要：[对话回复摘要，已脱敏]。',
+                '高', p.aiMgmtAssessTime
+              )];
+            }
+            return { key: 'mgmt-' + i, name, score, status, naReason: '未参与主动测试', interpretation, sources, _open: false, trendKey: 'mgmt', trendIdx: i };
+          });
+
+          return {
+            use: {
+              key: 'use',
+              subGroups: [
+                { key: 'use-base', title: '基础对话能力', hint: '信号来自对话日志', bg: 'rgba(24,144,255,0.10)', color: '#1890ff', items: useBaseItems },
+                { key: 'use-upper', title: '高级生成能力', hint: '高阶产出能力', bg: 'rgba(19,194,194,0.12)', color: '#13c2c2', items: useUpperItems }
+              ]
+            },
+            mgmt: {
+              key: 'mgmt',
+              subGroups: [
+                { key: 'mgmt', title: '5 子能力', hint: '信号来自主动测试场景题', bg: 'rgba(250,173,20,0.12)', color: '#faad14', items: mgmtItems }
+              ]
+            }
+          };
+        };
+
+        const dimensionData = computed(() => buildDimensionGroups(person.value, currentPeriodIdx.value));
+        const useGroup = computed(() => dimensionData.value.use);
+        const mgmtGroup = computed(() => dimensionData.value.mgmt);
+
+        const activeTab = ref('use');
+
+        // ========== 展示辅助 ==========
+        const activityMeta = (level) => {
+          if (level === 'active') return { text: '活跃', type: 'success' };
+          if (level === 'low') return { text: '低频', type: 'warning' };
+          return { text: '未使用', type: 'info' };
+        };
+        const formatScore = (score) => (score === null || score === undefined) ? '待评估' : Math.round(score);
+        const barWidth = (dim) => (dim.score === null || dim.score === undefined) ? '0%' : dim.score + '%';
+        const barColor = (dim) => {
+          if (dim.status === 'downgraded') return 'var(--warning-color)';
+          if (dim.score >= 80) return 'var(--success-color)';
+          if (dim.score >= 65) return 'var(--primary-color)';
+          return 'var(--danger-color)';
+        };
+        // 维度展开状态（独立响应式，跨期/跨 tab 切换后仍保留）
+        const openState = reactive({});
+        const toggleSource = (dim) => {
+          if (dim.status === 'na') return;
+          openState[dim.key] = !openState[dim.key];
+          if (openState[dim.key]) {
+            nextTick(() => renderDimTrend(dim));
+          } else {
+            disposeDimTrend(dim.key);
+          }
+        };
+        const trendLatest = (dim) => {
+          const dims = dim.trendKey === 'use' ? trendUseDims.value : trendMgmtDims.value;
+          const d = dims[dim.trendIdx];
+          if (!d) return '—';
+          const v = d.values[currentPeriodIdx.value];
+          return (v === null || v === undefined) ? '—' : v;
+        };
+        const trendChange = (dim) => {
+          const idx = currentPeriodIdx.value;
+          if (idx <= 0) return null;
+          const dims = dim.trendKey === 'use' ? trendUseDims.value : trendMgmtDims.value;
+          const d = dims[dim.trendIdx];
+          if (!d) return null;
+          const cur = d.values[idx];
+          const prev = d.values[idx - 1];
+          if (cur === null || cur === undefined || prev === null || prev === undefined) return null;
+          return cur - prev;
+        };
+
+        // ========== 趋势维度数据（供 sparkline） ==========
+        const mapTrendDims = (names, dimValues, statusArr) => names.map((name, i) => {
+          const values = dimValues[i];
+          const valid = values.filter(v => v !== null && v !== undefined);
+          const latest = valid.length ? values[values.length - 1] : null;
+          const status = statusArr[i];
+          const weak = latest !== null && (latest < 65 || status === 'downgraded');
+          const noData = valid.length === 0;
+          return { name, values, latest, weak, status, noData };
+        });
+        const trendUseDims = computed(() => mapTrendDims(use8Names, person.value.trend.useDims, person.value.useStatus));
+        const trendMgmtDims = computed(() => mapTrendDims(mgmt5Names, person.value.trend.mgmtDims, person.value.mgmtStatus));
+
+        // ========== 图表 ==========
+        const radarUseRef = ref(null);
+        const radarMgmtRef = ref(null);
+        const enneagramRef = ref(null);
+        let chartRadarUse = null, chartRadarMgmt = null, chartEnneagram = null;
+        const dimTrendCharts = {};
+        let mgmtInited = false;
+
+        const companyAvgUse = [80, 74, 70, 66, 60, 54, 72, 52];
+        const companyAvgMgmt = [65, 60, 58, 63, 54];
+        const toRadarValues = (scores) => scores.map(s => (s === null || s === undefined) ? 0 : s);
+
+        const radarBaseOption = (indicators, myValues, myName, color, avgValues) => ({
+          tooltip: { trigger: 'item' },
+          legend: { data: [myName + '（本期）', '公司均分'], top: 0, textStyle: { fontSize: 12 } },
+          color: [color, '#8c8c8c'],
+          radar: {
+            radius: '64%', center: ['50%', '56%'],
+            indicator: indicators.map(n => ({ name: n, max: 100 })),
+            axisName: { color: '#595959', fontSize: 11 },
+            splitArea: { areaStyle: { color: ['#fafafa', '#f5f5f5'] } },
+            splitLine: { lineStyle: { color: '#e8e8e8' } },
+            axisLine: { lineStyle: { color: '#e8e8e8' } }
+          },
+          series: [{
+            type: 'radar',
+            data: [
+              { value: myValues, name: myName + '（本期）',
+                areaStyle: { color: color === '#1890ff' ? 'rgba(24,144,255,0.18)' : 'rgba(250,173,20,0.18)' },
+                lineStyle: { color, width: 2 }, itemStyle: { color } },
+              { value: avgValues, name: '公司均分',
+                areaStyle: { color: 'rgba(140,140,140,0.06)' },
+                lineStyle: { color: '#8c8c8c', width: 1.5, type: 'dashed' }, itemStyle: { color: '#8c8c8c' } }
+            ]
+          }]
+        });
+
+        const initRadarUse = () => {
+          if (!radarUseRef.value) return;
+          if (chartRadarUse) chartRadarUse.dispose();
+          chartRadarUse = echarts.init(radarUseRef.value);
+          const p = person.value;
+          chartRadarUse.setOption(radarBaseOption(use8Names, toRadarValues(periodUseScores.value), p.name, '#1890ff', companyAvgUse));
+        };
+        const initRadarMgmt = () => {
+          if (!radarMgmtRef.value) return;
+          if (chartRadarMgmt) chartRadarMgmt.dispose();
+          chartRadarMgmt = echarts.init(radarMgmtRef.value);
+          const p = person.value;
+          chartRadarMgmt.setOption(radarBaseOption(mgmt5Names, toRadarValues(periodMgmtScores.value), p.name, '#faad14', companyAvgMgmt));
+        };
+
+        // 维度详情趋势图（按 dim.key 管理，展开时渲染、收起时销毁）
+        const findDimByKey = (key) => {
+          const g = dimensionData.value;
+          const all = [...g.use.subGroups.flatMap(s => s.items), ...g.mgmt.subGroups.flatMap(s => s.items)];
+          return all.find(d => d.key === key);
+        };
+        const renderDimTrend = (dim) => {
+          const dims = dim.trendKey === 'use' ? trendUseDims.value : trendMgmtDims.value;
+          const d = dims[dim.trendIdx];
+          const el = document.querySelector('.dim-trend[data-key="' + dim.key + '"]');
+          if (!el || !d || d.noData) return;
+          if (el.offsetWidth === 0 || el.clientHeight === 0) return;
+          if (dimTrendCharts[dim.key]) dimTrendCharts[dim.key].dispose();
+          const chart = echarts.init(el);
+          const lineColor = d.weak ? '#faad14' : '#1890ff';
+          const curIdx = currentPeriodIdx.value;
+          const curVal = d.values[curIdx];
+          const xData = periodOptions.map(p => p.short);
+          chart.setOption({
+            grid: { left: 8, right: 16, top: 30, bottom: 4, containLabel: true },
+            xAxis: {
+              type: 'category', data: xData, boundaryGap: false,
+              axisLabel: { color: '#8c8c8c', fontSize: 11 },
+              axisLine: { lineStyle: { color: '#e8e8e8' } }, axisTick: { show: false }
+            },
+            yAxis: {
+              type: 'value',
+              min: v => Math.floor((v.min - 5) / 5) * 5,
+              max: v => Math.min(100, Math.ceil((v.max + 5) / 5) * 5),
+              splitLine: { lineStyle: { color: '#f5f5f5' } },
+              axisLabel: { color: '#8c8c8c', fontSize: 11 }
+            },
+            tooltip: { trigger: 'axis', confine: true,
+              formatter: ps => periodOptions[ps[0].dataIndex].range + '：' + ps[0].value + ' 分' },
+            series: [{
+              type: 'line', data: d.values, smooth: false,
+              symbol: 'circle',
+              symbolSize: (val, params) => params.dataIndex === curIdx ? 9 : 5,
+              lineStyle: { color: lineColor, width: 2 },
+              itemStyle: { color: lineColor, borderColor: '#fff', borderWidth: 1.5 },
+              areaStyle: {
+                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                  { offset: 0, color: d.weak ? 'rgba(250,173,20,0.22)' : 'rgba(24,144,255,0.20)' },
+                  { offset: 1, color: d.weak ? 'rgba(250,173,20,0.02)' : 'rgba(24,144,255,0.02)' }
+                ])
+              },
+              label: {
+                show: true, position: 'top', fontSize: 11, fontWeight: 600, color: '#262626',
+                formatter: p => p.dataIndex === curIdx ? p.value : ''
+              },
+              markLine: {
+                silent: true, symbol: 'none',
+                data: [{ yAxis: 65, lineStyle: { color: '#d9d9d9', type: 'dashed', width: 1 },
+                  label: { formatter: '及格 65', color: '#bfbfbf', fontSize: 10, position: 'insideEndTop' } }]
+              },
+              markPoint: {
+                symbol: 'circle', symbolSize: 9, label: { show: false },
+                itemStyle: { color: lineColor, borderColor: '#fff', borderWidth: 2 },
+                data: (curVal !== null && curVal !== undefined) ? [{ coord: [curIdx, curVal] }] : []
+              }
+            }]
+          });
+          dimTrendCharts[dim.key] = chart;
+        };
+        const disposeDimTrend = (key) => {
+          if (dimTrendCharts[key]) { dimTrendCharts[key].dispose(); delete dimTrendCharts[key]; }
+        };
+        const renderAllOpenTrends = () => {
+          Object.keys(openState).forEach(key => {
+            if (!openState[key]) return;
+            const dim = findDimByKey(key);
+            if (dim) renderDimTrend(dim);
+          });
+        };
+
+        const initEnneagram = () => {
+          if (!enneagramRef.value) return;
+          if (chartEnneagram) chartEnneagram.dispose();
+          chartEnneagram = echarts.init(enneagramRef.value);
+          const p = person.value;
+          const names = ['完美型', '助人型', '成就型', '艺术型', '理智型', '忠诚型', '活跃型', '挑战型', '和平型'];
+          const mainIdx = p.enneagramDist.indexOf(Math.max(...p.enneagramDist));
+          chartEnneagram.setOption({
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            grid: { left: 8, right: 16, top: 20, bottom: 8, containLabel: true },
+            xAxis: {
+              type: 'category', data: names,
+              axisLabel: { color: '#595959', fontSize: 10, interval: 0, rotate: 30 },
+              axisLine: { lineStyle: { color: '#e8e8e8' } }, axisTick: { show: false }
+            },
+            yAxis: { type: 'value', name: '倾向', max: 10,
+              nameTextStyle: { fontSize: 11, color: '#8c8c8c' },
+              splitLine: { lineStyle: { color: '#f0f0f0' } },
+              axisLabel: { color: '#8c8c8c', fontSize: 11 } },
+            series: [{
+              type: 'bar',
+              data: p.enneagramDist.map((v, i) => ({
+                value: v,
+                itemStyle: { color: (i === mainIdx) ? '#1890ff' : 'rgba(24,144,255,0.30)', borderRadius: [4, 4, 0, 0] }
+              })),
+              barWidth: '54%',
+              label: { show: true, position: 'top', fontSize: 11, color: '#595959' }
+            }]
+          });
+        };
+
+        const resizeAll = () => {
+          chartRadarUse && chartRadarUse.resize();
+          chartRadarMgmt && chartRadarMgmt.resize();
+          chartEnneagram && chartEnneagram.resize();
+          Object.values(dimTrendCharts).forEach(c => { if (c) c.resize(); });
+        };
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          const params = new URLSearchParams(window.location.search);
+          const idParam = parseInt(params.get('id'), 10);
+          if (!isNaN(idParam)) currentId.value = idParam;
+
+          nextTick(() => {
+            initRadarUse();
+            initEnneagram();
+            renderAllOpenTrends();
+          });
+          window.addEventListener('resize', resizeAll);
+        });
+
+        // tab 切换：lazy init 管理雷达 + 重绘维度 sparkline
+        watch(activeTab, (v) => {
+          nextTick(() => {
+            if (v === 'mgmt') {
+              if (!mgmtInited) { initRadarMgmt(); mgmtInited = true; }
+              else chartRadarMgmt && chartRadarMgmt.resize();
+            } else {
+              chartRadarUse && chartRadarUse.resize();
+            }
+            renderAllOpenTrends();
+          });
+        });
+
+        // 切换评估期：刷新雷达数据 + 重绘维度趋势标记点
+        watch(currentPeriodIdx, () => {
+          nextTick(() => {
+            const p = person.value;
+            if (chartRadarUse) {
+              chartRadarUse.setOption(radarBaseOption(use8Names, toRadarValues(periodUseScores.value), p.name, '#1890ff', companyAvgUse));
+            }
+            if (chartRadarMgmt) {
+              chartRadarMgmt.setOption(radarBaseOption(mgmt5Names, toRadarValues(periodMgmtScores.value), p.name, '#faad14', companyAvgMgmt));
+            }
+            renderAllOpenTrends();
+          });
+        });
+
+        onBeforeUnmount(() => {
+          window.removeEventListener('resize', resizeAll);
+          [chartRadarUse, chartRadarMgmt, chartEnneagram].forEach(c => { if (c) c.dispose(); });
+          Object.values(dimTrendCharts).forEach(c => { if (c) c.dispose(); });
+        });
+
+        return {
+          // 菜单与框架
+          isCollapse, toggleCollapse, activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          go, handleUserCommand, goBack,
+          currentUser, avatarText,
+          // 数据
+          person, activeTab, useGroup, mgmtGroup, insight,
+          trendUseDims, trendMgmtDims,
+          // 辅助
+          activityMeta, formatScore, barWidth, barColor, toggleSource,
+          openState, trendLatest, trendChange,
+          levelMeta, scoreColorClass,
+          trendDelta, trendDeltaClass,
+          currentPeriodIdx, currentPeriod, periodOptions,
+          periodAiUse, periodAiMgmt, usePeriodDelta, mgmtPeriodDelta,
+          useStatusText, useStatusColor, mgmtStatusText, mgmtStatusColor,
+          // 图表 ref
+          radarUseRef, radarMgmtRef, enneagramRef
+        };
+      }
+    });
+
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

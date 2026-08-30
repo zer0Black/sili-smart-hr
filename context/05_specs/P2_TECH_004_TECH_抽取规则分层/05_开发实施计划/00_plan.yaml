@@ -1,0 +1,36 @@
+feature_id: "P2_TECH_004_TECH_抽取规则分层"
+name: "抽取规则分层"
+created_at: "2026-08-28"
+finalized: true
+
+sub_plans:
+  - id: "01"
+    name: "注册表与规则迁移"
+    file: "01_注册表与规则迁移.md"
+    status: "completed"
+  - id: "02"
+    name: "判定链重组与追加语义"
+    file: "02_判定链重组与追加语义.md"
+    status: "completed"
+  - id: "03"
+    name: "探测与client落库"
+    file: "03_探测与client落库.md"
+    status: "completed"
+
+execution_order:
+  - "01"
+  - "02"
+  - "03"
+
+# 子计划耦合扫描结论（计划自检第 5 步）：
+# 共享文件与独立性依据（串行执行，前一子计划完成后一才开工）：
+# - config.go：01 建组装器拆平面集 → 02 收敛 ContinuationPrefix 单源（只改常量引用行）。
+#   两子计划串行触碰，02 时 01 已合入，无并行冲突。
+# - classify.go：01 T6 改 effective 回退分支引用点（拆平面变量的伴生改动），
+#   02 切追加语义（同区段，02 开工时 01 已合入），03 只在 classifySequence
+#   返回侧承载探测计分（02 已完成，无交织）。
+# - extract.go：01 零改动，02 只改 injectPrefixes 读参函数（73-94 行段），
+#   03 改 preparedData/persist 链路（另一区段）。串行下互不纠缠。
+# - extract_test.go / trim_test.go / migrate_test.go：各子计划只追加或按本子计划
+#   语义更新自己负责的用例，02 的预期翻转清单与 03 的 client 断言无重叠用例。
+# 结论：共享文件均可由「串行执行顺序 + 单一改动者区段」规避冲突，无需 prefactor。

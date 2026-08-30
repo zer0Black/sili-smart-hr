@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>sili-smart-hr · 业务场景故事线</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.4.4/dist/index.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; font-family: -apple-system, sans-serif; background: #F5F7FA; color: #303133; }
+    #app { height: 100%; display: flex; flex-direction: column; }
+
+    /* Header */
+    .page-header { background: #FFFFFF; border-bottom: 1px solid #E4E7ED; padding: 12px 20px; display: flex; align-items: center; flex-shrink: 0; }
+    .header-title { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+    .icon-wrapper { width: 28px; height: 28px; background: #409EFF; border-radius: 6px; display: flex; align-items: center; justify-content: center; }
+
+    /* Layout */
+    .main-content { flex: 1; display: flex; overflow: hidden; }
+    .scene-panel { width: 280px; background: #FFFFFF; border-right: 1px solid #E4E7ED; display: flex; flex-direction: column; flex-shrink: 0; }
+    .panel-header { padding: 16px; border-bottom: 1px solid #EBEEF5; }
+    .scene-list { flex: 1; overflow-y: auto; padding: 12px; }
+    .scene-card { background: #FFFFFF; border: 1px solid #E4E7ED; border-radius: 6px; padding: 12px; margin-bottom: 8px; cursor: pointer; }
+    .scene-card:hover { border-color: #409EFF; }
+    .scene-card.active { border-color: #409EFF; background: #ECF5FF; }
+
+    .main-view { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #F5F7FA; }
+    .view-container { flex: 1; overflow: auto; padding: 20px; }
+    .scenario-header { background: #FFFFFF; border: 1px solid #E4E7ED; border-radius: 6px; padding: 16px 20px; margin-bottom: 16px; }
+
+    /* Storyline Container */
+    .storylines-wrapper { display: flex; flex-direction: column; gap: 20px; }
+
+    /* Single Storyline Row */
+    .storyline-row { background: #FFFFFF; border: 1px solid #E4E7ED; border-radius: 8px; padding: 20px; }
+    .storyline-row.positive { border-left: 4px solid #67C23A; }
+    .storyline-row.negative { border-left: 4px solid #F56C6C; }
+    .storyline-row.neutral { border-left: 4px solid #409EFF; }
+
+    .storyline-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+    .storyline-label { font-size: 14px; font-weight: 600; color: #303133; }
+    .storyline-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; }
+    .storyline-badge.positive { background: #F0F9EB; color: #67C23A; }
+    .storyline-badge.negative { background: #FEF0F0; color: #F56C6C; }
+    .storyline-badge.neutral { background: #ECF5FF; color: #409EFF; }
+
+    /* Flow Container - Horizontal scrollable */
+    .flow-container { display: flex; align-items: center; gap: 12px; overflow-x: auto; padding: 8px 0; }
+
+    /* Node */
+    .node-card {
+      background: #FFFFFF;
+      border: 2px solid #409EFF;
+      border-radius: 8px;
+      padding: 10px 14px;
+      min-width: 120px;
+      max-width: 160px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .node-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
+    .node-card.start { border-color: #67C23A; background: #F0F9EB; }
+    .node-card.end { border-color: #F56C6C; background: #FEF0F0; }
+    .node-card.check { border-color: #E6A23C; background: #FDF6EC; }
+    .node-card.action { border-color: #409EFF; background: #ECF5FF; }
+
+    .node-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .node-label { font-size: 12px; font-weight: 600; }
+    .node-badge { padding: 2px 6px; border-radius: 3px; font-size: 10px; }
+    .node-badge.action { background: #ECF5FF; color: #409EFF; }
+    .node-badge.check { background: #FDF6EC; color: #E6A23C; }
+    .node-badge.start { background: #E6F7D5; color: #67C23A; }
+    .node-badge.end { background: #FEE; color: #F56C6C; }
+    .node-desc { font-size: 10px; color: #606266; margin-bottom: 4px; }
+    .node-meta { font-size: 10px; color: #909399; }
+.prototype-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #409EFF; color: #fff; border-radius: 4px; font-size: 10px; margin-top: 6px; cursor: pointer; }
+.prototype-btn:hover { background: #66B1FF; }
+.prototype-btn .el-icon { font-size: 12px; }
+
+    /* Arrow */
+    .flow-arrow {
+      display: flex;
+      align-items: center;
+      color: #DCDFE6;
+      flex-shrink: 0;
+    }
+    .arrow-line { width: 24px; height: 2px; background: #DCDFE6; }
+    .arrow-head { width: 0; height: 0; border-left: 6px solid #DCDFE6; border-top: 5px solid transparent; border-bottom: 5px solid transparent; margin-left: -1px; }
+
+    .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #909399; }
+
+    @media (max-width: 768px) {
+      .scene-panel { position: fixed; left: -280px; top: 0; height: 100%; z-index: 100; width: 280px; transition: left 0.3s; }
+      .node-card { min-width: 100px; padding: 8px 10px; }
+      .flow-arrow .arrow-line { width: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header class="page-header">
+      <div class="header-title">
+        <div class="icon-wrapper"><el-icon :size="16" color="#FFFFFF"><component :is="'DataLine'" /></el-icon></div>
+        sili-smart-hr · 业务场景故事线
+      </div>
+    </header>
+
+    <main class="main-content">
+      <aside class="scene-panel">
+        <div class="panel-header"><div class="panel-title">场景列表</div></div>
+        <div class="scene-list">
+          <div v-for="s in scenarios" :key="s.id" :class="['scene-card', { active: current?.id === s.id }]" @click="selectScenario(s)">
+            <div style="font-weight:600">{{ s.name }}</div>
+            <div style="font-size:12px;color:#909399;margin-top:4px">{{ s.description }}</div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="main-view">
+        <div class="view-container">
+          <div v-if="!current" class="empty-state">
+            <el-icon style="font-size:48px;color:#C0C4CC;margin-bottom:12px"><component :is="'Document'" /></el-icon>
+            <div>请从左侧选择场景</div>
+          </div>
+
+          <template v-else>
+            <div class="scenario-header">
+              <div style="font-size:16px;font-weight:600">{{ current.name }}</div>
+              <div style="font-size:13px;color:#606266;margin-top:4px">{{ current.description }}</div>
+              <div v-if="current.storylines" style="font-size:12px;color:#909399;margin-top:6px">
+                共 {{ current.storylines.length }} 条流程路径
+              </div>
+            </div>
+
+            <div class="storylines-wrapper">
+              <div
+                v-for="storyline in current.storylines"
+                :key="storyline.id"
+                :class="['storyline-row', storyline.type || 'neutral']"
+              >
+                <div class="storyline-header">
+                  <span class="storyline-label">{{ storyline.label }}</span>
+                  <span :class="['storyline-badge', storyline.type || 'neutral']">
+                    {{ typeLabel(storyline.type) }}
+                  </span>
+                </div>
+
+                <div class="flow-container">
+                  <template v-for="(node, idx) in storyline.nodes" :key="node.id">
+                    <div :class="['node-card', node.type]" @click="selected = node">
+                      <div class="node-header">
+                        <span class="node-label">{{ node.label }}</span>
+                        <span :class="['node-badge', node.type]">{{ labelType(node.type) }}</span>
+                      </div>
+                      <div class="node-desc" v-if="node.description">{{ node.description }}</div>
+                      <div class="node-meta">{{ roleName(node.role) }}</div>
+                      <div v-if="node.prototypeUrl" class="prototype-btn" @click.stop="open(node.prototypeUrl)">
+                        <el-icon style="font-size:12px"><component :is="'View'" /></el-icon> 原型
+                      </div>
+                    </div>
+
+                    <!-- Arrow (except for last node) -->
+                    <div v-if="idx < storyline.nodes.length - 1" class="flow-arrow">
+                      <div class="arrow-line"></div>
+                      <div class="arrow-head"></div>
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.4.4"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, computed } = Vue;
+
+    // 先创建 app 实例
+    const app = createApp({
+      setup() {
+        // sili-smart-hr 业务场景故事线数据
+        const scenarios = ref([{
+          id: 'workbench',
+          name: '工作台总览',
+          description: '运营人员登录后总览本期评估态势，识别需关注的人与待处理项',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'wb-daily',
+              label: '日常巡检路径',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'enter',type:'action',label:'进入工作台',description:'登录后首页总览',role:'hr',prototypeUrl:'./index.html'},
+                {id:'status',type:'check',label:'查看本期评估态势',description:'跑批状态与下次跑批计划',role:'system',prototypeUrl:'./assessment-batch-list.html'},
+                {id:'focus',type:'check',label:'识别需关注的人',description:'短板与未使用人群入口',role:'hr',prototypeUrl:'./team-dashboard.html'},
+                {id:'todo',type:'action',label:'查看待处理项',description:'失败超阈告警与测试逾期',role:'system'},
+                {id:'jump',type:'action',label:'跳转处置',description:'就近进入看板或画像',role:'hr'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'dialog-eval',
+          name: '对话分析评估',
+          description: '系统按周期跑批或 HR 定向触发，对员工对话行为做会话级特征抽取与跨会话综合评估',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'de-batch-ok',
+              label: '批量评估·数据充足',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'trigger',type:'action',label:'周期触发批量跑批',role:'system'},
+                {id:'fetch',type:'action',label:'拉取本周会话',description:'从 sili-smart-api 同步',role:'system'},
+                {id:'extract',type:'action',label:'逐会话抽取特征',role:'system'},
+                {id:'sufficient',type:'check',label:'数据是否充足',description:'判定数据量是否支撑评分',role:'system'},
+                {id:'score',type:'action',label:'正常评分',description:'底层4维+上层4维',role:'system'},
+                {id:'merge',type:'action',label:'汇聚活跃度',role:'system'},
+                {id:'profile',type:'action',label:'生成画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'board',type:'action',label:'更新团队看板',role:'system',prototypeUrl:'./team-dashboard.html'},
+                {id:'e',type:'end',label:'完成',role:'system'}
+              ]
+            },
+            {
+              id: 'de-batch-low',
+              label: '批量评估·数据不足',
+              type: 'negative',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'trigger',type:'action',label:'周期触发批量跑批',role:'system'},
+                {id:'fetch',type:'action',label:'拉取本周会话',role:'system'},
+                {id:'extract',type:'action',label:'逐会话抽取特征',role:'system'},
+                {id:'insufficient',type:'check',label:'数据是否充足',description:'数据量不足',role:'system'},
+                {id:'downgrade',type:'action',label:'维度降权',description:'不足维度标注降权',role:'system'},
+                {id:'merge',type:'action',label:'汇聚活跃度',role:'system'},
+                {id:'profile',type:'action',label:'生成画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'board',type:'action',label:'更新团队看板',role:'system',prototypeUrl:'./team-dashboard.html'},
+                {id:'e',type:'end',label:'完成',role:'system'}
+              ]
+            },
+            {
+              id: 'de-targeted',
+              label: 'HR 定向分析',
+              type: 'neutral',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'select',type:'action',label:'选定对象与时段',role:'hr',prototypeUrl:'./assessment-batch-list.html'},
+                {id:'fetch',type:'action',label:'拉取会话',role:'system'},
+                {id:'extract',type:'action',label:'抽取特征',role:'system'},
+                {id:'eval',type:'action',label:'综合评估',role:'system'},
+                {id:'profile',type:'action',label:'生成画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'report',type:'action',label:'查看定向报告',role:'hr',prototypeUrl:'./profile-detail.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'active-test',
+          name: '主动测试评估',
+          description: 'HR 发起 AI 管理能力或九型人格测评，员工经一次性链接作答，系统 AI 阅卷后汇入画像',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'at-normal',
+              label: '正常完成路径',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'select',type:'action',label:'选对象与维度',role:'hr',prototypeUrl:'./question-bank-list.html'},
+                {id:'gen',type:'action',label:'生成作答链接',description:'一次性链接',role:'system'},
+                {id:'push',type:'action',label:'推送链接',role:'system'},
+                {id:'enter',type:'action',label:'进入作答页',description:'与 AI 逐题对话',role:'employee',prototypeUrl:'./assessment-answer.html'},
+                {id:'submit',type:'action',label:'提交作答',role:'employee'},
+                {id:'grade',type:'check',label:'AI 阅卷评分',role:'system'},
+                {id:'profile',type:'action',label:'更新画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'view',type:'action',label:'查看测试结果',role:'hr',prototypeUrl:'./profile-detail.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            },
+            {
+              id: 'at-overdue',
+              label: '逾期未作答路径',
+              type: 'negative',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'select',type:'action',label:'选对象与维度',role:'hr',prototypeUrl:'./question-bank-list.html'},
+                {id:'gen',type:'action',label:'生成作答链接',role:'system'},
+                {id:'push',type:'action',label:'推送链接',role:'system'},
+                {id:'overdue',type:'check',label:'员工逾期未作答',role:'employee'},
+                {id:'remind',type:'action',label:'追踪提醒',role:'system'},
+                {id:'mark',type:'action',label:'标记未完成',role:'system'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'cold-start',
+          name: '冷启动新员工画像',
+          description: '新员工无对话数据时靠主动测试撑起画像，对话数据积累后逐步补齐能力维度',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'cs-build',
+              label: '冷启动画像构建',
+              type: 'neutral',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'nodata',type:'check',label:'新员工无对话数据',role:'system'},
+                {id:'initiate',type:'action',label:'发起主动测试',role:'hr',prototypeUrl:'./question-bank-list.html'},
+                {id:'answer',type:'action',label:'提交作答',role:'employee',prototypeUrl:'./assessment-answer.html'},
+                {id:'grade',type:'check',label:'阅卷出结果',role:'system'},
+                {id:'seed',type:'action',label:'画像以测试为主',description:'建立初始画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'accumulate',type:'check',label:'对话数据达阈值',role:'system'},
+                {id:'fill',type:'action',label:'能力维度补齐',description:'降权恢复正常评分',role:'system'},
+                {id:'view',type:'action',label:'查看画像',role:'hr',prototypeUrl:'./profile-detail.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'failure-fallback',
+          name: '评分失败兜底与补跑',
+          description: '跑批失败的会话经自动重试、降级、告警与人工补跑，保证当期评估完成',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'ff-retry-ok',
+              label: '重试成功路径',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'fail',type:'check',label:'抽取特征失败',role:'system'},
+                {id:'mark',type:'action',label:'标记待重试',role:'system'},
+                {id:'retry',type:'action',label:'自动重试',role:'system'},
+                {id:'ok',type:'check',label:'重试成功',role:'system'},
+                {id:'cont',type:'action',label:'继续综合评估',role:'system'},
+                {id:'e',type:'end',label:'完成',role:'system'}
+              ]
+            },
+            {
+              id: 'ff-degrade',
+              label: '重试耗尽降级路径',
+              type: 'negative',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'fail',type:'check',label:'抽取特征失败',role:'system'},
+                {id:'mark',type:'action',label:'标记待重试',role:'system'},
+                {id:'retry',type:'action',label:'自动重试',role:'system'},
+                {id:'exhaust',type:'check',label:'重试次数耗尽',role:'system'},
+                {id:'degrade',type:'action',label:'降级保留统计',description:'该会话特征缺失',role:'system'},
+                {id:'proceed',type:'action',label:'当期评估照常推进',role:'system'},
+                {id:'e',type:'end',label:'完成',role:'system'}
+              ]
+            },
+            {
+              id: 'ff-rerun',
+              label: '超阈补跑路径',
+              type: 'negative',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'threshold',type:'check',label:'失败比例超阈',role:'system'},
+                {id:'alert',type:'action',label:'超阈告警',role:'system'},
+                {id:'decide',type:'check',label:'HR 决定补跑',role:'hr'},
+                {id:'rerun',type:'action',label:'定向补跑',role:'hr',prototypeUrl:'./assessment-batch-list.html'},
+                {id:'patch',type:'action',label:'补齐缺失会话',role:'system'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'result-view',
+          name: '评估结果查看',
+          description: '运营人员作为消费方查看团队看板与个人画像，识别短板人群与培训方向',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'rv-team',
+              label: '团队看板消费',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'enter',type:'action',label:'进入团队看板',role:'hr',prototypeUrl:'./team-dashboard.html'},
+                {id:'overview',type:'action',label:'展示团队看板',description:'能力分布与趋势',role:'system',prototypeUrl:'./team-ability-trend.html'},
+                {id:'weak',type:'check',label:'识别短板人群',role:'hr'},
+                {id:'unused',type:'check',label:'识别未使用人群',role:'hr'},
+                {id:'conclusion',type:'action',label:'查看短板结论与培训方向',role:'hr',prototypeUrl:'./profile-list.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            },
+            {
+              id: 'rv-person',
+              label: '个人画像消费',
+              type: 'neutral',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'hr'},
+                {id:'enter',type:'action',label:'选择个人范围',role:'hr',prototypeUrl:'./profile-list.html'},
+                {id:'detail',type:'action',label:'展示个人画像',role:'system',prototypeUrl:'./profile-detail.html'},
+                {id:'conclusion',type:'action',label:'查看短板结论',description:'培训建议转达本人',role:'hr'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        },
+        {
+          id: 'question-bank',
+          name: '题库管理',
+          description: 'AI 管理能力题由 LLM 生成、九型人格引入标准量表，按来源分批审核入库不混批',
+          roles: [
+            {id:'hr', name:'运营人员'},
+            {id:'system', name:'系统'},
+            {id:'employee', name:'员工'}
+          ],
+          storylines: [
+            {
+              id: 'qb-ai-ok',
+              label: 'AI 管理题·审核入库',
+              type: 'positive',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'gen',type:'action',label:'LLM 生成 AI 管理题',description:'选项写在作答要求中',role:'system',prototypeUrl:'./question-generate-form.html'},
+                {id:'batch',type:'action',label:'生成题批次审核',role:'system',prototypeUrl:'./question-bank-list.html'},
+                {id:'review',type:'check',label:'HR 批量过目·未标记',role:'hr'},
+                {id:'store',type:'action',label:'入库启用',role:'hr'},
+                {id:'manage',type:'action',label:'维护题库',role:'hr',prototypeUrl:'./question-bank-list.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            },
+            {
+              id: 'qb-ai-reject',
+              label: 'AI 管理题·驳回弃用',
+              type: 'negative',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'gen',type:'action',label:'LLM 生成 AI 管理题',role:'system',prototypeUrl:'./question-generate-form.html'},
+                {id:'batch',type:'action',label:'生成题批次审核',role:'system',prototypeUrl:'./question-bank-list.html'},
+                {id:'mark',type:'check',label:'HR 标记不合适',role:'hr'},
+                {id:'reject',type:'action',label:'驳回弃用',role:'hr'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            },
+            {
+              id: 'qb-ennea',
+              label: '九型量表·引入入库',
+              type: 'neutral',
+              nodes: [
+                {id:'s',type:'start',label:'开始',role:'system'},
+                {id:'import',type:'action',label:'引入九型量表',description:'标准量表作固定题库',role:'system'},
+                {id:'batch',type:'action',label:'量表批次审核',role:'system',prototypeUrl:'./question-bank-list.html'},
+                {id:'review',type:'check',label:'HR 批量过目·未标记',role:'hr'},
+                {id:'store',type:'action',label:'入库启用',role:'hr'},
+                {id:'manage',type:'action',label:'维护题库',role:'hr',prototypeUrl:'./question-bank-list.html'},
+                {id:'e',type:'end',label:'完成',role:'hr'}
+              ]
+            }
+          ]
+        }]);
+
+        const current = ref(scenarios.value[0]);
+        const selected = ref(null);
+
+        const selectScenario = (s) => { current.value = s; selected.value = null; };
+        const roleName = (id) => current.value?.roles?.find(r => r.id === id)?.name || id;
+        const labelType = (t) => ({start:'开始',end:'结束',action:'执行',check:'检查'}[t] || t);
+        const typeLabel = (t) => ({positive:'正向',negative:'负向',neutral:'中性'}[t] || '中性');
+        const open = (url) => url && window.open(url, '_blank');
+
+        return {
+          scenarios, current, selected,
+          selectScenario, roleName, labelType, typeLabel, open
+        };
+      }
+    });
+
+    // 注册所有图标组件到 app
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    // 然后使用 ElementPlus 并挂载
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

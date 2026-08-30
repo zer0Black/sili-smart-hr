@@ -1,0 +1,1965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>维度与权重 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      --table-header-bg: #fafafa;
+
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 20px 24px;
+      overflow: auto;
+    }
+
+    /* ========== 维度配置页布局 ========== */
+    .config-layout {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    /* 左侧维度树面板 */
+    .tree-panel {
+      width: 320px;
+      flex-shrink: 0;
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .tree-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .tree-panel-header .panel-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+    }
+
+    .tree-panel-header .panel-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 15px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .tree-search {
+      padding: 10px 18px 6px;
+    }
+
+    .tree-body {
+      padding: 4px 10px 14px;
+      max-height: calc(100vh - 260px);
+      overflow-y: auto;
+    }
+
+    .tree-body::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .tree-body::-webkit-scrollbar-thumb {
+      background: rgba(0, 0, 0, 0.12);
+      border-radius: 3px;
+    }
+
+    /* 自定义树节点 */
+    .tree-node-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      padding-right: 8px;
+      overflow: hidden;
+    }
+
+    .tree-node-label {
+      font-size: 13px;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-node-row.is-module .tree-node-label {
+      font-weight: 600;
+    }
+
+    .tree-node-row.is-group .tree-node-label {
+      font-weight: 500;
+      color: var(--text-regular);
+    }
+
+    .tree-node-row.is-leaf-disabled .tree-node-label {
+      color: var(--text-secondary);
+    }
+
+    .tree-node-tags {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+
+    .tree-node-weight {
+      margin-left: auto;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary-color);
+      background: rgba(24, 144, 255, 0.08);
+      padding: 1px 7px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+
+    .el-tree-node__content {
+      height: 34px !important;
+    }
+
+    /* 右侧配置面板 */
+    .config-panel {
+      flex: 1;
+      min-width: 0;
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      min-height: 480px;
+    }
+
+    /* 权重汇总条 */
+    .weight-summary {
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .weight-summary-text {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-regular);
+    }
+
+    .weight-summary-text .module-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .weight-summary-text .total-num {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-color);
+    }
+
+    .weight-summary-text .total-num.is-warn {
+      color: var(--warning-color);
+    }
+
+    .weight-summary-text .total-num.is-ok {
+      color: var(--success-color);
+    }
+
+    .weight-bar {
+      flex: 1;
+      min-width: 180px;
+      height: 8px;
+      background: var(--border-color);
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .weight-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.4s cubic-bezier(0.2, 0, 0, 1);
+      background: var(--success-color);
+    }
+
+    .weight-bar-fill.is-warn {
+      background: var(--warning-color);
+    }
+
+    .weight-summary-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .weight-summary-hint .hint-icon {
+      color: var(--success-color);
+    }
+
+    .weight-summary-hint.is-warn .hint-icon {
+      color: var(--warning-color);
+    }
+
+    /* 配置表单区 */
+    .config-form-wrap {
+      padding: 22px 26px 18px;
+    }
+
+    .config-form-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+      gap: 12px;
+    }
+
+    .config-form-header .title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .config-form-header .dim-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .config-form-header .dim-code {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      background: var(--table-header-bg);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    .config-form .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    .readonly-field {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-regular);
+      line-height: 1.6;
+    }
+
+    .readonly-field .field-note {
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    /* 评分基准锚点说明块 */
+    .anchor-block {
+      background: var(--table-header-bg);
+      border: 1px solid var(--border-color);
+      border-left: 3px solid var(--primary-color);
+      border-radius: var(--border-radius);
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--text-regular);
+      line-height: 1.75;
+    }
+
+    .anchor-block .anchor-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .anchor-block .anchor-title .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* 权重编辑器 */
+    .weight-editor {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+    }
+
+    .weight-editor .weight-slider {
+      flex: 1;
+    }
+
+    .weight-editor .weight-input {
+      width: 130px;
+      flex-shrink: 0;
+    }
+
+    .weight-editor .weight-suffix {
+      font-size: 13px;
+      color: var(--text-regular);
+      flex-shrink: 0;
+    }
+
+    .weight-disabled-note {
+      font-size: 12px;
+      color: var(--warning-color);
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 表单底部 */
+    .form-footer {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .form-footer-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .form-footer-tip {
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* 模块/分组汇总视图 */
+    .module-summary {
+      padding: 22px 26px;
+    }
+
+    .module-desc {
+      font-size: 13px;
+      color: var(--text-regular);
+      line-height: 1.75;
+      background: var(--table-header-bg);
+      border-radius: var(--border-radius);
+      padding: 12px 14px;
+      margin-bottom: 16px;
+      border-left: 3px solid var(--primary-color);
+    }
+
+    /* 空状态居中 */
+    .empty-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 420px;
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1100px) {
+      .config-layout {
+        flex-direction: column;
+      }
+
+      .tree-panel {
+        width: 100%;
+      }
+
+      .tree-body {
+        max-height: 320px;
+      }
+
+      .weight-editor {
+        flex-wrap: wrap;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 14px;
+      }
+
+      .config-form-wrap,
+      .module-summary {
+        padding: 16px;
+      }
+
+      .weight-summary {
+        padding: 14px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>能力模型</el-breadcrumb-item>
+            <el-breadcrumb-item>维度与权重</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper" v-loading="loading">
+        <el-alert
+          type="info"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 16px;"
+        >
+          <template #title>评分基准：以绝对分为主，团队内百分位为辅</template>
+          <div style="font-size: 12.5px; line-height: 1.7; margin-top: 2px;">
+            各维度配备标准锚点描述对应固定分值区间，保证同一人跨评估区间、跨团队评分可比可追溯；团队内百分位仅用于短板识别与画像解读，不进入硬性聚合。模块与维度权重初期取经验值，可在右侧按维度迭代调优，调整在下次评估生效。
+          </div>
+        </el-alert>
+        <div class="config-layout">
+          <!-- 左：维度树 -->
+          <aside class="tree-panel">
+            <div class="tree-panel-header">
+              <span class="panel-title">能力维度树</span>
+              <el-button type="primary" size="small" @click="openAddDialog">
+                <el-icon><Plus></Plus></el-icon>新增维度
+              </el-button>
+            </div>
+            <div class="tree-search">
+              <el-input
+                v-model="treeFilter"
+                placeholder="搜索维度名称"
+                clearable
+                size="default"
+              >
+                <template #prefix>
+                  <el-icon><Search></Search></el-icon>
+                </template>
+              </el-input>
+            </div>
+            <div class="tree-body">
+              <el-tree
+                ref="treeRef"
+                :data="dimensionTree"
+                node-key="id"
+                :props="treeProps"
+                :default-expanded-keys="defaultExpandedKeys"
+                :current-node-key="currentNodeKey"
+                :filter-node-method="filterNode"
+                highlight-current
+                :expand-on-click-node="false"
+                @node-click="handleNodeClick"
+              >
+                <template #default="{ data }">
+                  <span :class="['tree-node-row', nodeRowClass(data)]">
+                    <span class="tree-node-label">{{ data.label }}</span>
+                    <span class="tree-node-tags">
+                      <el-tag v-if="data.isModule" size="small" type="info" effect="plain">模块</el-tag>
+                      <el-tag v-else-if="data.isGroup" size="small" type="info" effect="plain">分组</el-tag>
+                      <el-tag v-if="data.reference" size="small" type="warning" effect="light">参考</el-tag>
+                      <el-tag v-if="data.pending" size="small" type="info" effect="light">待定</el-tag>
+                      <el-tag v-if="!data.isModule && !data.isGroup && data.enabled === false" size="small" type="danger" effect="plain">已停用</el-tag>
+                    </span>
+                    <span
+                      v-if="!data.isModule && !data.isGroup && data.inOverview && data.module !== 'activity'"
+                      class="tree-node-weight"
+                    >{{ data.weight }}%</span>
+                  </span>
+                </template>
+              </el-tree>
+            </div>
+          </aside>
+
+          <!-- 右：配置面板 -->
+          <section class="config-panel">
+            <!-- 权重汇总条：选中任意节点都展示其所属模块的合计 -->
+            <div class="weight-summary" v-if="selectedNode && moduleSummary">
+              <div class="weight-summary-text">
+                <span class="module-name">{{ moduleSummary.moduleLabel }}</span>
+                <template v-if="moduleSummary.showTotal">
+                  <span>{{ moduleSummary.count }} 维权重合计</span>
+                  <span :class="['total-num', moduleSummary.total === 100 ? 'is-ok' : 'is-warn']">{{ moduleSummary.total }}%</span>
+                </template>
+                <template v-else>
+                  <span class="total-num is-ok" style="font-size:13px;font-weight:500;color:var(--text-regular);">{{ moduleSummary.specialHint }}</span>
+                </template>
+              </div>
+              <div class="weight-bar" v-if="moduleSummary.showTotal">
+                <div
+                  :class="['weight-bar-fill', moduleSummary.total === 100 ? '' : 'is-warn']"
+                  :style="{ width: Math.min(moduleSummary.total, 100) + '%' }"
+                ></div>
+              </div>
+              <div :class="['weight-summary-hint', moduleSummary.total === 100 ? '' : 'is-warn']" v-if="moduleSummary.showTotal">
+                <el-icon class="hint-icon"><component :is="moduleSummary.total === 100 ? 'CircleCheckFilled' : 'WarningFilled'"></component></el-icon>
+                {{ moduleSummary.total === 100 ? '权重平衡，符合聚合要求' : '建议合计至 100%，当前偏离 ' + (moduleSummary.total - 100) + '%' }}
+              </div>
+            </div>
+
+            <!-- 活跃度专属：判定规则配置 -->
+            <div class="config-form-wrap" v-if="selectedNode && selectedNode.module === 'activity'">
+              <div class="config-form-header">
+                <div class="title-row">
+                  <span class="dim-title">{{ selectedNode.label }} · 判定规则</span>
+                  <el-tag size="small" type="info" effect="plain">使用活跃度</el-tag>
+                </div>
+              </div>
+              <div class="module-desc">
+                <el-icon style="vertical-align:-2px;margin-right:4px;color:var(--primary-color);"><InfoFilled></InfoFilled></el-icon>
+                活跃度与 AI 使用能力同区间分析：评估区间拉取本评估区间全部会话时，既做对话特征抽取供能力评分，也按规则统计每人会话频率判定活跃度。活跃度不调 LLM、不参与能力权重聚合，是能力评分的前提，未使用用户没有对话数据，能力维度无从评分。
+              </div>
+              <el-form label-width="120px" class="config-form">
+                <el-form-item label="统计区间">
+                  <div class="readonly-field">
+                    <el-tag type="info" effect="plain">跟随评估区间</el-tag>
+                    <span class="field-note">活跃度统计随 AI 使用能力评估同区间进行，统计范围即本评估区间拉取的全部会话，无需单独配置；周期长度在「AI 使用能力评估区间」页配置</span>
+                  </div>
+                </el-form-item>
+                <el-form-item label="活跃判定下限">
+                  <el-input-number v-model="activityConfig.activeThreshold" :min="1" :max="999" :step="1" style="width:180px;"></el-input-number>
+                  <span class="field-note" style="margin-left:12px;">轮 · 本评估区间内有效对话达到或超过该值判为活跃</span>
+                </el-form-item>
+                <el-form-item label="低频判定下限">
+                  <el-input-number v-model="activityConfig.lowThreshold" :min="1" :max="999" :step="1" style="width:180px;"></el-input-number>
+                  <span class="field-note" style="margin-left:12px;">轮 · 本评估区间内有效对话达到或超过该值且低于活跃下限判为低频，低于该值判为未使用</span>
+                </el-form-item>
+              </el-form>
+              <div class="anchor-block" style="max-width:640px;margin-top:8px;">
+                <div class="anchor-title"><el-icon><Aim></Aim></el-icon>当前判定关系</div>
+                本评估区间内有效对话 ≥ {{ activityConfig.activeThreshold }} 轮判为活跃；{{ activityConfig.lowThreshold }}~{{ activityConfig.activeThreshold - 1 }} 轮判为低频；不足 {{ activityConfig.lowThreshold }} 轮判为未使用。
+              </div>
+              <div class="form-footer">
+                <el-button type="primary" @click="handleSaveActivity"><el-icon><Check></Check></el-icon>保存规则</el-button>
+                <span class="form-footer-tip"><el-icon><InfoFilled></InfoFilled></el-icon>规则调整将在下次评估生效</span>
+              </div>
+            </div>
+
+            <!-- 叶子节点：配置表单 -->
+            <div class="config-form-wrap" v-else-if="selectedNode && !selectedNode.isModule && !selectedNode.isGroup">
+              <div class="config-form-header">
+                <div class="title-row">
+                  <span class="dim-title">{{ selectedNode.label }}</span>
+                  <el-tag size="small" type="info" effect="plain">{{ moduleLabel[selectedNode.module] }}</el-tag>
+                </div>
+                <el-tag
+                  v-if="selectedNode.reference"
+                  size="small" type="warning" effect="light"
+                >参考性 · 不进硬聚合</el-tag>
+                <el-tag
+                  v-else-if="selectedNode.pending"
+                  size="small" type="info" effect="light"
+                >占位 · 待 PRD 裁剪</el-tag>
+              </div>
+
+              <el-form
+                ref="dimFormRef"
+                :model="selectedNode"
+                label-width="110px"
+                label-position="right"
+                class="config-form"
+              >
+                <el-form-item label="维度名称">
+                  <el-input
+                    v-model="selectedNode.label"
+                    placeholder="请输入维度名称"
+                    maxlength="30"
+                    show-word-limit
+                    style="max-width: 360px;"
+                  ></el-input>
+                </el-form-item>
+
+                <el-form-item label="维度编码">
+                  <el-input
+                    v-model="selectedNode.code"
+                    placeholder="维度唯一编码"
+                    style="max-width: 360px;"
+                  ></el-input>
+                </el-form-item>
+
+                <el-form-item label="所属模块">
+                  <div class="readonly-field">
+                    <el-tag type="info" effect="plain">{{ moduleLabel[selectedNode.module] }}</el-tag>
+                    <span class="field-note">维度所属模块在新增时确定，如需调整请新增后迁移</span>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="数据来源">
+                  <div class="readonly-field">
+                    <el-tag :type="dataSourceTagType(selectedNode.dataSource)" effect="light">{{ selectedNode.dataSource }}</el-tag>
+                    <span class="field-note">{{ dataSourceNote(selectedNode) }}</span>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="评分提示词" v-if="selectedNode.dataSource === '对话分析'">
+                  <div style="width:100%;max-width:640px;">
+                    <el-input
+                      v-model="selectedNode.prompt"
+                      type="textarea"
+                      :rows="6"
+                      placeholder="此提示词将喂给 LLM 进行该维度的对话评分，请包含角色设定、信号来源、打分锚点与输出格式"
+                      maxlength="2000"
+                      show-word-limit
+                    ></el-input>
+                    <div class="field-note" style="margin-top:4px;">此提示词将喂给 LLM 进行该维度的对话评分，调整后下次评估生效</div>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="聚合权重">
+                  <div style="width:100%;max-width:560px;">
+                    <div class="weight-editor">
+                      <el-slider
+                        v-model="selectedNode.weight"
+                        :min="0"
+                        :max="100"
+                        :step="1"
+                        :disabled="!canEditWeight"
+                        class="weight-slider"
+                      ></el-slider>
+                      <el-input-number
+                        v-model="selectedNode.weight"
+                        :min="0"
+                        :max="100"
+                        :step="1"
+                        :disabled="!canEditWeight"
+                        controls-position="right"
+                        class="weight-input"
+                      ></el-input-number>
+                      <span class="weight-suffix">%</span>
+                    </div>
+                    <div class="weight-disabled-note" v-if="!canEditWeight">
+                      <el-icon><WarningFilled></WarningFilled></el-icon>
+                      {{ weightDisabledReason }}
+                    </div>
+                  </div>
+                </el-form-item>
+
+                <el-form-item label="参与总览分">
+                  <el-switch
+                    v-model="selectedNode.inOverview"
+                    :disabled="!canEditWeight"
+                    active-text="参与"
+                    inactive-text="不参与"
+                    inline-prompt
+                  ></el-switch>
+                  <span class="field-note" style="margin-left:12px;">关闭后该维度不计入模块聚合与总览分</span>
+                </el-form-item>
+
+                <el-form-item label="是否启用">
+                  <el-switch
+                    v-model="selectedNode.enabled"
+                    active-text="启用"
+                    inactive-text="停用"
+                    inline-prompt
+                  ></el-switch>
+                  <span class="field-note" style="margin-left:12px;">停用后该维度不再进入评估，且可被删除</span>
+                </el-form-item>
+
+                <el-form-item label="维度说明">
+                  <el-input
+                    v-model="selectedNode.description"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="说明该维度的含义、信号来源与评判要点"
+                    maxlength="300"
+                    show-word-limit
+                    style="max-width: 640px;"
+                  ></el-input>
+                </el-form-item>
+              </el-form>
+
+              <div class="form-footer">
+                <div class="form-footer-left">
+                  <el-button type="primary" @click="handleSave">
+                    <el-icon><Check></Check></el-icon>保存配置
+                  </el-button>
+                  <el-button @click="handleResetCurrent">
+                    <el-icon><RefreshLeft></RefreshLeft></el-icon>重置
+                  </el-button>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <span class="form-footer-tip">
+                    <el-icon><InfoFilled></InfoFilled></el-icon>
+                    权重调整将在下次评估生效
+                  </span>
+                  <el-tooltip
+                    v-if="selectedNode.enabled"
+                    content="请先停用该维度，再执行删除"
+                    placement="top"
+                  >
+                    <span>
+                      <el-button type="danger" plain disabled>
+                        <el-icon><Delete></Delete></el-icon>删除维度
+                      </el-button>
+                    </span>
+                  </el-tooltip>
+                  <el-popconfirm
+                    v-else
+                    title="删除后不可恢复，且影响已采集的历史画像口径；若该维度已配置评分提示词将一并删除。确定删除？"
+                    confirm-button-text="确定删除"
+                    cancel-button-text="取消"
+                    @confirm="handleDelete"
+                  >
+                    <template #reference>
+                      <el-button type="danger" plain>
+                        <el-icon><Delete></Delete></el-icon>删除维度
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模块/分组节点：维度汇总视图 -->
+            <div class="module-summary" v-else-if="selectedNode && (selectedNode.isModule || selectedNode.isGroup)">
+              <div class="config-form-header" style="margin-bottom:14px;">
+                <div class="title-row">
+                  <span class="dim-title">{{ selectedNode.label }}</span>
+                  <el-tag size="small" type="info" effect="plain">{{ selectedNode.isModule ? '模块概览' : '分组概览' }}</el-tag>
+                </div>
+              </div>
+              <div class="module-desc" v-if="selectedNode.description">
+                <el-icon style="vertical-align:-2px;margin-right:4px;color:var(--primary-color);"><InfoFilled></InfoFilled></el-icon>
+                {{ selectedNode.description }}
+              </div>
+              <el-table :data="selectedLeaves" stripe border style="width:100%;">
+                <el-table-column type="index" label="#" width="50" align="center"></el-table-column>
+                <el-table-column prop="label" label="维度名称" min-width="160" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="dataSource" label="数据来源" min-width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="dataSourceTagType(row.dataSource)" effect="light">{{ row.dataSource }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="权重" min-width="90" align="center">
+                  <template #default="{ row }">
+                    <span v-if="row.inOverview" style="color:var(--primary-color);font-weight:600;">{{ row.weight }}%</span>
+                    <span v-else style="color:var(--text-secondary);">—</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="参与总览" min-width="90" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="row.inOverview ? 'success' : 'info'" effect="plain">{{ row.inOverview ? '是' : '否' }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="状态" min-width="80" align="center">
+                  <template #default="{ row }">
+                    <el-tag size="small" :type="row.enabled ? 'success' : 'danger'" effect="plain">{{ row.enabled ? '启用' : '停用' }}</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+
+            <!-- 未选中 -->
+            <div class="empty-wrap" v-else>
+              <el-empty description="请在左侧选择一个维度或模块进行配置">
+                <el-button type="primary" plain @click="openAddDialog">
+                  <el-icon><Plus></Plus></el-icon>新增维度
+                </el-button>
+              </el-empty>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <!-- 新增维度弹窗 -->
+    <el-dialog
+      v-model="addDialogVisible"
+      title="新增维度"
+      width="560px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <el-form
+        ref="addFormRef"
+        :model="addForm"
+        :rules="addRules"
+        label-width="100px"
+      >
+        <el-form-item label="维度名称" prop="label">
+          <el-input v-model="addForm.label" placeholder="请输入维度名称" maxlength="30" show-word-limit></el-input>
+        </el-form-item>
+        <el-form-item label="归属模块" prop="module">
+          <el-select v-model="addForm.module" placeholder="请选择归属模块" style="width:100%;" @change="onAddModuleChange">
+            <el-option
+              v-for="m in addableModules"
+              :key="m.value"
+              :label="m.label"
+              :value="m.value"
+            ></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="归属分组" v-if="addForm.module === 'ai-usage'">
+          <el-select v-model="addForm.group" placeholder="选择底层或上层" style="width:100%;">
+            <el-option label="底层能力" value="g-ai-base"></el-option>
+            <el-option label="上层能力" value="g-ai-advanced"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="数据来源" prop="dataSource">
+          <el-select v-model="addForm.dataSource" placeholder="请选择数据来源" style="width:100%;">
+            <el-option label="对话分析" value="对话分析"></el-option>
+            <el-option label="主动测试" value="主动测试"></el-option>
+            <el-option label="规则统计" value="规则统计"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="评分提示词" v-if="addForm.dataSource === '对话分析'" prop="prompt">
+          <el-input
+            v-model="addForm.prompt"
+            type="textarea"
+            :rows="5"
+            placeholder="对话分析维度的评分提示词，将喂给 LLM 进行该维度评分，必填"
+            maxlength="2000"
+            show-word-limit
+          ></el-input>
+          <div class="field-hint" style="font-size:12px;color:var(--text-secondary);margin-top:4px;">未填写评分提示词的对话分析维度无法被 LLM 评分</div>
+        </el-form-item>
+        <el-form-item label="配套说明" v-if="addForm.dataSource === '主动测试'">
+          <div class="field-hint" style="font-size:12px;color:var(--text-secondary);line-height:1.7;">主动测试维度的题目与阅卷评分表请在「题库管理」配套维护，本页不配置评分提示词。</div>
+        </el-form-item>
+        <el-form-item label="初始权重">
+          <div class="weight-editor">
+            <el-slider v-model="addForm.weight" :min="0" :max="100" :step="1" class="weight-slider"></el-slider>
+            <el-input-number v-model="addForm.weight" :min="0" :max="100" controls-position="right" class="weight-input"></el-input-number>
+            <span class="weight-suffix">%</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="参与总览分">
+          <el-switch v-model="addForm.inOverview" active-text="参与" inactive-text="不参与" inline-prompt></el-switch>
+        </el-form-item>
+        <el-form-item label="维度说明">
+          <el-input
+            v-model="addForm.description"
+            type="textarea"
+            :rows="3"
+            placeholder="说明该维度的含义、信号来源与评判要点"
+            maxlength="300"
+            show-word-limit
+          ></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAddSubmit" :loading="addSubmitting">确定新增</el-button>
+      </template>
+    </el-dialog>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script src="https://unpkg.com/pinyin-pro@3.28.2/dist/index.js"></script>
+  <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单 ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['model'];
+        const activeMenu = ref('dimension-config-list');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else if (command === 'profile') {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 模块标签映射 ==========
+        const moduleLabel = {
+          'activity': '使用活跃度',
+          'ai-usage': 'AI 使用能力',
+          'ai-mgmt': 'AI 管理能力',
+          'enneagram': '九型人格'
+        };
+
+        // ========== 维度树数据 ==========
+        const dimensionTree = ref([
+          {
+            id: 'm-activity', label: '使用活跃度', isModule: true, module: 'activity',
+            description: '基线层，反映员工与 AI 协作的活跃程度，按会话频率分级。属于规则统计型基线，不参与能力权重聚合，作为画像与人群分布的切分依据。'
+          },
+          {
+            id: 'm-ai-usage', label: 'AI 使用能力', isModule: true, module: 'ai-usage',
+            description: '底层 4 维与上层 4 维共 8 个维度，全部走对话分析，信号从对话日志提取。8 维权重建议合计 100%，构成 AI 使用能力模块分。',
+            children: [
+              {
+                id: 'g-ai-base', label: '底层能力', isGroup: true, module: 'ai-usage',
+                description: '底层 4 维聚焦单次对话内的基础操作能力，是上层编排与产出的前提。',
+                children: [
+                  {
+                    id: 'd-task-fit', label: '任务适配判断力', code: 'AI_TASK_FIT', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 15, inOverview: true, enabled: true,
+                    anchor: '90+ 能精准识别 AI 适用边界并主动调整任务拆分；60~89 基本能判断但偶有误判；40~59 经常误判适配性；<40 把不适配任务强行交给 AI。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「任务适配判断力」：能否判断哪些任务适合交给 AI、哪些应保留人工。重点看任务拆解的合理性、对 AI 适用边界的讨论、出错时是否盲从。锚点：90+ 能精准识别 AI 适用边界并主动调整任务拆分；60~89 基本能判断但偶有误判；40~59 经常误判适配性；40 以下把不适配任务强行交给 AI。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '判断哪些任务适合交给 AI、哪些应保留人工的能力，是高效协作的前提。信号来自对话中任务拆解与边界讨论。'
+                  },
+                  {
+                    id: 'd-prompt', label: '指令与 prompt 设计', code: 'AI_PROMPT', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 12, inOverview: true, enabled: true,
+                    anchor: '90+ prompt 结构完整，含角色、上下文、约束与示例，可稳定复用；60~89 能表达意图但缺少结构约束；40~59 表达模糊需多次返工；<40 无法独立产出可用 prompt。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「指令与 prompt 设计」：指令的清晰度、结构化程度、上下文与约束的完整度。重点看 prompt 草稿的结构（是否含角色、上下文、约束、示例）与迭代过程。锚点：90+ prompt 结构完整、含角色上下文约束与示例、可稳定复用；60~89 能表达意图但缺结构约束；40~59 表达模糊需多次返工；40 以下无法独立产出可用 prompt。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '构造清晰、结构化、可复用指令的能力。从对话中 prompt 草稿与迭代过程提取信号。'
+                  },
+                  {
+                    id: 'd-dialog', label: '对话驾驭', code: 'AI_DIALOG', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 10, inOverview: true, enabled: true,
+                    anchor: '90+ 主动引导对话走向、及时纠偏并收敛目标；60~89 跟随对话但被动纠偏；40~59 容易跑偏且不自知；<40 对话经常无果而终。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「对话驾驭」：多轮对话中维持上下文、主动纠偏、追问收敛的能力。重点看是否适时开新会话、出错后的迭代纠错、批判性推进。锚点：90+ 主动引导对话走向、及时纠偏并收敛目标；60~89 跟随对话但被动纠偏；40~59 容易跑偏且不自知；40 以下对话经常无果而终。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '多轮对话中维持上下文、主动纠偏、追问收敛的能力。'
+                  },
+                  {
+                    id: 'd-tool', label: 'Skill 调用', code: 'AI_TOOL_USE', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 13, inOverview: true, enabled: true,
+                    anchor: '90+ Skill 选择精准、参数完整、调用时机恰当；60~89 知道有 Skill 但调用时机欠佳；40~59 参数常有缺失；<40 很少用或滥用 Skill。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「Skill 调用」：在合适时机调用合适 Skill 的判断与执行。受对话日志可见度限制，主要从调用频率与时机的行为模式判断。锚点：90+ Skill 选择精准、参数完整、调用时机恰当；60~89 知道有 Skill 但调用时机欠佳；40~59 参数常有缺失；40 以下很少用或滥用 Skill。置信度较低，请在理由中标注信号充分度。输出 0~100 整数分。',
+                    description: '在合适时机调用合适 Skill 的判断与执行能力。'
+                  }
+                ]
+              },
+              {
+                id: 'g-ai-advanced', label: '上层能力', isGroup: true, module: 'ai-usage',
+                description: '上层 4 维聚焦跨对话的编排、工程化与价值落地，是底层能力的综合体现。',
+                children: [
+                  {
+                    id: 'd-harness', label: 'Harness 编排驾驭', code: 'AI_HARNESS', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 15, inOverview: true, enabled: true,
+                    anchor: '90+ 能设计稳健的多步编排并处理异常分支；60~89 能完成线性编排；40~59 仅能做单步调用；<40 无法驾驭多步流程。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「Harness 编排驾驭」：编排多步骤、多角色、多工具复杂工作流的能力。重点看步骤划分、工具组合、角色边界，以及是否让 AI 验证检查形成闭环。锚点：90+ 能设计稳健的多步编排并处理异常分支；60~89 能完成线性编排；40~59 仅能做单步调用；40 以下无法驾驭多步流程。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '编排多步骤、多角色、多工具复杂工作流的能力，体现对 Agent 协作体系的整体掌控。'
+                  },
+                  {
+                    id: 'd-skill-write', label: 'Skill 编写能力', code: 'AI_SKILL_WRITE', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 12, inOverview: true, enabled: true,
+                    anchor: '90+ Skill 结构清晰、边界完整、可被团队复用；60~89 可运行但复用性弱；40~59 混乱难维护；<40 无法独立编写。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「Skill 编写能力」：编写可复用 Skill 的质量与工程化水平。重点看是否主动将工作创建为 Skill 并做修改迭代，结构是否清晰、边界是否完整。锚点：90+ Skill 结构清晰、边界完整、可被团队复用；60~89 可运行但复用性弱；40~59 混乱难维护；40 以下无法独立编写。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '编写可复用 Skill 的质量与工程化水平，是协作能力沉淀的关键。'
+                  },
+                  {
+                    id: 'd-value', label: '价值产出质量', code: 'AI_VALUE', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 13, inOverview: true, enabled: true,
+                    anchor: '90+ 产出可直接落地且显著提效；60~89 产出需少量人工修正；40~59 需大量返工；<40 产出基本不可用。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「价值产出质量」：AI 协作最终产出的业务价值与可用度。因对话日志看不到产出最终去向，从三个过程信号反推：任务价值性（对照低价值重复劳动）、产出本身质量（结构化、具体性、论证支撑）、净有效产出比（有价值会话占比）。锚点：90+ 产出可直接落地且显著提效；60~89 产出需少量人工修正；40~59 需大量返工；40 以下产出基本不可用。输出 0~100 整数分，附一句理由。',
+                    description: 'AI 协作最终产出的业务价值与可用度，是能力模型最贴近业务结果的维度。'
+                  },
+                  {
+                    id: 'd-knowledge', label: '知识沉淀与复用', code: 'AI_KNOWLEDGE', module: 'ai-usage',
+                    dataSource: '对话分析', weight: 10, inOverview: true, enabled: true,
+                    anchor: '90+ 主动沉淀高质量知识并被团队复用；60~89 偶尔沉淀；40~59 沉淀零散；<40 从不沉淀。',
+                    prompt: '你是 AI 协作能力评估专家。基于员工本评估区间全部会话的特征档案，评估「知识沉淀与复用」：把协作经验沉淀为可复用知识资产的能力。重点看 prompt 模板与方法的跨会话迁移、经验的固化与被复用。锚点：90+ 主动沉淀高质量知识并被团队复用；60~89 偶尔沉淀；40~59 沉淀零散；40 以下从不沉淀。输出 0~100 整数分，附一句理由并引用具体会话特征。',
+                    description: '把协作经验沉淀为可复用知识资产的能力，体现长期主义与组织贡献。'
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            id: 'm-ai-mgmt', label: 'AI 管理能力', isModule: true, module: 'ai-mgmt',
+            description: '5 子能力，走主动测试场景题，与 AI 使用能力物理隔离。针对管理者如何驭用 AI 团队，5 维权重建议合计 100%。',
+            children: [
+              {
+                id: 'd-goal', label: '目标设定与对齐', code: 'MGT_GOAL', module: 'ai-mgmt',
+                dataSource: '主动测试', weight: 25, inOverview: true, enabled: true,
+                anchor: '情境判断题绝对分。90+ 目标 SMART 且与业务强对齐；60~89 目标基本清晰；40~59 目标模糊；<40 缺乏目标意识。',
+                description: '为 AI 协作设定清晰、可衡量、与业务对齐的目标，是管理 AI 协作的起点。'
+              },
+              {
+                id: 'd-delegate', label: '授权与分工', code: 'MGT_DELEGATE', module: 'ai-mgmt',
+                dataSource: '主动测试', weight: 20, inOverview: true, enabled: true,
+                anchor: '90+ 拆解合理、人机分工精准；60~89 基本合理；40~59 分工随意；<40 不愿或不会分工。',
+                description: '合理拆解任务、决定哪些交 AI、哪些留人，体现对 AI 能力边界的判断。'
+              },
+              {
+                id: 'd-supervise', label: '监督与验收', code: 'MGT_SUPERVISE', module: 'ai-mgmt',
+                dataSource: '主动测试', weight: 20, inOverview: true, enabled: true,
+                anchor: '90+ 建立有效检查与验收机制并能兜底；60~89 有基本检查；40~59 抽检不足；<40 放任不管。',
+                description: '对 AI 产出建立有效的检查、验收与兜底机制，是风险控制的关键。'
+              },
+              {
+                id: 'd-risk', label: '风险与担责', code: 'MGT_RISK', module: 'ai-mgmt',
+                dataSource: '主动测试', weight: 15, inOverview: true, enabled: true,
+                anchor: '90+ 主动识别风险边界并担责；60~89 能识别主要风险；40~59 风险意识弱；<40 回避担责。',
+                description: '识别 AI 协作的风险边界并对结果主动担责，体现管理者的成熟度。'
+              },
+              {
+                id: 'd-collab', label: '人机协作设计', code: 'MGT_COLLAB', module: 'ai-mgmt',
+                dataSource: '主动测试', weight: 20, inOverview: true, enabled: true,
+                anchor: '90+ 设计可持续、可优化的人机协作流程；60~89 有基本流程；40~59 流程零散；<40 无协作设计。',
+                description: '设计可持续的人机协作流程与机制，是 AI 时代管理者的核心能力。'
+              }
+            ]
+          },
+          {
+            id: 'm-enneagram', label: '九型人格', isModule: true, module: 'enneagram',
+            description: '走主动测试标准量表，AI 只做型别判定，产出主型、翼型与 9 型倾向分布。初期为参考性，不进入硬性聚合，仅作为画像补充解读。',
+            children: [
+              {
+                id: 'd-main-type', label: '主型', code: 'ENN_MAIN', module: 'enneagram',
+                dataSource: '主动测试', weight: 0, inOverview: false, enabled: true, reference: true,
+                anchor: '9 型主型判定结果（1~9 型）。参考性维度，仅作画像补充，不参与能力分聚合。',
+                description: '受测者的核心人格主型，反映注意力模式与核心动机。参考性输出。'
+              },
+              {
+                id: 'd-wing', label: '翼型', code: 'ENN_WING', module: 'enneagram',
+                dataSource: '主动测试', weight: 0, inOverview: false, enabled: true, reference: true,
+                anchor: '主型相邻翼型倾向。参考性维度。',
+                description: '主型两侧的翼型倾向，对主型起修饰作用。参考性输出。'
+              },
+              {
+                id: 'd-dist', label: '倾向分布', code: 'ENN_DIST', module: 'enneagram',
+                dataSource: '主动测试', weight: 0, inOverview: false, enabled: true, reference: true,
+                anchor: '9 型倾向百分比分布。参考性维度。',
+                description: '9 型维度的倾向百分比分布，呈现人格的完整光谱。参考性输出。'
+              }
+            ]
+          }
+        ]);
+
+        // 活跃度判定规则配置（统计范围跟随评估区间，此处仅配分级轮次阈值）
+        const activityConfig = reactive({
+          activeThreshold: 10,
+          lowThreshold: 5
+        });
+
+        const treeProps = { label: 'label', children: 'children' };
+        const defaultExpandedKeys = [
+          'm-activity', 'm-ai-usage', 'm-ai-mgmt', 'm-enneagram',
+          'g-ai-base', 'g-ai-advanced'
+        ];
+
+        // ========== 选中状态 ==========
+        const selectedNode = ref(null);
+        const treeRef = ref(null);
+        const currentNodeKey = ref('d-task-fit');
+        const loading = ref(false);
+
+        // 扁平化所有叶子维度（非模块、非分组）
+        const flattenLeaves = (nodes) => {
+          const result = [];
+          const walk = (list) => {
+            list.forEach(n => {
+              if (n.isModule || n.isGroup) {
+                if (n.children) walk(n.children);
+              } else {
+                result.push(n);
+              }
+            });
+          };
+          walk(nodes);
+          return result;
+        };
+
+        // 递归找模块节点
+        const findModuleNode = (nodes, moduleKey) => {
+          for (const n of nodes) {
+            if (n.isModule && n.module === moduleKey) return n;
+            if (n.children) {
+              const found = findModuleNode(n.children, moduleKey);
+              if (found) return found;
+            }
+          }
+          return null;
+        };
+
+        // 收集某节点下的所有叶子
+        const collectLeaves = (node) => {
+          if (!node) return [];
+          if (!node.isModule && !node.isGroup) return [node];
+          const result = [];
+          const walk = (n) => {
+            if (n.isModule || n.isGroup) {
+              if (n.children) n.children.forEach(walk);
+            } else {
+              result.push(n);
+            }
+          };
+          walk(node);
+          return result;
+        };
+
+        // 当前选中维度的权重可编辑性
+        const canEditWeight = computed(() => {
+          const n = selectedNode.value;
+          if (!n || n.isModule || n.isGroup) return false;
+          if (n.module === 'activity') return false;
+          if (n.reference || n.pending) return false;
+          return true;
+        });
+
+        const weightDisabledReason = computed(() => {
+          const n = selectedNode.value;
+          if (!n) return '';
+          if (n.module === 'activity') return '基线分级维度，不参与能力权重聚合';
+          if (n.reference) return '参考性维度，不进入硬性聚合，权重无需配置';
+          if (n.pending) return '占位维度，待 PRD 裁剪后开放配置';
+          return '';
+        });
+
+        // 当前模块权重汇总
+        const moduleSummary = computed(() => {
+          const n = selectedNode.value;
+          if (!n) return null;
+          const moduleKey = n.module;
+          const moduleNode = findModuleNode(dimensionTree.value, moduleKey);
+          if (!moduleNode) return null;
+          const leaves = collectLeaves(moduleNode);
+          const participate = leaves.filter(d => d.inOverview && d.enabled);
+
+          // 活跃度走专属规则配置区、九型为参考性维度，均不展示权重进度条
+          if (moduleKey === 'activity') {
+            return null;
+          }
+          if (moduleKey === 'enneagram') {
+            return {
+              moduleLabel: moduleLabel[moduleKey],
+              showTotal: false,
+              specialHint: '参考性维度，初期不进入硬性聚合'
+            };
+          }
+
+          const total = participate.reduce((s, d) => s + (Number(d.weight) || 0), 0);
+          return {
+            moduleLabel: moduleLabel[moduleKey],
+            showTotal: true,
+            count: participate.length,
+            total: total
+          };
+        });
+
+        // 模块/分组节点的汇总表格数据
+        const selectedLeaves = computed(() => {
+          const n = selectedNode.value;
+          if (!n || (!n.isModule && !n.isGroup)) return [];
+          return collectLeaves(n);
+        });
+
+        const handleNodeClick = (data) => {
+          selectedNode.value = data;
+        };
+
+        const nodeRowClass = (data) => {
+          if (data.isModule) return 'is-module';
+          if (data.isGroup) return 'is-group';
+          if (data.enabled === false) return 'is-leaf-disabled';
+          return '';
+        };
+
+        // ========== 数据来源说明 ==========
+        const dataSourceTagType = (src) => {
+          if (src === '对话分析') return 'primary';
+          if (src === '主动测试') return 'warning';
+          if (src === '规则统计') return 'info';
+          return 'info';
+        };
+
+        const dataSourceNote = (node) => {
+          if (node.module === 'activity') return '按会话频率规则自动统计，无需人工评判';
+          if (node.dataSource === '对话分析') return '信号从 AI 对话日志自动提取，评估区间内聚合';
+          if (node.dataSource === '主动测试') return '通过标准量表或情境题采集，AI 辅助判定';
+          return '测评方式待 PRD 确定';
+        };
+
+        // ========== 树过滤 ==========
+        const treeFilter = ref('');
+        const filterNode = (value, data) => {
+          if (!value) return true;
+          const key = value.toLowerCase();
+          return data.label && data.label.toLowerCase().includes(key);
+        };
+        watch(treeFilter, (val) => {
+          if (treeRef.value) treeRef.value.filter(val);
+        });
+
+        // ========== 保存配置 ==========
+        const dimFormRef = ref(null);
+        const handleSave = () => {
+          if (!selectedNode.value) return;
+          ElMessageBox.confirm(
+            '权重调整将在下次评估生效，当前评估区间的历史画像不会立即重算。确认保存？',
+            '保存确认',
+            {
+              confirmButtonText: '确认保存',
+              cancelButtonText: '再想想',
+              type: 'warning'
+            }
+          ).then(() => {
+            loading.value = true;
+            setTimeout(() => {
+              loading.value = false;
+              ElMessage.success('维度「' + selectedNode.value.label + '」配置已保存，将于下次评估生效');
+            }, 500);
+          }).catch(() => {});
+        };
+
+        const handleResetCurrent = () => {
+          ElMessage.info('已重置当前编辑（演示页：数据保留在内存，未真正回滚）');
+        };
+
+        const handleSaveActivity = () => {
+          ElMessageBox.confirm(
+            '活跃度判定规则调整将在下次评估生效，当前评估区间的历史画像不会立即重算。确认保存？',
+            '保存确认',
+            { confirmButtonText: '确认保存', cancelButtonText: '再想想', type: 'warning' }
+          ).then(() => {
+            loading.value = true;
+            setTimeout(() => {
+              loading.value = false;
+              ElMessage.success('活跃度判定规则已保存，将于下次评估生效');
+            }, 500);
+          }).catch(() => {});
+        };
+
+        // ========== 删除维度 ==========
+        const handleDelete = () => {
+          const n = selectedNode.value;
+          if (!n) return;
+          if (n.enabled) {
+            ElMessage.warning('请先停用该维度，再执行删除');
+            return;
+          }
+          // 找到父节点并移除
+          const removeFrom = (nodes, id) => {
+            for (let i = 0; i < nodes.length; i++) {
+              if (nodes[i].id === id) {
+                nodes.splice(i, 1);
+                return true;
+              }
+              if (nodes[i].children && removeFrom(nodes[i].children, id)) return true;
+            }
+            return false;
+          };
+          removeFrom(dimensionTree.value, n.id);
+          ElMessage.success('维度「' + n.label + '」已删除');
+          // 切换到第一个可用叶子
+          const leaves = flattenLeaves(dimensionTree.value);
+          const next = leaves[0];
+          if (next) {
+            selectedNode.value = next;
+            currentNodeKey.value = next.id;
+            nextTick(() => { if (treeRef.value) treeRef.value.setCurrentKey(next.id); });
+          } else {
+            selectedNode.value = null;
+          }
+        };
+
+        // ========== 新增维度 ==========
+        const addDialogVisible = ref(false);
+        const addSubmitting = ref(false);
+        const addFormRef = ref(null);
+        const addableModules = [
+          { label: '使用活跃度', value: 'activity' },
+          { label: 'AI 使用能力', value: 'ai-usage' },
+          { label: 'AI 管理能力', value: 'ai-mgmt' },
+          { label: '九型人格', value: 'enneagram' }
+        ];
+        const addForm = reactive({
+          label: '',
+          code: '',
+          module: '',
+          group: 'g-ai-base',
+          dataSource: '',
+          prompt: '',
+          weight: 5,
+          inOverview: true,
+          description: ''
+        });
+        const addRules = {
+          label: [
+            { required: true, message: '请输入维度名称', trigger: 'blur' },
+            { min: 2, max: 30, message: '长度在 2 到 30 个字符', trigger: 'blur' }
+          ],
+          prompt: [
+            { required: true, message: '对话分析维度必须填写评分提示词，否则 LLM 无法评分', trigger: 'blur' }
+          ],
+          module: [{ required: true, message: '请选择归属模块', trigger: 'change' }],
+          dataSource: [{ required: true, message: '请选择数据来源', trigger: 'change' }]
+        };
+
+        const openAddDialog = () => {
+          // 预填归属模块：若当前选中节点属于某模块，则默认该模块
+          const cur = selectedNode.value;
+          let defaultModule = '';
+          if (cur && cur.module) defaultModule = cur.module;
+          addForm.label = '';
+          addForm.code = '';
+          addForm.module = defaultModule;
+          addForm.group = 'g-ai-base';
+          addForm.dataSource = defaultModule === 'activity' ? '规则统计' : (defaultModule === 'enneagram' || defaultModule === 'ai-mgmt' ? '主动测试' : '对话分析');
+          addForm.prompt = '';
+          addForm.weight = 5;
+          addForm.inOverview = (defaultModule === 'ai-usage' || defaultModule === 'ai-mgmt');
+          addForm.description = '';
+          addDialogVisible.value = true;
+        };
+
+        const onAddModuleChange = (val) => {
+          if (val === 'activity') {
+            addForm.dataSource = '规则统计';
+            addForm.inOverview = false;
+            addForm.weight = 0;
+          } else if (val === 'enneagram') {
+            addForm.dataSource = '主动测试';
+            addForm.inOverview = false;
+            addForm.weight = 0;
+          } else if (val === 'ai-mgmt') {
+            addForm.dataSource = '主动测试';
+            addForm.inOverview = true;
+            addForm.weight = 5;
+          } else {
+            addForm.dataSource = '对话分析';
+            addForm.inOverview = true;
+            addForm.weight = 5;
+          }
+        };
+
+        const autoGenerateCode = () => {
+          const map = { 'activity': 'ACT', 'ai-usage': 'AI', 'ai-mgmt': 'MGT', 'enneagram': 'ENN' };
+          const prefix = map[addForm.module] || 'DIM';
+          // 编码主体由维度名称转拼音生成（无声调、大写、下划线连接），与名称关联且可追溯；拼音库未加载时回退随机串
+          let body = '';
+          try {
+            if (window.pinyinPro && addForm.label && addForm.label.trim()) {
+              const py = window.pinyinPro.pinyin(addForm.label.trim(), { toneType: 'none', type: 'array' });
+              body = (py || []).filter(Boolean).map(s => String(s).toUpperCase().replace(/[^A-Z]/g, '')).join('_');
+            }
+          } catch (e) { body = ''; }
+          if (!body) body = 'DIM' + String(Math.floor(Math.random() * 9000) + 1000);
+          // 同名维度拼音相同，按序号去重，确保编码不重复
+          const existing = new Set(flattenLeaves(dimensionTree.value).map(l => l.code));
+          let code = (prefix + '_' + body).slice(0, 40);
+          let seq = 2;
+          while (existing.has(code)) {
+            code = (prefix + '_' + body + '_' + seq).slice(0, 40);
+            seq++;
+          }
+          addForm.code = code;
+        };
+
+        const handleAddSubmit = async () => {
+          if (!addFormRef.value) return;
+          try {
+            await addFormRef.value.validate();
+            addSubmitting.value = true;
+            setTimeout(() => {
+              // 编码由系统按模块前缀自动生成，HR 无需手填
+              autoGenerateCode();
+              // 校验编码唯一
+              const leaves = flattenLeaves(dimensionTree.value);
+              if (leaves.some(d => d.code === addForm.code)) {
+                addSubmitting.value = false;
+                ElMessage.error('维度编码「' + addForm.code + '」已存在，请稍后重试');
+                return;
+              }
+              // 构造新节点
+              const newId = 'd-new-' + Date.now();
+              const reference = addForm.module === 'enneagram';
+              const newNode = {
+                id: newId,
+                label: addForm.label,
+                code: addForm.code,
+                module: addForm.module,
+                dataSource: addForm.dataSource,
+                prompt: addForm.dataSource === '对话分析' ? addForm.prompt : '',
+                weight: Number(addForm.weight) || 0,
+                inOverview: addForm.inOverview,
+                enabled: true,
+                reference: reference,
+                anchor: '新建维度，待补充绝对分标准锚点（0~100）。',
+                description: addForm.description || '新增加的维度，待补充维度说明。'
+              };
+              // 插入到对应模块
+              const moduleNode = findModuleNode(dimensionTree.value, addForm.module);
+              if (moduleNode) {
+                if (addForm.module === 'ai-usage') {
+                  // 插到指定分组
+                  const targetGroup = moduleNode.children.find(c => c.id === addForm.group) || moduleNode.children[0];
+                  targetGroup.children.push(newNode);
+                } else {
+                  moduleNode.children.push(newNode);
+                }
+              }
+              addSubmitting.value = false;
+              addDialogVisible.value = false;
+              ElMessage.success('维度「' + newNode.label + '」已新增，权重将在下次评估生效');
+              // 选中新节点
+              nextTick(() => {
+                selectedNode.value = newNode;
+                currentNodeKey.value = newId;
+                if (treeRef.value) treeRef.value.setCurrentKey(newId);
+              });
+            }, 400);
+          } catch (e) {
+            ElMessage.error('请检查表单填写是否正确');
+          }
+        };
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          // 默认选中第一个可配置维度 d-task-fit
+          nextTick(() => {
+            const leaves = flattenLeaves(dimensionTree.value);
+            const target = leaves.find(d => d.id === currentNodeKey.value) || leaves[0];
+            if (target) {
+              selectedNode.value = target;
+              currentNodeKey.value = target.id;
+              if (treeRef.value) treeRef.value.setCurrentKey(target.id);
+            }
+          });
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 维度树
+          dimensionTree, treeProps, defaultExpandedKeys, currentNodeKey,
+          treeRef, treeFilter, filterNode,
+          selectedNode, selectedLeaves, moduleSummary, activityConfig,
+          handleNodeClick, nodeRowClass,
+          moduleLabel,
+          dataSourceTagType, dataSourceNote,
+          canEditWeight, weightDisabledReason,
+          // 保存/删除
+          dimFormRef, handleSave, handleResetCurrent, handleDelete, handleSaveActivity,
+          // 新增
+          addDialogVisible, addSubmitting, addFormRef,
+          addableModules, addForm, addRules,
+          openAddDialog, onAddModuleChange, autoGenerateCode, handleAddSubmit,
+          // 加载
+          loading
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

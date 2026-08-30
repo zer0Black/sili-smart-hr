@@ -1,0 +1,1865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工作台首页 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量（与各页一致，主色 #1890ff 体系） ========== */
+    :root {
+      /* 主色 */
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      /* 侧栏 */
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      /* 内容区与卡片 */
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      /* 文字色阶 */
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      /* 边框 */
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      /* 表格 */
+      --table-header-bg: #fafafa;
+
+      /* 状态色 */
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      /* 圆角与间距 */
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      /* 布局尺寸 */
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式（原样保留） ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏（原样保留） ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 顶部工具条 ========== */
+    .toolbar {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 14px 20px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .period-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .update-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .update-hint .el-icon {
+      color: var(--text-secondary);
+    }
+
+    /* ========== 板块卡片 ========== */
+    .board-section {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 24px 28px 28px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 24px;
+    }
+
+    .board-section:last-child {
+      margin-bottom: 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      margin-bottom: 24px;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+      line-height: 1.2;
+    }
+
+    .section-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 18px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .section-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-left: 12px;
+    }
+
+    .section-link {
+      font-size: 13px;
+      color: var(--primary-color);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: color 0.2s ease;
+    }
+
+    .section-link:hover {
+      color: var(--primary-color-hover);
+    }
+
+    /* ========== 趋势区主体 ========== */
+    .trend-body {
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 40px;
+      align-items: center;
+    }
+
+    .trend-canvas {
+      width: 100%;
+      height: 252px;
+    }
+
+    .qo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .qo-card {
+      padding: 16px 18px;
+      background: var(--content-bg);
+      border-radius: var(--border-radius);
+      border-left: 3px solid transparent;
+      transition: transform 0.2s ease;
+    }
+
+    .qo-card:hover {
+      transform: translateY(-1px);
+    }
+
+    .qo-card.good {
+      border-left-color: var(--success-color);
+    }
+
+    .qo-card.bad {
+      border-left-color: var(--danger-color);
+    }
+
+    .qo-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+      letter-spacing: 0.2px;
+    }
+
+    .qo-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .qo-unit {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      margin-left: 2px;
+    }
+
+    .qo-delta {
+      margin-top: 10px;
+      font-size: 14px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .qo-delta.good {
+      color: var(--success-color);
+    }
+
+    .qo-delta.bad {
+      color: var(--danger-color);
+    }
+
+    .qo-arrow {
+      font-size: 14px;
+      margin-right: 1px;
+    }
+
+    .qo-tip {
+      color: var(--text-regular);
+      font-weight: 400;
+      margin-left: 6px;
+      font-size: 13px;
+    }
+
+    /* ========== 团队板块主体 ========== */
+    .team-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .team-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .radar-canvas {
+      width: 100%;
+      height: 260px;
+    }
+
+    .mgmt-canvas {
+      width: 100%;
+      height: 260px;
+    }
+
+    .enneagram-canvas {
+      width: 100%;
+      height: 260px;
+    }
+
+    .enneagram-note {
+      font-size: 12.5px;
+      color: var(--text-regular);
+      line-height: 1.7;
+      margin-top: 2px;
+    }
+
+    .team-footer {
+      margin-top: 28px;
+    }
+
+    .team-footer .side-label {
+      margin-bottom: 12px;
+    }
+
+    .team-footer .weak-tags {
+      margin-bottom: 10px;
+    }
+
+    .team-footer .weak-note {
+      margin-bottom: 22px;
+    }
+
+    .team-analysis {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .analysis-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .analysis-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .analysis-text {
+      font-size: 13.5px;
+      color: var(--text-regular);
+      line-height: 1.7;
+    }
+
+    .analysis-text b {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .side-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    .weak-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .weak-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 13px;
+      background: rgba(255, 77, 79, 0.08);
+      color: var(--danger-color);
+      border-radius: 16px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .weak-tag em {
+      font-style: normal;
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .weak-note {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.7;
+    }
+
+    /* ========== 人员板块主体 ========== */
+    .people-body {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 36px;
+    }
+
+    .people-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .col-head {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .col-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .col-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .person-row {
+      display: grid;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 14px;
+      background: #fff;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      margin-bottom: 10px;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s ease;
+    }
+
+    .person-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .person-row:hover {
+      border-color: rgba(24, 144, 255, 0.4);
+      background: #fafafa;
+      transform: translateX(2px);
+    }
+
+    .person-row.weak {
+      grid-template-columns: 36px 100px auto minmax(120px, 1fr) auto;
+    }
+
+    .person-row.unused {
+      grid-template-columns: 36px 100px auto 1fr auto;
+    }
+
+    .person-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .person-name-block {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .person-name {
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+
+    .person-emp {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .weak-score-big {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--danger-color);
+      line-height: 1;
+      min-width: 34px;
+    }
+
+    .weak-score-big.warn {
+      color: var(--warning-color);
+    }
+
+    .weak-score-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 400;
+      margin-left: 1px;
+    }
+
+    .weak-dim {
+      font-size: 13px;
+      color: var(--text-regular);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .weak-dim .dim-prefix {
+      color: var(--text-secondary);
+      margin-right: 4px;
+    }
+
+    .unused-days {
+      font-size: 13px;
+      color: var(--text-regular);
+      white-space: nowrap;
+    }
+
+    .unused-days em {
+      font-style: normal;
+      font-weight: 700;
+      color: var(--danger-color);
+      margin: 0 3px;
+      font-size: 15px;
+    }
+
+    .unused-time {
+      font-size: 12px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .unused-score {
+      font-size: 12px;
+      color: var(--text-secondary);
+      border: 1px dashed var(--border-color-split);
+      padding: 3px 10px;
+      border-radius: 11px;
+      white-space: nowrap;
+    }
+
+    /* ========== 关注人员表格（复用 profile-list 风格） ========== */
+    .attention-table-wrap {
+      margin-top: 4px;
+    }
+
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .el-table td.el-table__cell,
+    .el-table th.el-table__cell {
+      padding: 10px 0;
+    }
+
+    .person-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .person-cell .avatar-sm {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .person-cell .person-name {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .person-cell .person-no {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .level-tag {
+      min-width: 56px;
+      text-align: center;
+      font-weight: 500;
+    }
+
+    .score-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .score-cell.score-low {
+      color: var(--danger-color);
+    }
+
+    .score-cell.score-normal {
+      color: var(--text-primary);
+    }
+
+    .score-cell.score-na {
+      color: var(--text-secondary);
+      font-weight: 400;
+      font-size: 13px;
+    }
+
+    .reason-cell {
+      font-size: 13px;
+      color: var(--text-regular);
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1100px) {
+      .trend-body {
+        grid-template-columns: 1fr;
+        gap: 28px;
+      }
+
+      .team-body {
+        grid-template-columns: 1fr;
+        gap: 28px;
+      }
+
+      .people-body {
+        grid-template-columns: 1fr;
+        gap: 28px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 16px;
+      }
+
+      .board-section {
+        padding: 18px 18px 22px;
+      }
+
+      .section-sub {
+        display: none;
+      }
+
+      .update-hint {
+        display: none;
+      }
+
+      .qo-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .person-row.weak {
+        grid-template-columns: 36px 1fr auto;
+        grid-template-areas:
+          'avatar nameblock score'
+          'avatar dim dim';
+        row-gap: 6px;
+      }
+
+      .person-row.weak .person-avatar { grid-area: avatar; }
+      .person-row.weak .person-name-block { grid-area: nameblock; }
+      .person-row.weak .weak-score-big { grid-area: score; text-align: right; }
+      .person-row.weak .weak-dim { grid-area: dim; }
+      .person-row.weak .activity-tag { display: none; }
+
+      .person-row.unused {
+        grid-template-columns: 36px 1fr auto;
+        grid-template-areas:
+          'avatar nameblock days'
+          'avatar time score';
+        row-gap: 4px;
+      }
+
+      .person-row.unused .person-avatar { grid-area: avatar; }
+      .person-row.unused .person-name-block { grid-area: nameblock; }
+      .person-row.unused .unused-days { grid-area: days; text-align: right; }
+      .person-row.unused .unused-time { grid-area: time; }
+      .person-row.unused .unused-score { grid-area: score; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单（原样保留） -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏（用户名下拉：个人中心 / 退出登录） -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>工作台</el-breadcrumb-item>
+            <el-breadcrumb-item>工作台首页</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区：四块结构，工具条 + 团队能力演进 + 本期团队整体画像 + 需要关注的人 -->
+      <div class="content-wrapper" v-loading="loading">
+        <!-- ① 顶部工具条：左为评估区间选择器（默认最近一周，可切历史区间），右为数据更新时间 -->
+        <section class="toolbar">
+          <div class="toolbar-left">
+            <el-icon color="var(--primary-color)" :size="18"><Calendar></Calendar></el-icon>
+            <span class="period-label">评估区间</span>
+            <el-select v-model="periodId" size="small" style="width: 232px;" @change="handlePeriodChange">
+              <el-option v-for="p in periodOptions" :key="p.value" :label="p.label" :value="p.value"></el-option>
+            </el-select>
+            <el-tag v-if="periodId === latestPeriodId" size="small" type="success" effect="plain" round>本期</el-tag>
+            <el-tag v-else size="small" type="info" effect="plain" round>历史</el-tag>
+          </div>
+
+          <div class="toolbar-right">
+            <el-tooltip content="系统每周日 23:00 后自动更新，生成本期完整数据快照" placement="top">
+              <span class="update-hint">
+                <el-icon><Clock></Clock></el-icon>数据更新于 {{ updateTime }}，每周日更新
+              </span>
+            </el-tooltip>
+          </div>
+        </section>
+
+        <!-- ② 团队能力演进（置于最上）：左为近 8 个评估区间整体综合分折线，右为四个环比关键数 -->
+        <section class="board-section">
+          <div class="section-head">
+            <div>
+              <span class="section-title">团队能力演进</span>
+              <span class="section-sub">近 8 个评估区间（{{ trendRangeStart }} 至 {{ trendRangeEnd }}）团队整体综合能力分走势</span>
+            </div>
+          </div>
+
+          <div class="trend-body">
+            <!-- 近 8 个评估区间整体综合分折线 -->
+            <div ref="trendChartRef" class="trend-canvas"></div>
+
+            <!-- 四个环比关键数：整体综合分 / 活跃率 / 未使用人数 / 短板人数 -->
+            <div class="qo-grid">
+              <div v-for="c in qoCards" :key="c.label" :class="['qo-card', c.good ? 'good' : 'bad']">
+                <div class="qo-label">{{ c.label }}</div>
+                <div class="qo-value">{{ c.value }}<span class="qo-unit">{{ c.unit }}</span></div>
+                <div :class="['qo-delta', c.good ? 'good' : 'bad']">
+                  <span class="qo-arrow">{{ c.arrow === 'up' ? '↑' : '↓' }}</span>{{ c.delta }}
+                  <span class="qo-tip">{{ c.tip }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ③ 本期团队整体画像：三列横排（AI 使用能力雷达 / AI 管理能力雷达 / 九型人格分布）+ 下文（共性短板 + 结构化研判分点） -->
+        <section class="board-section">
+          <div class="section-head">
+            <div>
+              <span class="section-title">本期团队整体画像</span>
+              <span class="section-sub">{{ currentPeriodLabel }} · 公司全员 {{ totalPeople }} 人 · 能力雷达与团队构成</span>
+            </div>
+            <a class="section-link" href="team-dashboard.html">查看完整团队看板 →</a>
+          </div>
+
+          <div class="team-body">
+            <!-- 第一列：本期整体 AI 使用能力 8 维雷达（公司整体均分 + 全维度均值） -->
+            <div class="team-cell">
+              <div class="side-label">AI 使用能力（8 维 · 公司整体均分）</div>
+              <div ref="abilityRadarRef" class="radar-canvas"></div>
+            </div>
+
+            <!-- 第二列：AI 管理能力 5 维雷达（公司整体均分 + 全维度均值） -->
+            <div class="team-cell">
+              <div class="side-label">AI 管理能力（5 维 · 公司整体均分）</div>
+              <div ref="mgmtRadarRef" class="mgmt-canvas"></div>
+            </div>
+
+            <!-- 第三列：团队构成（九型人格占比） -->
+            <div class="team-cell">
+              <div class="side-label">团队构成（九型人格）</div>
+              <div ref="enneagramChartRef" class="enneagram-canvas"></div>
+            </div>
+          </div>
+
+          <!-- 下半：共性短板维度 + 总体研判（结构化分点） -->
+          <div class="team-footer">
+            <div class="side-label">共性短板维度（低分人群占比）</div>
+            <div class="weak-tags">
+              <span class="weak-tag" v-for="w in weakTags" :key="w.dim">
+                {{ w.dim }}<em>{{ w.ratio }}%</em>
+              </span>
+            </div>
+            <p class="weak-note">以上维度低分人群占比不低于 30%，是全员最薄弱的环节。建议结合下方关注人员列表，优先安排针对性辅导与培训。</p>
+
+            <div class="side-label">总体研判</div>
+            <div class="team-analysis">
+              <div class="analysis-item">
+                <span class="analysis-num">1</span>
+                <span class="analysis-text"><b>AI 使用能力 · 综合 66：</b>中等偏上，近 8 个评估区间持续缓升（60→66），日常使用习惯已基本建立；底层能力扎实，瓶颈集中在上层，知识沉淀与复用、Skill 编写两维低分人群占比达 42% 与 38%。</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-num">2</span>
+                <span class="analysis-text"><b>AI 管理能力 · 综合 60：</b>整体合格偏弱，人机协作设计与监督验收相对薄弱，过程管控与责任界定有待加强。</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-num">3</span>
+                <span class="analysis-text"><b>团队构成：</b>主导成就型 22% 与忠诚型 15%，团队偏务实执行与稳健守规。</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-num">4</span>
+                <span class="analysis-text"><b>结论与建议：</b>会用 AI 已基本解决，瓶颈在用好、用深，即把零散经验固化为可复用方法与工具的能力欠缺；建议聚焦知识沉淀与 Skill 编写，作为下一阶段培训重点。</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ④ 需要关注的人：表格呈现（短板优先，10 行），点击操作跳转个人画像 -->
+        <section class="board-section">
+          <div class="section-head">
+            <div>
+              <span class="section-title">需要关注的人</span>
+              <span class="section-sub">按关注程度排序：短板人群按综合分升序，未使用人群按未使用天数降序 · 共 10 人</span>
+            </div>
+            <a class="section-link" href="profile-list.html">查看全员画像 →</a>
+          </div>
+
+          <div class="attention-table-wrap">
+            <el-table
+              :data="attentionPeople"
+              stripe
+              border
+              style="width: 100%"
+              table-layout="auto"
+            >
+              <el-table-column label="姓名" min-width="180">
+                <template #default="{ row }">
+                  <div class="person-cell">
+                    <span class="avatar-sm">{{ row.name.charAt(0) }}</span>
+                    <div>
+                      <div class="person-name">{{ row.name }}</div>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="活跃度" min-width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag
+                    class="level-tag"
+                    :type="activityTagType(row.activity)"
+                    effect="light"
+                    size="small"
+                  >{{ row.activity }}</el-tag>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="AI 使用能力" min-width="130" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.useScore === null" class="score-cell score-na">无数据</span>
+                  <span v-else :class="['score-cell', row.useScore < 60 ? 'score-low' : 'score-normal']">{{ row.useScore }}</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="AI 管理能力" min-width="130" align="center">
+                <template #default="{ row }">
+                  <span v-if="row.mgmtScore === null" class="score-cell score-na">无数据</span>
+                  <span v-else :class="['score-cell', row.mgmtScore < 60 ? 'score-low' : 'score-normal']">{{ row.mgmtScore }}</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="关注原因" min-width="220">
+                <template #default="{ row }">
+                  <span class="reason-cell">{{ row.reason }}</span>
+                </template>
+              </el-table-column>
+
+              <el-table-column label="操作" width="120" align="center" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="goProfile(row.id)">
+                    <el-icon><View></View></el-icon>查看画像
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Vue / Element Plus / 图标（与各页一致） -->
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <!-- ECharts（锁定 5.4.3） -->
+  <script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"></script>
+
+  <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户（顶栏展示） ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单（六组原样保留） ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['insight', 'assessment', 'model', 'system'];
+        const activeMenu = ref('workbench');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 评估区间（按周区间组织，结果以日期范围标识） ==========
+        const periods = [
+          { id: 32, label: '08-03 至 08-09' },
+          { id: 31, label: '07-27 至 08-02' },
+          { id: 30, label: '07-20 至 07-26' },
+          { id: 29, label: '07-13 至 07-19' },
+          { id: 28, label: '07-06 至 07-12' },
+          { id: 27, label: '06-29 至 07-05' },
+          { id: 26, label: '06-22 至 06-28' },
+          { id: 25, label: '06-15 至 06-21' }
+        ];
+        const latestPeriodId = 32;
+        const periodId = ref(latestPeriodId); // 默认最近一周
+        const periodOptions = periods.map(p => ({ value: p.id, label: p.label }));
+        const currentPeriodLabel = computed(() => {
+          const found = periods.find(p => p.id === periodId.value);
+          return found ? found.label : '';
+        });
+
+        const updateTime = ref('08-08 23:15');
+
+        const loading = ref(false);
+        const handlePeriodChange = () => {
+          // 原型演示：切换评估区间触发短暂加载后重绘图表（实际系统按区间快照取数）
+          loading.value = true;
+          setTimeout(() => {
+            loading.value = false;
+            nextTick(() => {
+              renderTrend();
+              renderAbilityRadar();
+              renderMgmtRadar();
+              renderEnneagram();
+            });
+          }, 320);
+        };
+
+        // ========== 团队能力演进数据（近 8 个评估区间整体综合分，整体缓升体现运营成效） ==========
+        const trendPeriodIds = ['06-15', '06-22', '06-29', '07-06', '07-13', '07-20', '07-27', '08-03'];
+        const trendScores = [60, 62, 61, 63, 64, 63, 65, 66]; // 近 8 个评估区间整体综合分
+        const trendRangeStart = trendPeriodIds[0];
+        const trendRangeEnd = trendPeriodIds[trendPeriodIds.length - 1];
+
+        // 本期四个环比关键数：值 + 比上期变化，按业务语义配色（向好绿色、恶化红色）
+        const qoCards = [
+          { label: '整体综合分', value: '66', unit: '分', delta: '+1',     arrow: 'up',   good: true,  tip: '比上期 65' },
+          { label: '活跃率',     value: '66.9', unit: '%', delta: '+1.2pp', arrow: 'up',   good: true,  tip: '比上期 65.7%' },
+          { label: '未使用人数', value: '36',  unit: '人', delta: '-3',     arrow: 'down', good: true,  tip: '比上期 39 人' },
+          { label: '短板人数',   value: '28',  unit: '人', delta: '-2',     arrow: 'down', good: true,  tip: '比上期 30 人' }
+        ];
+
+        // ========== 团队整体数据 ==========
+        const totalPeople = 326;
+
+        // AI 使用能力 8 维（底层 4 + 上层 4，本期整体均分；均分 66，与趋势图本期综合分一致）
+        const abilityDims = [
+          { name: '任务适配\n判断力',   short: '任务适配判断力',    score: 80 },
+          { name: '指令与\nprompt 设计', short: '指令与 prompt 设计', score: 74 },
+          { name: '对话驾驭',           short: '对话驾驭',          score: 70 },
+          { name: 'Skill\n调用',         short: 'Skill 调用',          score: 66 },
+          { name: 'Harness\n编排驾驭',   short: 'Harness 编排驾驭',   score: 60 },
+          { name: 'Skill\n编写能力',     short: 'Skill 编写能力',     score: 54 },
+          { name: '价值产出\n质量',       short: '价值产出质量',       score: 72 },
+          { name: '知识沉淀\n与复用',     short: '知识沉淀与复用',     score: 52 }
+        ];
+        const avgScore = Math.round(abilityDims.reduce((s, d) => s + d.score, 0) / abilityDims.length);
+
+        // AI 管理能力 5 维（公司整体均分，满分 100；均分 60）
+        const mgmtDims = [
+          { name: '目标设定\n与对齐', short: '目标设定与对齐', score: 65 },
+          { name: '授权\n与分工',     short: '授权与分工',     score: 60 },
+          { name: '监督\n与验收',     short: '监督与验收',     score: 58 },
+          { name: '风险\n与担责',     short: '风险与担责',     score: 63 },
+          { name: '人机协作\n设计',   short: '人机协作设计',   score: 54 }
+        ];
+        const avgMgmtScore = Math.round(mgmtDims.reduce((s, d) => s + d.score, 0) / mgmtDims.length);
+
+        // 共性短板维度（取低分人群占比最高的 2 个，与团队看板一致）
+        const weakTags = [
+          { dim: '知识沉淀与复用', ratio: 42 },
+          { dim: 'Skill 编写能力', ratio: 38 }
+        ];
+
+        // 团队人格构成（九型人格占比，公司 326 人，mock）
+        const enneagram = [
+          { type: 1, name: '完美型', ratio: 8 },
+          { type: 2, name: '助人型', ratio: 7 },
+          { type: 3, name: '成就型', ratio: 22 },
+          { type: 4, name: '艺术型', ratio: 6 },
+          { type: 5, name: '理智型', ratio: 12 },
+          { type: 6, name: '忠诚型', ratio: 15 },
+          { type: 7, name: '活跃型', ratio: 9 },
+          { type: 8, name: '挑战型', ratio: 11 },
+          { type: 9, name: '和平型', ratio: 10 }
+        ];
+
+        // ========== 需要关注的人 ==========
+        // 短板人群：综合分低于 60，全员为活跃或低频（有对话数据、可评分），按综合分升序。与未使用人群严格互斥。
+        const weakPeople = ref([
+          { name: '周建国', score: 52, weakest: '知识沉淀与复用',  activity: '低频' },
+          { name: '陈婷',   score: 54, weakest: 'Skill 编写能力',  activity: '活跃' },
+          { name: '黄磊',   score: 55, weakest: 'Harness 编排驾驭', activity: '低频' },
+          { name: '林芳',   score: 57, weakest: '知识沉淀与复用',  activity: '活跃' },
+          { name: '吴超',   score: 58, weakest: 'Skill 编写能力',  activity: '低频' }
+        ]);
+
+        // 未使用人群：近 7 天无对话，无数据无法评分，综合分显示"无数据"。与短板人群姓名不重复。
+        const unusedPeople = ref([
+          { name: '许强', lastUsed: '2026-07-15 10:22', unusedDays: 25 },
+          { name: '郑超', lastUsed: '2026-07-21 16:08', unusedDays: 19 },
+          { name: '冯丽', lastUsed: '2026-07-26 09:40', unusedDays: 14 },
+          { name: '钱涛', lastUsed: '2026-07-30 14:50', unusedDays: 10 },
+          { name: '韩梅', lastUsed: '2026-08-02 11:15', unusedDays: 7 }
+        ]);
+
+        // 关注人员表格（10 行，已按短板优先预排：前 6 行短板人群按综合分升序，后 4 行未使用人群按天数降序）
+        const attentionPeople = ref([
+          { id: 1, name: '周建国', activity: '低频',   useScore: 52,   mgmtScore: 50,   reason: '综合分 52 · 知识沉淀与复用' },
+          { id: 2, name: '陈婷',   activity: '活跃',   useScore: 54,   mgmtScore: 52,   reason: '综合分 54 · Skill 编写能力' },
+          { id: 3, name: '黄磊',   activity: '低频',   useScore: 55,   mgmtScore: 48,   reason: '综合分 55 · Harness 编排驾驭' },
+          { id: 4, name: '林芳',   activity: '活跃',   useScore: 57,   mgmtScore: 55,   reason: '综合分 57 · 知识沉淀与复用' },
+          { id: 5, name: '吴超',   activity: '低频',   useScore: 58,   mgmtScore: 53,   reason: '综合分 58 · Skill 编写能力' },
+          { id: 6, name: '孙丽',   activity: '低频',   useScore: 59,   mgmtScore: 56,   reason: '综合分 59 · 对话驾驭' },
+          { id: 7, name: '许强',   activity: '未使用', useScore: null, mgmtScore: null, reason: '未使用 25 天' },
+          { id: 8, name: '郑超',   activity: '未使用', useScore: null, mgmtScore: null, reason: '未使用 19 天' },
+          { id: 9, name: '冯丽',   activity: '未使用', useScore: null, mgmtScore: null, reason: '未使用 14 天' },
+          { id: 10, name: '钱涛',  activity: '未使用', useScore: null, mgmtScore: null, reason: '未使用 10 天' }
+        ]);
+
+        const activityTagType = (a) => {
+          if (a === '活跃') return 'success';
+          if (a === '低频') return 'warning';
+          return 'info';
+        };
+
+        // 跳转个人画像
+        const goProfile = (id) => { window.location.href = 'profile-detail.html?id=' + id; };
+
+        // ========== ECharts 实例与配色（与各页一致） ==========
+        const trendChartRef = ref(null);
+        const abilityRadarRef = ref(null);
+        const mgmtRadarRef = ref(null);
+        const enneagramChartRef = ref(null);
+        const charts = {};
+
+        const COLOR = {
+          primary: '#1890ff',
+          primaryHover: '#40a9ff',
+          success: '#52c41a',
+          warning: '#faad14',
+          danger: '#ff4d4f',
+          gray: '#8c8c8c',
+          reference: '#bfbfbf',
+          textPrimary: '#262626',
+          textRegular: '#595959',
+          textSecondary: '#8c8c8c',
+          split: '#f0f0f0',
+          splitDeep: '#e8e8e8'
+        };
+
+        // ========== 近 8 个评估区间整体综合分折线（X 轴为周区间起始日） ==========
+        const renderTrend = () => {
+          if (!trendChartRef.value) return;
+          if (charts.trend) {
+            charts.trend.dispose();
+            charts.trend = null;
+          }
+          charts.trend = echarts.init(trendChartRef.value);
+
+          const xData = trendPeriodIds;
+          const lastIndex = trendScores.length - 1;
+
+          const option = {
+            tooltip: {
+              trigger: 'axis',
+              formatter: function (params) {
+                const p = params[0];
+                return p.name + '<br/>整体综合分：<b>' + p.value + '</b>';
+              }
+            },
+            grid: { left: 44, right: 28, top: 28, bottom: 36, containLabel: true },
+            xAxis: {
+              type: 'category',
+              data: xData,
+              boundaryGap: false,
+              axisLine: { lineStyle: { color: COLOR.splitDeep } },
+              axisTick: { show: false },
+              axisLabel: { color: COLOR.textRegular, fontSize: 11, interval: 0 }
+            },
+            yAxis: {
+              type: 'value',
+              min: 50,
+              max: 72,
+              name: '综合分',
+              nameTextStyle: { color: COLOR.textSecondary, fontSize: 11 },
+              axisLine: { show: false },
+              axisTick: { show: false },
+              splitLine: { lineStyle: { color: COLOR.split } },
+              axisLabel: { color: COLOR.textSecondary, fontSize: 11 }
+            },
+            series: [{
+              name: '整体综合分',
+              type: 'line',
+              smooth: true,
+              symbol: 'circle',
+              symbolSize: 7,
+              data: trendScores.map((v, i) => ({
+                value: v,
+                itemStyle: i === lastIndex
+                  ? { color: COLOR.primary, borderColor: '#fff', borderWidth: 2, shadowBlur: 6, shadowColor: 'rgba(24,144,255,0.35)' }
+                  : { color: COLOR.primary, borderColor: '#fff', borderWidth: 1.5 }
+              })),
+              lineStyle: { color: COLOR.primary, width: 2.5 },
+              areaStyle: {
+                color: {
+                  type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+                  colorStops: [
+                    { offset: 0, color: 'rgba(24, 144, 255, 0.22)' },
+                    { offset: 1, color: 'rgba(24, 144, 255, 0.02)' }
+                  ]
+                }
+              },
+              label: {
+                show: true,
+                position: 'top',
+                formatter: function (p) {
+                  return p.dataIndex === lastIndex ? '本期 ' + p.value + ' 分' : '';
+                },
+                color: COLOR.primary,
+                fontWeight: 700,
+                fontSize: 12,
+                distance: 6
+              },
+              emphasis: { focus: 'series' }
+            }]
+          };
+          charts.trend.setOption(option);
+        };
+
+        // ========== 本期整体能力雷达（复用 team-dashboard 配置） ==========
+        const renderAbilityRadar = () => {
+          if (!abilityRadarRef.value) return;
+          if (charts.ability) {
+            charts.ability.dispose();
+            charts.ability = null;
+          }
+          charts.ability = echarts.init(abilityRadarRef.value);
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const isAvg = p.seriesName === '全维度均值';
+                let html = '<div style="font-weight:600;margin-bottom:4px;">' + p.seriesName + '</div>';
+                p.value.forEach((v, i) => {
+                  html += '<div style="display:flex;justify-content:space-between;gap:18px;font-size:12px;line-height:18px;">'
+                    + '<span style="color:#8c8c8c;">' + abilityDims[i].short + '</span>'
+                    + '<span style="font-weight:600;color:' + (isAvg ? COLOR.reference : '#262626') + ';">' + v + '</span></div>';
+                });
+                return html;
+              }
+            },
+            legend: {
+              data: ['公司整体均分', '全维度均值'],
+              bottom: 4,
+              icon: 'circle',
+              itemWidth: 8,
+              itemHeight: 8,
+              itemGap: 20,
+              textStyle: { color: COLOR.textRegular, fontSize: 12 }
+            },
+            radar: {
+              indicator: abilityDims.map(d => ({ name: d.name, max: 100 })),
+              radius: '58%',
+              center: ['50%', '50%'],
+              shape: 'polygon',
+              axisName: {
+                color: COLOR.textRegular,
+                fontSize: 10,
+                lineHeight: 13
+              },
+              splitNumber: 4,
+              splitLine: { lineStyle: { color: COLOR.splitDeep } },
+              splitArea: { areaStyle: { color: ['#fafafa', '#fff'] } },
+              axisLine: { lineStyle: { color: COLOR.splitDeep } }
+            },
+            series: [{
+              type: 'radar',
+              symbol: 'circle',
+              symbolSize: 5,
+              emphasis: { focus: 'series' },
+              data: [
+                {
+                  value: abilityDims.map(d => d.score),
+                  name: '公司整体均分',
+                  areaStyle: { color: 'rgba(24, 144, 255, 0.18)' },
+                  lineStyle: { color: COLOR.primary, width: 2 },
+                  itemStyle: { color: COLOR.primary, borderColor: '#fff', borderWidth: 1.5 }
+                },
+                {
+                  value: abilityDims.map(() => avgScore),
+                  name: '全维度均值',
+                  symbol: 'none',
+                  areaStyle: { color: 'transparent' },
+                  lineStyle: { color: COLOR.reference, width: 1.5, type: 'dashed' }
+                }
+              ]
+            }]
+          };
+          charts.ability.setOption(option);
+        };
+
+        // ========== 本期整体 AI 管理能力雷达（5 维，与使用能力雷达同构） ==========
+        const renderMgmtRadar = () => {
+          if (!mgmtRadarRef.value) return;
+          if (charts.mgmt) {
+            charts.mgmt.dispose();
+            charts.mgmt = null;
+          }
+          charts.mgmt = echarts.init(mgmtRadarRef.value);
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const isAvg = p.seriesName === '全维度均值';
+                let html = '<div style="font-weight:600;margin-bottom:4px;">' + p.seriesName + '</div>';
+                p.value.forEach((v, i) => {
+                  html += '<div style="display:flex;justify-content:space-between;gap:18px;font-size:12px;line-height:18px;">'
+                    + '<span style="color:#8c8c8c;">' + mgmtDims[i].short + '</span>'
+                    + '<span style="font-weight:600;color:' + (isAvg ? COLOR.reference : '#262626') + ';">' + v + '</span></div>';
+                });
+                return html;
+              }
+            },
+            legend: {
+              data: ['公司整体均分', '全维度均值'],
+              bottom: 4,
+              icon: 'circle',
+              itemWidth: 8,
+              itemHeight: 8,
+              itemGap: 20,
+              textStyle: { color: COLOR.textRegular, fontSize: 12 }
+            },
+            radar: {
+              indicator: mgmtDims.map(d => ({ name: d.name, max: 100 })),
+              radius: '58%',
+              center: ['50%', '50%'],
+              shape: 'polygon',
+              axisName: {
+                color: COLOR.textRegular,
+                fontSize: 10,
+                lineHeight: 13
+              },
+              splitNumber: 4,
+              splitLine: { lineStyle: { color: COLOR.splitDeep } },
+              splitArea: { areaStyle: { color: ['#fafafa', '#fff'] } },
+              axisLine: { lineStyle: { color: COLOR.splitDeep } }
+            },
+            series: [{
+              type: 'radar',
+              symbol: 'circle',
+              symbolSize: 5,
+              emphasis: { focus: 'series' },
+              data: [
+                {
+                  value: mgmtDims.map(d => d.score),
+                  name: '公司整体均分',
+                  areaStyle: { color: 'rgba(24, 144, 255, 0.18)' },
+                  lineStyle: { color: COLOR.primary, width: 2 },
+                  itemStyle: { color: COLOR.primary, borderColor: '#fff', borderWidth: 1.5 }
+                },
+                {
+                  value: mgmtDims.map(() => avgMgmtScore),
+                  name: '全维度均值',
+                  symbol: 'none',
+                  areaStyle: { color: 'transparent' },
+                  lineStyle: { color: COLOR.reference, width: 1.5, type: 'dashed' }
+                }
+              ]
+            }]
+          };
+          charts.mgmt.setOption(option);
+        };
+
+        // ========== 团队人格构成九型分布（主导型高亮） ==========
+        const renderEnneagram = () => {
+          if (!enneagramChartRef.value) return;
+          if (charts.enneagram) {
+            charts.enneagram.dispose();
+            charts.enneagram = null;
+          }
+          charts.enneagram = echarts.init(enneagramChartRef.value);
+
+          const xData = enneagram.map(e => e.name);
+          const barData = enneagram.map(e => {
+            let color = '#bae0ff';
+            if (e.type === 3) {
+              color = COLOR.primary;
+            } else if (e.type === 6) {
+              color = '#69c0ff';
+            }
+            return {
+              value: e.ratio,
+              itemStyle: { color: color, borderRadius: [3, 3, 0, 0] }
+            };
+          });
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const e = enneagram[p.dataIndex];
+                return e.name + '：占比 ' + e.ratio + '%';
+              }
+            },
+            grid: { left: 6, right: 6, top: 28, bottom: 4, containLabel: true },
+            xAxis: {
+              type: 'category',
+              data: xData,
+              axisLine: { lineStyle: { color: COLOR.splitDeep } },
+              axisTick: { show: false },
+              axisLabel: { color: COLOR.textRegular, fontSize: 11, interval: 0 }
+            },
+            yAxis: {
+              type: 'value',
+              show: false
+            },
+            series: [{
+              type: 'bar',
+              barWidth: 18,
+              data: barData,
+              label: {
+                show: true,
+                position: 'top',
+                formatter: '{c}%',
+                fontSize: 10,
+                color: COLOR.textRegular
+              }
+            }]
+          };
+          charts.enneagram.setOption(option);
+        };
+
+        // ========== 尺寸自适应 ==========
+        const handleResize = () => {
+          Object.keys(charts).forEach(k => { if (charts[k]) charts[k].resize(); });
+        };
+
+        watch(isCollapse, () => {
+          setTimeout(handleResize, 320);
+        });
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          // 图表渲染（DOM 就绪后）
+          nextTick(() => {
+            renderTrend();
+            renderAbilityRadar();
+            renderMgmtRadar();
+            renderEnneagram();
+            window.addEventListener('resize', handleResize);
+          });
+        });
+
+        onBeforeUnmount(() => {
+          window.removeEventListener('resize', handleResize);
+          Object.keys(charts).forEach(k => { if (charts[k]) charts[k].dispose(); });
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 工具条（评估区间）
+          loading, periodId, periodOptions, latestPeriodId, currentPeriodLabel, updateTime, handlePeriodChange,
+          // 趋势区
+          trendChartRef, trendRangeStart, trendRangeEnd, qoCards,
+          // 团队板块
+          abilityRadarRef, mgmtRadarRef, enneagramChartRef, totalPeople, weakTags,
+          // 人员板块
+          weakPeople, unusedPeople, attentionPeople, activityTagType, goProfile
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

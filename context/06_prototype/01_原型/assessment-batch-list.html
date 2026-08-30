@@ -1,0 +1,1820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>评测运营中心 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      --table-header-bg: #fafafa;
+
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 统计卡片 ========== */
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 20px 22px;
+      box-shadow: var(--card-shadow);
+      transition: all 0.25s ease;
+      cursor: default;
+      border: 1px solid transparent;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .metric-card:hover {
+      box-shadow: var(--card-shadow-hover);
+      transform: translateY(-2px);
+    }
+
+    .metric-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .metric-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .metric-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.1;
+      letter-spacing: 0.5px;
+    }
+
+    .metric-value .unit {
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      margin-left: 4px;
+    }
+
+    .metric-label {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ========== 通用面板 ========== */
+    .panel {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 20px 24px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 20px;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+    }
+
+    .panel-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 16px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .panel-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .tab-count {
+      display: inline-block;
+      min-width: 18px;
+      height: 18px;
+      line-height: 18px;
+      padding: 0 5px;
+      margin-left: 4px;
+      border-radius: 9px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      background: var(--table-header-bg);
+    }
+
+    /* ========== 定时计划卡 ========== */
+    .plan-card {
+      padding: 18px 24px;
+    }
+
+    .plan-head {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .plan-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: rgba(24, 144, 255, 0.10);
+      color: var(--primary-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .plan-head-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .plan-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .plan-sub {
+      margin-top: 3px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .plan-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 40px;
+      padding: 4px 4px 0;
+    }
+
+    .plan-meta-item .label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .plan-meta-item .value {
+      margin-top: 3px;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .plan-meta-item .value.accent {
+      color: var(--primary-color);
+    }
+
+    /* ========== 筛选区 ========== */
+    .tab-filter {
+      margin-bottom: 14px;
+    }
+
+    .filter-section .el-form-item,
+    .tab-filter .el-form-item {
+      margin-bottom: 0;
+    }
+
+    .filter-section .el-form-item__label,
+    .tab-filter .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    /* ========== 表格 ========== */
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: var(--table-header-bg);
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+      background: #fafafa;
+    }
+
+    .el-table td.el-table__cell,
+    .el-table th.el-table__cell {
+      padding: 11px 0;
+    }
+
+    .el-table .alert-row td.el-table__cell {
+      background: #fff7f6 !important;
+    }
+
+    .el-table .alert-row:hover td.el-table__cell {
+      background: #ffefed !important;
+    }
+
+    .batch-id {
+      font-family: 'SF Mono', Menlo, Consolas, monospace;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .mini-progress {
+      margin-top: 6px;
+    }
+
+    .mini-progress .el-progress__text {
+      font-size: 11px !important;
+    }
+
+    .pagination-wrapper {
+      margin-top: 18px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* ========== 按钮 / 输入圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 弹窗 ========== */
+    .el-dialog {
+      border-radius: var(--border-radius-lg);
+      overflow: hidden;
+    }
+
+    .el-dialog__header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-color);
+      margin-right: 0;
+    }
+
+    .el-dialog__title {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .el-dialog__body {
+      padding: 22px 24px;
+    }
+
+    .el-dialog__footer {
+      padding: 12px 24px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    /* ========== 发起评测弹窗 ========== */
+    .launch-tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 22px;
+      border: 1px solid var(--border-color-split);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .launch-tab {
+      flex: 1;
+      padding: 14px 10px;
+      text-align: center;
+      cursor: pointer;
+      background: #fff;
+      border-right: 1px solid var(--border-color-split);
+      transition: all 0.2s ease;
+    }
+
+    .launch-tab:last-child {
+      border-right: none;
+    }
+
+    .launch-tab:hover {
+      background: var(--table-header-bg);
+    }
+
+    .launch-tab.active {
+      background: var(--primary-color);
+      color: #fff;
+    }
+
+    .launch-tab .lt-icon {
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+
+    .launch-tab .lt-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .launch-tab .lt-desc {
+      font-size: 11px;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    .dim-section {
+      background: var(--table-header-bg);
+      border-radius: var(--border-radius);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    .dim-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tag-mini {
+      font-size: 11px;
+      padding: 1px 7px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+
+    .tag-base {
+      background: rgba(24, 144, 255, 0.12);
+      color: var(--primary-color);
+    }
+
+    .tag-upper {
+      background: rgba(82, 196, 26, 0.12);
+      color: var(--success-color);
+    }
+
+    .tag-manage {
+      background: rgba(250, 173, 20, 0.16);
+      color: var(--warning-color);
+    }
+
+    .dim-checkbox-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 18px;
+    }
+
+    .switch-hint {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    /* ========== 作答链接弹窗 ========== */
+    .link-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+      padding: 10px 12px;
+      background: var(--table-header-bg);
+      border-radius: var(--border-radius);
+    }
+
+    .link-box .link-text {
+      flex: 1;
+      font-family: 'SF Mono', Menlo, Consolas, monospace;
+      font-size: 13px;
+      color: var(--text-regular);
+      word-break: break-all;
+    }
+
+    .link-meta {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .link-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+    }
+
+    .link-meta-item .label {
+      color: var(--text-secondary);
+    }
+
+    .link-meta-item .value {
+      color: var(--text-regular);
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1200px) {
+      .metric-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 16px;
+      }
+
+      .metric-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>评估运营</el-breadcrumb-item>
+            <el-breadcrumb-item>评测运营中心</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper">
+        <!-- 统计卡 -->
+        <section class="metric-grid">
+          <div class="metric-card" v-for="m in metricCards" :key="m.key">
+            <div class="metric-icon" :style="{ background: m.bg, color: m.color }">
+              <el-icon :size="22"><component :is="m.icon"></component></el-icon>
+            </div>
+            <div class="metric-body">
+              <div class="metric-value">{{ m.value }}<span class="unit" v-if="m.unit">{{ m.unit }}</span></div>
+              <div class="metric-label">{{ m.label }}</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 当前定时计划 -->
+        <section class="panel plan-card">
+          <div class="plan-head">
+            <div class="plan-icon">
+              <el-icon :size="22"><Calendar></Calendar></el-icon>
+            </div>
+            <div class="plan-head-text">
+              <div class="plan-title">AI 使用能力评估周期</div>
+              <div class="plan-sub">到期自动执行，针对 AI 使用能力按当前维度权重计算周期能力分。权重在「能力模型 · 维度与权重」页维护，无版本快照。</div>
+            </div>
+            <el-button text bg @click="go('dimension-config-list.html')">
+              <el-icon><Operation></Operation>维度权重
+            </el-button>
+            <el-button plain @click="go('system-config.html')">
+              <el-icon><Edit></el-icon>评估周期
+            </el-button>
+          </div>
+          <div class="plan-meta">
+            <div class="plan-meta-item">
+              <div class="label">下次执行</div>
+              <div class="value accent">{{ plan.nextRun }}</div>
+            </div>
+            <div class="plan-meta-item">
+              <div class="label">周期频率</div>
+              <div class="value">{{ plan.cycle }}</div>
+            </div>
+            <div class="plan-meta-item">
+              <div class="label">评估范围</div>
+              <div class="value">{{ plan.scope }}</div>
+            </div>
+            <div class="plan-meta-item">
+              <div class="label">评估维度</div>
+              <div class="value">{{ plan.dims }}</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 统一评测记录 -->
+        <section class="panel">
+          <div class="panel-header">
+            <span class="panel-title">统一评测记录</span>
+            <span class="panel-sub">AI 使用能力 · AI 管理能力 · 九型人格，按类型分页查看</span>
+            <el-button type="primary" style="margin-left: auto;" @click="openLaunch">
+              <el-icon><Promotion></el-icon>发起评测
+            </el-button>
+          </div>
+
+          <el-tabs v-model="activeTab">
+            <!-- 对话分析 -->
+            <el-tab-pane name="dialog">
+              <template #label>
+                <el-icon style="vertical-align: -2px; margin-right: 4px;"><ChatDotRound></ChatDotRound></el-icon>
+                AI 使用能力
+                <span class="tab-count">{{ dialogRecords.length }}</span>
+              </template>
+
+              <div class="tab-filter">
+                <el-form :inline="true" :model="dialogFilter">
+                  <el-form-item label="触发方式">
+                    <el-select v-model="dialogFilter.trigger" placeholder="全部" clearable style="width: 130px;">
+                      <el-option label="定时评估" value="cycle"></el-option>
+                      <el-option label="手动发起" value="manual"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="状态">
+                    <el-select v-model="dialogFilter.status" placeholder="全部" clearable style="width: 120px;">
+                      <el-option label="进行中" value="running"></el-option>
+                      <el-option label="成功" value="success"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button type="primary" @click="handleSearch">
+                      <el-icon><Search></Search></el-icon>查询
+                    </el-button>
+                    <el-button @click="resetDialogFilter">
+                      <el-icon><Refresh></Refresh></el-icon>重置
+                    </el-button>
+                  </el-form-item>
+                </el-form>
+              </div>
+
+              <el-table :data="pagedDialog" stripe border style="width: 100%" v-loading="loading" :default-sort="{ prop: 'triggerTime', order: 'descending' }">
+                <el-table-column prop="id" label="批次号" width="140" align="center">
+                  <template #default="{ row }"><span class="batch-id">{{ row.id }}</span></template>
+                </el-table-column>
+                <el-table-column prop="triggerText" label="触发方式" width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.trigger === 'cycle' ? 'primary' : 'warning'" effect="plain" size="small">{{ row.triggerText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="scope" label="对象范围" width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag type="info" effect="plain" size="small">{{ row.scope }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="period" label="评估时段" min-width="180" show-overflow-tooltip></el-table-column>
+                <el-table-column prop="status" label="状态" width="170" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 'success' ? 'success' : 'primary'" effect="light" size="small">{{ row.statusText }}</el-tag>
+                    <div v-if="row.status === 'running'" class="mini-progress">
+                      <el-progress :percentage="row.progress" :stroke-width="6" :show-text="true" :duration="1"></el-progress>
+                    </div>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="sessions" label="覆盖会话" width="100" align="right"></el-table-column>
+                <el-table-column prop="triggerTime" label="触发时间" width="160" align="center" sortable></el-table-column>
+                <el-table-column label="操作" width="130" align="center" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="primary" link size="small" @click="go('profile-list.html')">
+                      <el-icon><View></el-icon>查看结果
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <div class="pagination-wrapper">
+                <el-pagination
+                  v-model:current-page="dialogPage.currentPage"
+                  v-model:page-size="dialogPage.pageSize"
+                  :page-sizes="[10, 20, 50]"
+                  :total="filteredDialog.length"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  background
+                ></el-pagination>
+              </div>
+            </el-tab-pane>
+
+            <!-- AI 管理能力 -->
+            <el-tab-pane name="manage">
+              <template #label>
+                <el-icon style="vertical-align: -2px; margin-right: 4px;"><Management></Management></el-icon>
+                AI 管理能力
+                <span class="tab-count">{{ manageRecords.length }}</span>
+              </template>
+
+              <div class="tab-filter">
+                <el-form :inline="true" :model="manageFilter">
+                  <el-form-item label="状态">
+                    <el-select v-model="manageFilter.status" placeholder="全部" clearable style="width: 130px;">
+                      <el-option label="待作答" value="pending"></el-option>
+                      <el-option label="进行中" value="doing"></el-option>
+                      <el-option label="已完成" value="done"></el-option>
+                      <el-option label="已逾期" value="overdue"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="对象">
+                    <el-input v-model="manageFilter.subject" placeholder="姓名 / 任务号" clearable style="width: 180px;" @keyup.enter="handleSearch"></el-input>
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button type="primary" @click="handleSearch">
+                      <el-icon><Search></Search></el-icon>查询
+                    </el-button>
+                    <el-button @click="resetManageFilter">
+                      <el-icon><Refresh></Refresh></el-icon>重置
+                    </el-button>
+                  </el-form-item>
+                </el-form>
+              </div>
+
+              <el-table :data="pagedManage" stripe border style="width: 100%" v-loading="loading" :row-class-name="overdueRowClass" table-layout="auto">
+                <el-table-column prop="taskNo" label="任务号" min-width="150" show-overflow-tooltip>
+                  <template #default="{ row }"><span class="batch-id">{{ row.taskNo }}</span></template>
+                </el-table-column>
+                <el-table-column prop="subject" label="对象" min-width="100"></el-table-column>
+                <el-table-column prop="statusText" label="状态" min-width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="taskStatusType(row.status)" effect="dark" size="small">{{ row.statusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="linkStatusText" label="作答链接" min-width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="linkTagType(row.linkStatus)" effect="plain" size="small">{{ row.linkStatusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="reviewStatusText" label="阅卷状态" min-width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="reviewTagType(row.reviewStatus)" effect="plain" size="small">{{ row.reviewStatusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createdAt" label="发起时间" min-width="150" align="center" sortable></el-table-column>
+                <el-table-column prop="finishedAt" label="完成时间" min-width="150" align="center">
+                  <template #default="{ row }">{{ row.finishedAt || '—' }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="240" align="center" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="primary" link size="small" @click="openLink(row)">
+                      <el-icon><Link></Link></el-icon>作答链接
+                    </el-button>
+                    <el-button v-if="row.status === 'overdue' || row.linkStatus === 'invalid'" type="warning" link size="small" @click="regenerate(row)">
+                      <el-icon><RefreshRight></RefreshRight></el-icon>重发
+                    </el-button>
+                    <el-popconfirm
+                      v-if="row.status !== 'done'"
+                      title="确定取消该测试任务吗？"
+                      confirm-button-text="确定"
+                      cancel-button-text="再想想"
+                      @confirm="cancelTask(row)"
+                    >
+                      <template #reference>
+                        <el-button type="danger" link size="small">
+                          <el-icon><CircleClose></CircleClose></el-icon>取消
+                        </el-button>
+                      </template>
+                    </el-popconfirm>
+                    <el-button v-if="row.status === 'done' && row.reviewStatus === 'scored'" type="success" link size="small" @click="go('profile-list.html')">
+                      <el-icon><View></el-icon>结果
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <div class="pagination-wrapper">
+                <el-pagination
+                  v-model:current-page="managePage.currentPage"
+                  v-model:page-size="managePage.pageSize"
+                  :page-sizes="[10, 20, 50]"
+                  :total="filteredManage.length"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  background
+                ></el-pagination>
+              </div>
+            </el-tab-pane>
+
+            <!-- 九型人格 -->
+            <el-tab-pane name="enneagram">
+              <template #label>
+                <el-icon style="vertical-align: -2px; margin-right: 4px;"><Histogram></Histogram></el-icon>
+                九型人格
+                <span class="tab-count">{{ enneagramRecords.length }}</span>
+              </template>
+
+              <div class="tab-filter">
+                <el-form :inline="true" :model="enneagramFilter">
+                  <el-form-item label="状态">
+                    <el-select v-model="enneagramFilter.status" placeholder="全部" clearable style="width: 130px;">
+                      <el-option label="待作答" value="pending"></el-option>
+                      <el-option label="进行中" value="doing"></el-option>
+                      <el-option label="已完成" value="done"></el-option>
+                      <el-option label="已逾期" value="overdue"></el-option>
+                    </el-select>
+                  </el-form-item>
+                  <el-form-item label="对象">
+                    <el-input v-model="enneagramFilter.subject" placeholder="姓名 / 任务号" clearable style="width: 180px;" @keyup.enter="handleSearch"></el-input>
+                  </el-form-item>
+                  <el-form-item>
+                    <el-button type="primary" @click="handleSearch">
+                      <el-icon><Search></Search></el-icon>查询
+                    </el-button>
+                    <el-button @click="resetEnneagramFilter">
+                      <el-icon><Refresh></Refresh></el-icon>重置
+                    </el-button>
+                  </el-form-item>
+                </el-form>
+              </div>
+
+              <el-table :data="pagedEnneagram" stripe border style="width: 100%" v-loading="loading" :row-class-name="overdueRowClass" table-layout="auto">
+                <el-table-column prop="taskNo" label="任务号" min-width="150" show-overflow-tooltip>
+                  <template #default="{ row }"><span class="batch-id">{{ row.taskNo }}</span></template>
+                </el-table-column>
+                <el-table-column prop="subject" label="对象" min-width="100"></el-table-column>
+                <el-table-column prop="statusText" label="状态" min-width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="taskStatusType(row.status)" effect="dark" size="small">{{ row.statusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="linkStatusText" label="作答链接" min-width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="linkTagType(row.linkStatus)" effect="plain" size="small">{{ row.linkStatusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="reviewStatusText" label="判型状态" min-width="110" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="reviewTagType(row.reviewStatus)" effect="plain" size="small">{{ row.reviewStatusText }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="createdAt" label="发起时间" min-width="150" align="center" sortable></el-table-column>
+                <el-table-column prop="finishedAt" label="完成时间" min-width="150" align="center">
+                  <template #default="{ row }">{{ row.finishedAt || '—' }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="240" align="center" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="primary" link size="small" @click="openLink(row)">
+                      <el-icon><Link></Link></el-icon>作答链接
+                    </el-button>
+                    <el-button v-if="row.status === 'overdue' || row.linkStatus === 'invalid'" type="warning" link size="small" @click="regenerate(row)">
+                      <el-icon><RefreshRight></RefreshRight></el-icon>重发
+                    </el-button>
+                    <el-popconfirm
+                      v-if="row.status !== 'done'"
+                      title="确定取消该测试任务吗？"
+                      confirm-button-text="确定"
+                      cancel-button-text="再想想"
+                      @confirm="cancelTask(row)"
+                    >
+                      <template #reference>
+                        <el-button type="danger" link size="small">
+                          <el-icon><CircleClose></CircleClose></el-icon>取消
+                        </el-button>
+                      </template>
+                    </el-popconfirm>
+                    <el-button v-if="row.status === 'done' && row.reviewStatus === 'scored'" type="success" link size="small" @click="go('profile-list.html')">
+                      <el-icon><View></View></el-icon>结果
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+
+              <div class="pagination-wrapper">
+                <el-pagination
+                  v-model:current-page="enneagramPage.currentPage"
+                  v-model:page-size="enneagramPage.pageSize"
+                  :page-sizes="[10, 20, 50]"
+                  :total="filteredEnneagram.length"
+                  layout="total, sizes, prev, pager, next, jumper"
+                  background
+                ></el-pagination>
+              </div>
+            </el-tab-pane>
+          </el-tabs>
+        </section>
+      </div>
+    </main>
+
+    <!-- 发起评测弹窗 -->
+    <el-dialog
+      v-model="launchVisible"
+      title="发起评测"
+      width="680px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <div class="launch-tabs">
+        <div
+          v-for="t in launchTypes"
+          :key="t.value"
+          :class="['launch-tab', { active: launchType === t.value }]"
+          @click="launchType = t.value"
+        >
+          <el-icon class="lt-icon"><component :is="t.icon"></component></el-icon>
+          <div class="lt-title">{{ t.title }}</div>
+          <div class="lt-desc">{{ t.desc }}</div>
+        </div>
+      </div>
+
+      <el-form ref="launchFormRef" :model="launchForm" label-width="92px" label-position="right">
+        <!-- 对话分析 -->
+        <template v-if="launchType === 'dialog'">
+          <el-form-item label="分析对象" prop="targets" :rules="{ required: true, message: '请选择分析对象', trigger: 'change' }">
+            <el-select v-model="launchForm.targets" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择一人、多人或全员" style="width: 100%;" @change="onTargetsChange">
+              <el-option label="全员" value="all"></el-option>
+              <el-option v-for="e in employees" :key="e.id" :label="e.name" :value="e.id"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="评估时段" prop="dateRange" :rules="{ required: true, message: '请选择评估时段', trigger: 'change' }">
+            <div style="width: 100%;">
+              <el-date-picker
+                v-model="launchForm.dateRange"
+                type="daterange"
+                range-separator="至"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                style="width: 100%;"
+                value-format="YYYY-MM-DD"
+                :disabled-date="disabledDate"
+              ></el-date-picker>
+              <div class="switch-hint">只取所选时间范围内的对话数据进行评估。</div>
+            </div>
+          </el-form-item>
+          <el-form-item label="维度范围">
+            <div style="width: 100%;">
+              <div class="dim-section">
+                <div class="dim-section-title"><span class="tag-mini tag-base">底层</span>AI 使用能力 · 底层 4 维</div>
+                <el-checkbox-group v-model="launchForm.dims" class="dim-checkbox-group">
+                  <el-checkbox v-for="d in baseDims" :key="d.value" :value="d.value" :label="d.label"></el-checkbox>
+                </el-checkbox-group>
+              </div>
+              <div class="dim-section">
+                <div class="dim-section-title"><span class="tag-mini tag-upper">上层</span>AI 使用能力 · 上层 4 维</div>
+                <el-checkbox-group v-model="launchForm.dims" class="dim-checkbox-group">
+                  <el-checkbox v-for="d in upperDims" :key="d.value" :value="d.value" :label="d.label"></el-checkbox>
+                </el-checkbox-group>
+              </div>
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- AI 管理能力 -->
+        <template v-else-if="launchType === 'manage'">
+          <el-form-item label="测评对象" prop="targets" :rules="{ required: true, message: '请选择测评对象', trigger: 'change' }">
+            <el-select v-model="launchForm.targets" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择一人、多人或全员" style="width: 100%;" @change="onTargetsChange">
+              <el-option label="全员" value="all"></el-option>
+              <el-option v-for="e in employees" :key="e.id" :label="e.name" :value="e.id"></el-option>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="子能力维度">
+            <div style="width: 100%;">
+              <div class="dim-section">
+                <div class="dim-section-title"><span class="tag-mini tag-manage">管理</span>AI 管理能力 · 5 子能力</div>
+                <el-checkbox-group v-model="launchForm.manageDims" class="dim-checkbox-group">
+                  <el-checkbox v-for="d in manageDims" :key="d.value" :value="d.value" :label="d.label"></el-checkbox>
+                </el-checkbox-group>
+              </div>
+              <div class="switch-hint">默认全选 5 个子能力，按需裁剪。所有对象作答同一套场景题，员工通过与 AI 对话逐题作答，AI 结合对话过程给出评估。</div>
+            </div>
+          </el-form-item>
+        </template>
+
+        <!-- 九型人格 -->
+        <template v-else>
+          <el-form-item label="测评对象" prop="targets" :rules="{ required: true, message: '请选择测评对象', trigger: 'change' }">
+            <el-select v-model="launchForm.targets" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择一人、多人或全员" style="width: 100%;" @change="onTargetsChange">
+              <el-option label="全员" value="all"></el-option>
+              <el-option v-for="e in employees" :key="e.id" :label="e.name" :value="e.id"></el-option>
+            </el-select>
+          </el-form-item>
+        </template>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="launchVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitLaunch">
+          <el-icon><Promotion></el-icon>提交
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 作答链接弹窗 -->
+    <el-dialog v-model="linkVisible" title="一次性作答链接" width="560px">
+      <el-descriptions :column="2" border size="small" v-if="currentTask">
+        <el-descriptions-item label="任务号">{{ currentTask.taskNo }}</el-descriptions-item>
+        <el-descriptions-item label="对象">{{ currentTask.subject }}</el-descriptions-item>
+        <el-descriptions-item label="测评类型">{{ currentTask.typeName }}</el-descriptions-item>
+      </el-descriptions>
+
+      <div style="margin-top: 20px;" v-if="currentTask">
+        <div style="font-size: 13px; color: var(--text-secondary);">作答链接（一次性，员工提交后失效）：</div>
+        <div class="link-box">
+          <el-icon style="color: var(--primary-color);"><Link></Link></el-icon>
+          <span class="link-text">{{ currentTask.answerUrl }}</span>
+          <el-button type="primary" size="small" plain @click="copyLink">
+            <el-icon><CopyDocument></CopyDocument></el-icon>复制
+          </el-button>
+        </div>
+
+        <div class="link-meta">
+          <div class="link-meta-item">
+            <span class="label">链接状态：</span>
+            <el-tag :type="linkTagType(currentTask.linkStatus)" effect="plain" size="small">{{ currentTask.linkStatusText }}</el-tag>
+          </div>
+          <div class="link-meta-item">
+            <span class="label">生成时间：</span>
+            <span class="value">{{ currentTask.linkGeneratedAt }}</span>
+          </div>
+        </div>
+
+        <el-alert style="margin-top: 16px;" type="info" :closable="false" show-icon>
+          <template #title>员工提交作答后链接即刻失效。逾期未作答请在记录中点击「重发」生成新链接，复制后手动分发。</template>
+        </el-alert>
+
+        <div style="margin-top: 12px; font-size: 13px;">
+          <span style="color: var(--text-secondary);">原型演示：</span>
+          <a :href="'assessment-answer.html?type=' + (currentTask.taskNo.startsWith('E') ? 'enneagram' : 'ai')" target="_blank" style="color: var(--primary-color);">直接打开员工作答页</a>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="linkVisible = false">关闭</el-button>
+        <el-button type="primary" @click="copyLink">
+          <el-icon><CopyDocument></CopyDocument></el-icon>复制链接
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+    const { ElMessage } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单（评估运营收敛为一项）==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [{ index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = [];
+        const activeMenu = ref('assessment-center');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            window.location.href = 'login.html';
+          } else {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 维度定义 ==========
+        const baseDims = [
+          { value: 'task-fit', label: '任务适配判断力' },
+          { value: 'prompt-design', label: '指令与 prompt 设计' },
+          { value: 'dialog-control', label: '对话驾驭' },
+          { value: 'tool-skill', label: 'Skill 调用' }
+        ];
+        const upperDims = [
+          { value: 'harness', label: 'Harness 编排驾驭' },
+          { value: 'skill-write', label: 'Skill 编写能力' },
+          { value: 'value-output', label: '价值产出质量' },
+          { value: 'knowledge', label: '知识沉淀与复用' }
+        ];
+        const manageDims = [
+          { value: 'goal', label: '目标设定与对齐' },
+          { value: 'delegate', label: '授权与分工' },
+          { value: 'review', label: '监督与验收' },
+          { value: 'risk', label: '风险与担责' },
+          { value: 'collab', label: '人机协作设计' }
+        ];
+        const allDimValues = [...baseDims, ...upperDims].map(d => d.value);
+        const allManageValues = manageDims.map(d => d.value);
+
+        const employees = [
+          { id: 'u1', name: '张敏' }, { id: 'u2', name: '李芳' },
+          { id: 'u3', name: '王志远' }, { id: 'u4', name: '陈晓' },
+          { id: 'u5', name: '刘洋' }, { id: 'u6', name: '赵敏' },
+          { id: 'u7', name: '孙浩' }, { id: 'u8', name: '周婷' },
+          { id: 'u9', name: '陈思远' }, { id: 'u10', name: '林晓彤' }
+        ];
+        const empName = (id) => (employees.find(e => e.id === id) || {}).name || '对象';
+
+        // ========== 定时计划 ==========
+        const plan = reactive({
+          nextRun: '2026-08-09 周日 23:00',
+          cycle: '每周一次',
+          scope: 'AI 使用能力 · 全员',
+          dims: '底层 4 维 + 上层 4 维'
+        });
+
+        // ========== 对话分析记录 ==========
+        const dialogRecords = ref([
+          { id: 'B20260726', trigger: 'cycle', triggerText: '定时评估', scope: '全员', period: '2026-07-20 ~ 2026-07-26', status: 'success', statusText: '成功', sessions: 1540, triggerTime: '2026-07-26 23:15', progress: 100 },
+          { id: 'B20260806', trigger: 'manual', triggerText: '手动发起', scope: '张敏', period: '2026-07-01 ~ 2026-07-31', status: 'success', statusText: '成功', sessions: 86, triggerTime: '2026-08-07 14:20', progress: 100 },
+          { id: 'B20260805', trigger: 'cycle', triggerText: '定时评估', scope: '全员', period: '2026-07-27 ~ 2026-08-02', status: 'success', statusText: '成功', sessions: 1560, triggerTime: '2026-08-02 23:15', progress: 100 },
+          { id: 'B20260803', trigger: 'manual', triggerText: '手动发起', scope: '李芳', period: '2026-07-15 ~ 2026-07-25', status: 'running', statusText: '进行中', sessions: 120, triggerTime: '2026-08-08 09:30', progress: 64 }
+        ]);
+
+        // ========== 管理能力记录 ==========
+        const makeTask = (taskNo, subject, status, reviewStatus, createdAt, finishedAt, linkStatus, linkGeneratedAt) => ({
+          taskNo, subject, status, statusText: taskStatusText(status),
+          linkStatus: linkStatus || defaultLink(status), linkStatusText: linkStatusText(linkStatus || defaultLink(status)),
+          reviewStatus, reviewStatusText: reviewStatusText(reviewStatus),
+          createdAt, finishedAt, typeName: 'AI 管理能力',
+          answerUrl: 'https://assess.sili-hr.com/a/' + Math.random().toString(36).slice(2, 14),
+          linkGeneratedAt: linkGeneratedAt || createdAt
+        });
+
+        const manageRecords = ref([
+          makeTask('T20260808-001', '陈思远', 'doing', 'waiting', '2026-08-06 09:00', '', 'valid', '2026-08-06 09:00'),
+          makeTask('T20260806-002', '林晓彤', 'done', 'scored', '2026-08-05 14:00', '2026-08-05 18:20', 'used'),
+          makeTask('T20260802-003', '王志远', 'overdue', 'waiting', '2026-08-02 10:00', '', 'invalid'),
+          makeTask('T20260808-004', '刘洋', 'pending', 'waiting', '2026-08-08 10:00', '', 'valid', '2026-08-08 10:00')
+        ]);
+
+        // ========== 九型记录 ==========
+        const enneagramRecords = ref([
+          makeTask('E20260806-001', '周婷', 'done', 'scored', '2026-08-04 11:00', '2026-08-04 15:10', 'used'),
+          makeTask('E20260807-002', '赵敏', 'doing', 'waiting', '2026-08-06 16:00', '', 'valid', '2026-08-06 16:00'),
+          makeTask('E20260808-003', '孙浩', 'pending', 'waiting', '2026-08-08 09:00', '', 'valid', '2026-08-08 09:00')
+        ]);
+        enneagramRecords.value.forEach(r => {
+          r.typeName = '九型人格';
+          r.reviewStatusText = r.reviewStatus === 'scored' ? '已判定' : '待判型';
+        });
+
+        // ========== 状态映射 ==========
+        function taskStatusText(s) {
+          return { pending: '待作答', doing: '进行中', done: '已完成', overdue: '已逾期' }[s] || s;
+        }
+        function defaultLink(status) {
+          return { pending: 'valid', doing: 'valid', done: 'used', overdue: 'invalid' }[status] || 'valid';
+        }
+        function linkStatusText(s) {
+          return { valid: '有效', used: '已使用', invalid: '已失效' }[s] || s;
+        }
+        function reviewStatusText(s) {
+          return { waiting: '待阅卷', scored: '已评分' }[s] || s;
+        }
+
+        const taskStatusType = (s) => ({
+          pending: 'info', doing: 'primary', done: 'success', overdue: 'danger'
+        }[s] || 'info');
+
+        const linkTagType = (s) => ({
+          valid: 'success', used: 'info', invalid: 'danger'
+        }[s] || 'info');
+
+        const reviewTagType = (s) => ({
+          waiting: 'warning', scored: 'success'
+        }[s] || 'info');
+
+        // ========== 统计卡 ==========
+        const metricCards = computed(() => {
+          const total = dialogRecords.value.length + manageRecords.value.length + enneagramRecords.value.length;
+          const doneSubjects = new Set();
+          dialogRecords.value.forEach(r => { if (r.status === 'success' && r.scope !== '全员') doneSubjects.add(r.scope); });
+          manageRecords.value.forEach(r => { if (r.status === 'done') doneSubjects.add(r.subject); });
+          enneagramRecords.value.forEach(r => { if (r.status === 'done') doneSubjects.add(r.subject); });
+          const pending =
+            dialogRecords.value.filter(r => r.status === 'running').length +
+            manageRecords.value.filter(r => r.status === 'pending' || r.status === 'doing').length +
+            enneagramRecords.value.filter(r => r.status === 'pending' || r.status === 'doing').length;
+          return [
+            { key: 'total', icon: 'Files', label: '本期评测次数', value: total, unit: '次', bg: 'rgba(24,144,255,0.10)', color: 'var(--primary-color)' },
+            { key: 'done', icon: 'CircleCheckFilled', label: '已完成评测人数', value: doneSubjects.size, unit: '人', bg: 'rgba(82,196,26,0.10)', color: 'var(--success-color)' },
+            { key: 'pending', icon: 'Clock', label: '当前待处理', value: pending, unit: '项', bg: 'rgba(250,173,20,0.14)', color: 'var(--warning-color)' }
+          ];
+        });
+
+        const todoCount = computed(() =>
+          dialogRecords.value.filter(r => r.status === 'running').length +
+          manageRecords.value.filter(r => r.status === 'overdue').length +
+          enneagramRecords.value.filter(r => r.status === 'overdue').length
+        );
+
+        // ========== 筛选与分页 ==========
+        const loading = ref(false);
+        const handleSearch = () => {
+          loading.value = true;
+          setTimeout(() => { loading.value = false; ElMessage.success('查询完成'); }, 280);
+        };
+
+        const activeTab = ref('dialog');
+
+        const dialogFilter = reactive({ trigger: '', status: '' });
+        const filteredDialog = computed(() => dialogRecords.value.filter(r => {
+          if (dialogFilter.trigger && r.trigger !== dialogFilter.trigger) return false;
+          if (dialogFilter.status && r.status !== dialogFilter.status) return false;
+          return true;
+        }));
+        const resetDialogFilter = () => { dialogFilter.trigger = ''; dialogFilter.status = ''; };
+
+        const manageFilter = reactive({ status: '', subject: '' });
+        const filteredManage = computed(() => manageRecords.value.filter(r => {
+          if (manageFilter.status && r.status !== manageFilter.status) return false;
+          if (manageFilter.subject && !(r.subject.includes(manageFilter.subject) || r.taskNo.toLowerCase().includes(manageFilter.subject.toLowerCase()))) return false;
+          return true;
+        }));
+        const resetManageFilter = () => { manageFilter.status = ''; manageFilter.subject = ''; };
+
+        const enneagramFilter = reactive({ status: '', subject: '' });
+        const filteredEnneagram = computed(() => enneagramRecords.value.filter(r => {
+          if (enneagramFilter.status && r.status !== enneagramFilter.status) return false;
+          if (enneagramFilter.subject && !(r.subject.includes(enneagramFilter.subject) || r.taskNo.toLowerCase().includes(enneagramFilter.subject.toLowerCase()))) return false;
+          return true;
+        }));
+        const resetEnneagramFilter = () => { enneagramFilter.status = ''; enneagramFilter.subject = ''; };
+
+        const dialogPage = reactive({ currentPage: 1, pageSize: 10 });
+        const managePage = reactive({ currentPage: 1, pageSize: 10 });
+        const enneagramPage = reactive({ currentPage: 1, pageSize: 10 });
+
+        const paginate = (list, page) => {
+          const start = (page.currentPage - 1) * page.pageSize;
+          return list.slice(start, start + page.pageSize);
+        };
+        const pagedDialog = computed(() => paginate(filteredDialog.value, dialogPage));
+        const pagedManage = computed(() => paginate(filteredManage.value, managePage));
+        const pagedEnneagram = computed(() => paginate(filteredEnneagram.value, enneagramPage));
+
+        const overdueRowClass = ({ row }) => (row.status === 'overdue' ? 'alert-row' : '');
+
+        // ========== 作答链接弹窗 ==========
+        const linkVisible = ref(false);
+        const currentTask = ref(null);
+        const openLink = (row) => { currentTask.value = row; linkVisible.value = true; };
+        const copyLink = () => {
+          ElMessage.success('作答链接已复制到剪贴板');
+        };
+        const regenerate = (row) => {
+          row.linkStatus = 'valid';
+          row.linkStatusText = linkStatusText('valid');
+          row.status = row.status === 'overdue' ? 'pending' : row.status;
+          row.statusText = taskStatusText(row.status);
+          row.answerUrl = 'https://assess.sili-hr.com/a/' + Math.random().toString(36).slice(2, 14);
+          ElMessage.success('已为 ' + row.subject + ' 重新生成作答链接，请复制后手动分发');
+        };
+        const cancelTask = (row) => {
+          const list = row.taskNo.startsWith('E') ? enneagramRecords : manageRecords;
+          const idx = list.value.findIndex(t => t.taskNo === row.taskNo);
+          if (idx > -1) {
+            list.value.splice(idx, 1);
+            ElMessage.info('任务 ' + row.taskNo + ' 已取消');
+          }
+        };
+
+        // ========== 发起评测 ==========
+        const launchVisible = ref(false);
+        const launchType = ref('dialog');
+        const launchTypes = [
+          { value: 'dialog', icon: 'ChatDotRound', title: 'AI 使用能力分析', desc: '系统自动运行' },
+          { value: 'manage', icon: 'Management', title: 'AI 管理能力', desc: '员工作答 AI 阅卷' },
+          { value: 'enneagram', icon: 'Histogram', title: '九型人格', desc: '标准量表 AI 判型' }
+        ];
+
+        const launchFormRef = ref(null);
+        const submitLoading = ref(false);
+        const launchForm = reactive({
+          targets: [],
+          dateRange: ['2026-08-03', '2026-08-09'],
+          dims: [...allDimValues],
+          manageDims: [...allManageValues]
+        });
+
+        const disabledDate = (date) => date.getTime() > Date.now();
+
+        const openLaunch = () => {
+          resetLaunchForm();
+          launchVisible.value = true;
+        };
+
+        const resetLaunchForm = () => {
+          launchForm.targets = [];
+          launchForm.dateRange = ['2026-08-03', '2026-08-09'];
+          launchForm.dims = [...allDimValues];
+          launchForm.manageDims = [...allManageValues];
+        };
+
+        const todayStr = () => {
+          // 固定演示日期，避免跨天抖动
+          return '2026-08-08';
+        };
+        const seqRef = { n: 5 };
+        const nextTaskNo = (prefix) => {
+          seqRef.n += 1;
+          const s = String(seqRef.n).padStart(3, '0');
+          return prefix + todayStr().replace(/-/g, '') + '-' + s;
+        };
+
+        const scopeFromTargets = (targets) => {
+          if (!targets || targets.length === 0) return '';
+          if (targets.includes('all')) return '全员';
+          const names = targets.map(empName);
+          if (names.length <= 2) return names.join('、');
+          return names.slice(0, 2).join('、') + ' 等 ' + names.length + ' 人';
+        };
+
+        const expandTargets = (targets) => {
+          if (!targets || targets.length === 0) return [];
+          if (targets.includes('all')) return employees.map(e => e.name);
+          return targets.map(empName);
+        };
+
+        const onTargetsChange = (val) => {
+          if (!val || val.length === 0) return;
+          if (val[val.length - 1] === 'all') {
+            launchForm.targets = ['all'];
+          } else if (val.includes('all')) {
+            launchForm.targets = val.filter(v => v !== 'all');
+          }
+        };
+
+        const submitLaunch = async () => {
+          if (!launchForm.targets || launchForm.targets.length === 0) {
+            ElMessage.warning('请选择对象');
+            return;
+          }
+          if (launchType.value === 'dialog') {
+            if (!launchForm.dateRange || launchForm.dateRange.length !== 2) {
+              ElMessage.warning('请选择评估时段');
+              return;
+            }
+            if (launchForm.dims.length === 0) {
+              ElMessage.warning('请至少选择一个评估维度');
+              return;
+            }
+          }
+          if (launchType.value === 'manage' && launchForm.manageDims.length === 0) {
+            ElMessage.warning('请至少选择一个子能力维度');
+            return;
+          }
+
+          submitLoading.value = true;
+          setTimeout(() => {
+            submitLoading.value = false;
+            const scope = scopeFromTargets(launchForm.targets);
+
+            if (launchType.value === 'dialog') {
+              dialogRecords.value.unshift({
+                id: 'B' + todayStr().replace(/-/g, '') + String(dialogRecords.value.length).padStart(2, '0'),
+                trigger: 'manual', triggerText: '手动发起', scope: scope,
+                period: launchForm.dateRange[0] + ' ~ ' + launchForm.dateRange[1],
+                status: 'running', statusText: '进行中', sessions: 0,
+                triggerTime: todayStr() + ' ' + nowStr(), progress: 5
+              });
+              activeTab.value = 'dialog';
+              ElMessage.success('已发起 AI 使用能力分析（' + scope + '），已进入评估队列');
+            } else if (launchType.value === 'manage') {
+              expandTargets(launchForm.targets).forEach((nm) => {
+                manageRecords.value.unshift(makeTask(nextTaskNo('T'), nm, 'pending', 'waiting', todayStr() + ' ' + nowStr(), '', 'valid', todayStr() + ' ' + nowStr()));
+              });
+              activeTab.value = 'manage';
+              ElMessage.success('已对 ' + scope + ' 发起 AI 管理能力测评，作答链接已生成');
+            } else {
+              expandTargets(launchForm.targets).forEach((nm) => {
+                const t = makeTask(nextTaskNo('E'), nm, 'pending', 'waiting', todayStr() + ' ' + nowStr(), '', 'valid', todayStr() + ' ' + nowStr());
+                t.typeName = '九型人格';
+                t.reviewStatusText = '待判型';
+                enneagramRecords.value.unshift(t);
+              });
+              activeTab.value = 'enneagram';
+              ElMessage.success('已对 ' + scope + ' 发起九型人格测评，作答链接已生成');
+            }
+
+            launchVisible.value = false;
+          }, 500);
+        };
+
+        const nowStr = () => {
+          const d = new Date();
+          const hh = String(d.getHours()).padStart(2, '0');
+          const mm = String(d.getMinutes()).padStart(2, '0');
+          return hh + ':' + mm;
+        };
+
+        // ========== 暴露给模板 ==========
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 统计与计划
+          metricCards, plan,
+          // 维度与对象
+          baseDims, upperDims, manageDims, employees,
+          // 记录
+          activeTab,
+          dialogRecords, manageRecords, enneagramRecords,
+          filteredDialog, filteredManage, filteredEnneagram,
+          pagedDialog, pagedManage, pagedEnneagram,
+          dialogFilter, manageFilter, enneagramFilter,
+          resetDialogFilter, resetManageFilter, resetEnneagramFilter,
+          dialogPage, managePage, enneagramPage,
+          loading, handleSearch,
+          // 状态映射
+          taskStatusType, linkTagType, reviewTagType, overdueRowClass,
+          // 作答链接
+          linkVisible, currentTask, openLink, copyLink, regenerate, cancelTask,
+          // 发起评测
+          launchVisible, launchType, launchTypes,
+          launchFormRef, launchForm, submitLoading,
+          openLaunch, submitLaunch, disabledDate, onTargetsChange
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

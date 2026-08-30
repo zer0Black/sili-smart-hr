@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>测评作答 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: var(--content-bg);
+      color: var(--text-primary);
+    }
+
+    /* ========== 设计系统变量（与主平台同源） ========== */
+    :root {
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+      --table-header-bg: #fafafa;
+
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+    }
+
+    /* ========== 主色覆盖 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    /* 进度条主色对齐 */
+    .el-progress-bar__inner {
+      background-color: var(--primary-color);
+      transition: width 0.4s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .el-progress__text {
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+
+    /* ========== 品牌头 ========== */
+    .brand-header {
+      background: #fff;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-logo {
+      width: 32px;
+      height: 32px;
+      background: var(--primary-color);
+      border-radius: var(--border-radius);
+      color: #fff;
+      font-size: 17px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .brand-name {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: 0.3px;
+    }
+
+    .brand-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-left: 4px;
+      padding-left: 12px;
+      border-left: 1px solid var(--border-color-split);
+    }
+
+    .demo-switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .demo-switch .demo-label {
+      opacity: 0.7;
+    }
+
+    .demo-switch .demo-link {
+      padding: 4px 12px;
+      border-radius: 14px;
+      text-decoration: none;
+      color: var(--text-regular);
+      background: var(--content-bg);
+      transition: all 0.2s ease;
+      border: 1px solid transparent;
+    }
+
+    .demo-switch .demo-link:hover {
+      color: var(--primary-color);
+      border-color: var(--primary-color-hover);
+    }
+
+    .demo-switch .demo-link.active {
+      background: var(--primary-color);
+      color: #fff;
+    }
+
+    /* ========== 主容器 ========== */
+    .answer-main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 32px 24px 56px;
+    }
+
+    .answer-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+
+    /* ========== 测评标题 hero（呼应主平台 hero-card） ========== */
+    .assess-hero {
+      background: linear-gradient(135deg, var(--primary-color-active) 0%, var(--primary-color) 60%, var(--primary-color-hover) 100%);
+      padding: 28px 32px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .assess-hero::after {
+      content: '';
+      position: absolute;
+      right: -60px;
+      top: -60px;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0) 70%);
+      pointer-events: none;
+    }
+
+    .hero-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-tag {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      border-radius: 14px;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+
+    .assess-hero h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .assess-hero .hero-purpose {
+      margin-top: 8px;
+      font-size: 13px;
+      opacity: 0.9;
+      line-height: 1.6;
+      max-width: 560px;
+    }
+
+    .hero-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.16);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .hero-meta {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: var(--border-radius);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      font-size: 13px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .hero-meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .hero-meta-item .el-icon {
+      font-size: 15px;
+      opacity: 0.9;
+    }
+
+    .hero-meta-label {
+      opacity: 0.75;
+      margin-right: 2px;
+    }
+
+    /* ========== 卡片主体 ========== */
+    .assess-body {
+      padding: 28px 32px 32px;
+    }
+
+    /* 作答须知 */
+    .notice-alert {
+      border-radius: var(--border-radius);
+      margin-bottom: 24px;
+    }
+
+    .notice-list {
+      margin: 4px 0 0 0;
+      padding-left: 18px;
+      font-size: 13px;
+      line-height: 1.9;
+      color: var(--text-regular);
+    }
+
+    .notice-list li {
+      list-style: disc;
+    }
+
+    /* 进度 */
+    .progress-block {
+      margin-bottom: 28px;
+    }
+
+    .progress-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .progress-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+    }
+
+    .progress-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 15px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .progress-counter {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .progress-counter strong {
+      color: var(--primary-color);
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .progress-counter .answered {
+      color: var(--success-color);
+      font-weight: 600;
+    }
+
+    /* ========== AI 对话区 ========== */
+    .chat-box {
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-lg);
+      overflow: hidden;
+      background: var(--table-header-bg);
+    }
+
+    .chat-messages {
+      height: 420px;
+      overflow-y: auto;
+      padding: 18px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      scroll-behavior: smooth;
+    }
+
+    .msg {
+      display: flex;
+      gap: 10px;
+      max-width: 88%;
+    }
+
+    .msg.user {
+      flex-direction: row-reverse;
+      margin-left: auto;
+    }
+
+    .msg-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #fff;
+    }
+
+    .msg.ai .msg-avatar {
+      background: var(--primary-color);
+    }
+
+    .msg.user .msg-avatar {
+      background: var(--success-color);
+    }
+
+    .msg-bubble {
+      padding: 10px 14px;
+      border-radius: var(--border-radius);
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+
+    .msg.ai .msg-bubble {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-top-left-radius: 4px;
+    }
+
+    .msg.user .msg-bubble {
+      background: var(--primary-color);
+      color: #fff;
+      border-top-right-radius: 4px;
+    }
+
+    .msg-bubble p {
+      white-space: pre-line;
+    }
+
+    .msg-bubble p + p {
+      margin-top: 6px;
+    }
+
+    .msg-bubble.typing {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .msg-bubble.typing .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+      animation: blink 1.2s infinite ease-in-out;
+    }
+
+    .msg-bubble.typing .dot:nth-child(2) { animation-delay: 0.2s; }
+    .msg-bubble.typing .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @keyframes blink {
+      0%, 80%, 100% { opacity: 0.3; }
+      40% { opacity: 1; }
+    }
+
+    .chat-input {
+      display: flex;
+      gap: 10px;
+      padding: 12px;
+      border-top: 1px solid var(--border-color);
+      background: var(--card-bg);
+      align-items: flex-end;
+    }
+
+    .chat-input > .el-input {
+      flex: 1;
+    }
+
+    .chat-finish-tip {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-secondary);
+      padding: 8px 4px;
+    }
+
+    /* ========== 提交成功态 ========== */
+    .success-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      padding: 16px 32px 32px;
+      text-align: center;
+    }
+
+    .success-card .el-result {
+      padding: 32px 0 16px;
+    }
+
+    .success-card .el-result__icon svg {
+      width: 72px;
+      height: 72px;
+    }
+
+    .success-extra {
+      max-width: 480px;
+      margin: 0 auto;
+    }
+
+    .success-tip {
+      margin: 12px 0 24px;
+      padding: 14px 18px;
+      background: rgba(82, 196, 26, 0.06);
+      border: 1px solid rgba(82, 196, 26, 0.2);
+      border-radius: var(--border-radius);
+      color: var(--text-regular);
+      font-size: 13px;
+      line-height: 1.7;
+      text-align: left;
+    }
+
+    .success-tip strong {
+      color: var(--success-color);
+    }
+
+    .success-ref {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 18px;
+    }
+
+    .demo-note {
+      text-align: center;
+      margin-top: 24px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .demo-note a {
+      color: var(--primary-color);
+      text-decoration: none;
+      margin: 0 4px;
+    }
+
+    .demo-note a:hover {
+      text-decoration: underline;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 768px) {
+      .brand-header {
+        padding: 0 14px;
+        height: 54px;
+      }
+
+      .brand-sub {
+        display: none;
+      }
+
+      .demo-switch .demo-label {
+        display: none;
+      }
+
+      .answer-main {
+        padding: 16px 12px 40px;
+      }
+
+      .assess-hero {
+        padding: 22px 18px;
+      }
+
+      .assess-hero h1 {
+        font-size: 20px;
+      }
+
+      .hero-icon {
+        display: none;
+      }
+
+      .hero-meta {
+        gap: 14px;
+        font-size: 12px;
+      }
+
+      .assess-body {
+        padding: 20px 16px 24px;
+      }
+
+      .chat-messages {
+        height: 360px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 品牌头（独立，不含主平台侧栏与顶栏） -->
+    <header class="brand-header">
+      <div class="brand-left">
+        <div class="brand-logo">S</div>
+        <div>
+          <div class="brand-name">sili-smart-hr</div>
+        </div>
+        <div class="brand-sub">综合人才测评平台 · 员工作答</div>
+      </div>
+
+      <!-- 原型演示切换：实际员工入口不会出现此切换 -->
+      <div class="demo-switch">
+        <span class="demo-label">原型演示</span>
+        <a class="demo-link" :class="{ active: type === 'ai' }" :href="'?type=ai'">AI 管理能力</a>
+        <a class="demo-link" :class="{ active: type === 'enneagram' }" :href="'?type=enneagram'">九型人格</a>
+      </div>
+    </header>
+
+    <!-- 作答主体 -->
+    <main class="answer-main" v-if="!submitted">
+      <div class="answer-card">
+        <!-- 测评标题区 -->
+        <section class="assess-hero">
+          <div class="hero-top">
+            <div>
+              <span class="hero-tag">{{ meta.tag }}</span>
+              <h1>{{ meta.title }}</h1>
+              <p class="hero-purpose">{{ meta.purpose }}</p>
+            </div>
+            <div class="hero-icon">
+              <el-icon :size="26"><component :is="meta.icon"></component></el-icon>
+            </div>
+          </div>
+          <div class="hero-meta">
+            <div class="hero-meta-item">
+              <el-icon><Clock></Clock></el-icon>
+              <span><span class="hero-meta-label">预计用时</span>{{ meta.duration }}</span>
+            </div>
+            <div class="hero-meta-item">
+              <el-icon><Document></Document></el-icon>
+              <span><span class="hero-meta-label">题量</span>{{ meta.countText }}</span>
+            </div>
+            <div class="hero-meta-item">
+              <el-icon><Collection></Collection></el-icon>
+              <span><span class="hero-meta-label">题型</span>{{ meta.questionType }}</span>
+            </div>
+          </div>
+        </section>
+
+        <div class="assess-body">
+          <!-- 作答须知 -->
+          <el-alert class="notice-alert" type="info" :closable="false" show-icon>
+            <template #title>作答须知</template>
+            <ul class="notice-list">
+              <li>本次测评通过与 AI 对话完成，AI 会逐题发问，您直接回复即可。</li>
+              <li>根据您的真实想法与实际做法作答，无标准答案。</li>
+              <li>AI 会判断每题是否作答完整，答完后自动进入下一题。</li>
+              <li>全部作答完成后，结果由 AI 综合评估，不在此页面展示。</li>
+            </ul>
+          </el-alert>
+
+          <!-- 进度 -->
+          <div class="progress-block">
+            <div class="progress-head">
+              <span class="progress-title">对话进度</span>
+              <span class="progress-counter">
+                已完成 <strong class="answered">{{ answeredCount }}</strong> / {{ totalCount }}
+              </span>
+            </div>
+            <el-progress :percentage="progressPercent" :stroke-width="8"></el-progress>
+          </div>
+
+          <!-- AI 对话区 -->
+          <div class="chat-box">
+            <div class="chat-messages" ref="msgBox">
+              <div v-for="(m, idx) in messages" :key="idx" class="msg" :class="m.role">
+                <div class="msg-avatar">
+                  <el-icon :size="18"><component :is="m.role === 'ai' ? 'ChatDotRound' : 'User'"></component></el-icon>
+                </div>
+                <div class="msg-bubble">
+                  <p v-for="(line, li) in m.lines" :key="li">{{ line }}</p>
+                </div>
+              </div>
+              <div v-if="aiTyping" class="msg ai">
+                <div class="msg-avatar"><el-icon :size="18"><ChatDotRound></ChatDotRound></el-icon></div>
+                <div class="msg-bubble typing"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+              </div>
+            </div>
+            <div class="chat-input">
+              <template v-if="!finished">
+                <el-input
+                  v-model="inputText"
+                  type="textarea"
+                  :rows="2"
+                  resize="none"
+                  :disabled="aiTyping"
+                  :placeholder="inputPlaceholder"
+                  @keydown.enter.exact.prevent="send"
+                ></el-input>
+                <el-button type="primary" :icon="Promotion" :disabled="!inputText.trim() || aiTyping" @click="send">发送</el-button>
+              </template>
+              <template v-else>
+                <div class="chat-finish-tip">本次作答已完成，可提交结束。</div>
+                <el-button type="primary" :icon="Promotion" @click="submit">提交并结束</el-button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="demo-note">
+        原型演示入口，实际场景中此链接由 HR 通过 IM 或邮件一次性推送给员工。
+      </div>
+    </main>
+
+    <!-- 提交成功态 -->
+    <main class="answer-main" v-else>
+      <div class="success-card">
+        <el-result icon="success" title="作答已提交" :sub-title="'感谢您的参与，' + meta.title + ' 已成功提交。'">
+          <template #extra>
+            <div class="success-extra">
+              <div class="success-tip">
+                <strong>本次作答链接已失效。</strong>系统将进入阅卷环节，作答结果不会在此页面展示。您可以直接关闭此窗口，无需其他操作。
+              </div>
+              <el-button type="primary" @click="closeWindow">关闭窗口</el-button>
+              <div class="success-ref">参考编号：{{ submitRef }}</div>
+            </div>
+          </template>
+        </el-result>
+      </div>
+
+      <div class="demo-note">
+        原型演示：可
+        <a :href="'?type=' + type">重新体验本测评作答流程</a>
+        或切换至
+        <a :href="'?type=' + (type === 'ai' ? 'enneagram' : 'ai')">{{ type === 'ai' ? '九型人格测评' : 'AI 管理能力测评' }}</a>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 测评类型识别 ==========
+        const params = new URLSearchParams(window.location.search);
+        const type = ref(params.get('type') === 'enneagram' ? 'enneagram' : 'ai');
+
+        // ========== AI 管理能力题库（5 子能力情境题） ==========
+        const aiQuestions = [
+          {
+            id: 'ai1',
+            dimension: '目标设定与对齐',
+            scenario: '你负责推动一项「用 AI 工具提升客服响应效率」的项目。AI 给出的方案宣称能在 1 个月内将平均响应时长缩短 40%，但你对底层数据样本与统计口径存疑。团队中有人主张立即按 40% 设定 KPI，也有人主张保守。',
+            task: '请选择最符合您实际做法的选项，可在补充说明中阐述理由。\nA. 立即按 AI 给出的 40% 设定 KPI，先承诺目标再想办法兑现\nB. 否定 40% 的说法，按历史经验给出一个保守的降幅目标\nC. 要求还原数据样本与统计口径，验证可行区间后设定阶段性目标，并约定复盘节点\nD. 把目标值交给团队投票，少数服从多数'
+          },
+          {
+            id: 'ai2',
+            dimension: '授权与分工',
+            scenario: '你需要将一项「用 AI 辅助生成周报并下发执行」的任务派给两位下属。A 熟悉 AI 工具、prompt 能力强但业务判断偏弱；B 业务经验丰富、判断准确但不熟悉 AI，且对 AI 输出抱有戒心。',
+            task: '请选择最符合您实际做法的选项，可在补充说明中阐述理由。\nA. 全部交给 A，借其 AI 能力快速产出\nB. 全部交给 B，相信其业务判断\nC. 由 A 主导 AI 生成初稿、B 负责业务校验与把关，明确两道工序与责任边界\nD. 自己先做出样例，再把剩余工作平均分给两人'
+          },
+          {
+            id: 'ai3',
+            dimension: '监督与验收',
+            scenario: '下属使用 AI 工具完成了一份客户风险评估报告并提交给你验收。报告结构完整、数据来源标注为「AI 综合」，但你无法直接判断其中关键结论是否准确，下游环节将据此决定客户策略。',
+            task: '请选择最符合您实际做法的选项，可在补充说明中阐述理由。\nA. 结构完整即通过验收，信任 AI 综合的结论\nB. 逐条人工复核每一个结论，确保全部无误后再用\nC. 抽查关键结论的可追溯来源，要求下属标注置信度，对高风险结论设复核规则\nD. 退回让下属弃用 AI 重新撰写'
+          },
+          {
+            id: 'ai4',
+            dimension: '风险与担责',
+            scenario: '一个由你主导、AI 辅助决策的客户分级项目出现失误，将一批高价值客户误判为低优先级，已造成客户投诉与潜在流失。下属认为「这是 AI 模型判断的，不是我决定的」。',
+            task: '请选择最符合您实际做法的选项，可在补充说明中阐述理由。\nA. 把责任归给 AI 供应商，与团队无关\nB. 当众追责当事下属，并扣除其绩效\nC. 作为项目负责人先对外安抚客户、主动担责，对内复盘流程与人工兜底缺口，厘清 AI 决策的责任归属\nD. 低调内部处理，尽量不对外扩散'
+          },
+          {
+            id: 'ai5',
+            dimension: '人机协作设计',
+            scenario: '你要重新设计一个「客户工单分类与初判」流程，让人与 AI 协作完成。AI 擅长模式识别但会出错，人擅长复杂判断但效率有限，工单量较大且对时效有要求。',
+            task: '请选择最符合您实际做法的选项，可在补充说明中阐述理由。\nA. 全部交给 AI 自动分类，追求最高效率\nB. 全部交给人工处理，确保准确\nC. AI 处理高置信度的常规工单，低置信度与高价值工单转人工复核，设交接阈值与抽检兜底\nD. 按时段轮流，一半时间用 AI、一半时间用人工'
+          }
+        ];
+
+        // ========== 九型人格量表题库（12 题，分 3 页） ==========
+        const enneagramQuestions = [
+          { id: 'en1', text: '我做事追求严谨和完美，对细节有较高的标准。' },
+          { id: 'en2', text: '我习惯关注他人的需求，愿意花时间帮助别人。' },
+          { id: 'en3', text: '我重视目标与效率，渴望在工作中取得被认可的成就。' },
+          { id: 'en4', text: '我内心感受细腻，追求真实与独特，不喜欢平庸。' },
+          { id: 'en5', text: '我喜欢观察与独立思考，在行动前需要充分信息和独处时间。' },
+          { id: 'en6', text: '我对潜在风险敏感，做事前会反复推演，重视确定感。' },
+          { id: 'en7', text: '我热爱新鲜体验和可能性，不喜欢被规则和沉闷束缚。' },
+          { id: 'en8', text: '我习惯直接表达观点、掌控局面，面对冲突不退缩。' },
+          { id: 'en9', text: '我性格温和、随和包容，倾向于调和矛盾、避免冲突。' },
+          { id: 'en10', text: '在压力下我能保持冷静，专注解决眼前最重要的问题。' },
+          { id: 'en11', text: '我做决定前会反复权衡利弊，担心做出错误选择。' },
+          { id: 'en12', text: '我相信第一直觉，常常凭感觉快速判断人和事。' }
+        ];
+
+        // ========== 对话状态 ==========
+        const submitted = ref(false);
+        const submitRef = ref('');
+        const messages = ref([]);
+        const inputText = ref('');
+        const aiTyping = ref(false);
+        const qIndex = ref(0);
+        const finished = ref(false);
+        const msgBox = ref(null);
+
+        // ========== 元信息 ==========
+        const meta = computed(() => {
+          if (type.value === 'enneagram') {
+            return {
+              tag: '标准量表',
+              title: '九型人格测评',
+              purpose: '帮助了解您的人格倾向分布，作为团队协作与个人发展的参考依据。结果仅供参考，不作为绩效评价。',
+              duration: '约 10-15 分钟',
+              countText: '共 12 题',
+              questionType: 'AI 对话作答',
+              icon: 'PieChart'
+            };
+          }
+          return {
+            tag: 'AI 对话测评',
+            title: 'AI 管理能力测评',
+            purpose: '评估您在 AI 协作场景下的管理判断与决策能力，覆盖目标设定、授权分工、监督验收、风险担责、人机协作五个子能力。',
+            duration: '约 25-30 分钟',
+            countText: '共 5 题',
+            questionType: 'AI 对话作答',
+            icon: 'Aim'
+          };
+        });
+
+        // ========== 进度 ==========
+        const totalCount = computed(() =>
+          type.value === 'ai' ? aiQuestions.length : enneagramQuestions.length
+        );
+        const answeredCount = computed(() => qIndex.value);
+        const progressPercent = computed(() => {
+          if (!totalCount.value) return 0;
+          return Math.round((qIndex.value / totalCount.value) * 100);
+        });
+
+        const inputPlaceholder = computed(() => {
+          if (finished.value) return '本次作答已完成';
+          if (aiTyping.value) return 'AI 正在输入…';
+          return type.value === 'ai'
+            ? '请回复您的做法与理由，可说明选择的选项'
+            : '请回复 1 到 5 的数字';
+        });
+
+        // ========== 对话逻辑 ==========
+        const scrollToBottom = () => {
+          nextTick(() => {
+            if (msgBox.value) msgBox.value.scrollTop = msgBox.value.scrollHeight;
+          });
+        };
+
+        const pushAI = (lines, delay) => {
+          aiTyping.value = true;
+          scrollToBottom();
+          setTimeout(() => {
+            messages.value.push({ role: 'ai', lines });
+            aiTyping.value = false;
+            scrollToBottom();
+          }, delay || 700);
+        };
+
+        const askQuestion = (idx) => {
+          if (type.value === 'ai') {
+            const q = aiQuestions[idx];
+            pushAI([
+              '第 ' + (idx + 1) + ' 题 · ' + q.dimension,
+              q.scenario,
+              q.task
+            ], 600);
+          } else {
+            const q = enneagramQuestions[idx];
+            pushAI([
+              '第 ' + (idx + 1) + ' 题：' + q.text,
+              '请在 1（完全不符合）到 5（完全符合）之间回复最符合您的数字。'
+            ], 600);
+          }
+        };
+
+        const finishAssess = () => {
+          finished.value = true;
+          pushAI([
+            '以上题目已全部作答完成。',
+            '我会结合您在整个对话中的回答做综合评估，结果将由平台反馈，不在此页面展示。'
+          ], 800);
+        };
+
+        const send = () => {
+          const text = inputText.value.trim();
+          if (!text || aiTyping.value || finished.value) return;
+          messages.value.push({ role: 'user', lines: [text] });
+          inputText.value = '';
+          scrollToBottom();
+
+          if (type.value === 'ai') {
+            qIndex.value++;
+            if (qIndex.value < aiQuestions.length) {
+              pushAI(['收到，我们看下一题。'], 500);
+              setTimeout(() => askQuestion(qIndex.value), 1300);
+            } else {
+              setTimeout(finishAssess, 900);
+            }
+          } else {
+            const num = parseInt(text, 10);
+            if (isNaN(num) || num < 1 || num > 5) {
+              pushAI(['请回复 1 到 5 之间的数字哦。'], 500);
+              return;
+            }
+            qIndex.value++;
+            if (qIndex.value < enneagramQuestions.length) {
+              pushAI(['已记录，下一题。'], 500);
+              setTimeout(() => askQuestion(qIndex.value), 1300);
+            } else {
+              setTimeout(finishAssess, 900);
+            }
+          }
+        };
+
+        // ========== 提交 ==========
+        const submit = () => {
+          const t = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          submitRef.value = 'A' + t.getFullYear() + pad(t.getMonth() + 1) + pad(t.getDate()) + '-' + Math.floor(Math.random() * 9000 + 1000);
+          submitted.value = true;
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        const closeWindow = () => {
+          window.close();
+          // 非脚本打开的窗口 window.close 可能无效
+          setTimeout(() => {
+            ElMessage.info('如窗口未自动关闭，请手动关闭浏览器标签页');
+          }, 300);
+        };
+
+        // ========== 图标引用 ==========
+        const Promotion = ElementPlusIconsVue.Promotion;
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          if (type.value === 'ai') {
+            pushAI([
+              '您好，我是本次 AI 管理能力测评的对话助手。',
+              '接下来我会逐题给出一个管理情境，请结合您的真实做法回答，可以说明选择的选项与理由。答完后我会进入下一题。'
+            ], 500);
+            setTimeout(() => askQuestion(0), 1500);
+          } else {
+            pushAI([
+              '您好，这是九型人格测评。',
+              '我会逐条给出陈述，请按 1（完全不符合）到 5（完全符合）回复最符合您的程度。'
+            ], 500);
+            setTimeout(() => askQuestion(0), 1500);
+          }
+        });
+
+        return {
+          type, meta,
+          aiQuestions, enneagramQuestions,
+          messages, inputText, aiTyping, qIndex, finished, msgBox,
+          submitted, submitRef,
+          totalCount, answeredCount, progressPercent, inputPlaceholder,
+          send, submit, closeWindow,
+          Promotion
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

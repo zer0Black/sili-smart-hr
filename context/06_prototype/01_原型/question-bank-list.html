@@ -1,0 +1,2148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>题库管理 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      --table-header-bg: #fafafa;
+
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+
+      /* 审核态 */
+      --reject-bg: #fff1f0;
+      --reject-border: #ffccc7;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 20px 24px 24px;
+      overflow: auto;
+    }
+
+    .content-wrapper.review-mode {
+      padding-bottom: 96px;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 一级 Tab ========== */
+    .bank-tabs {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 4px 20px 0;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+    }
+    .bank-tabs .el-tabs__header {
+      margin-bottom: 0;
+    }
+    .bank-tabs .el-tabs__nav-wrap::after {
+      background-color: var(--border-color);
+    }
+    .tab-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+    }
+    .tab-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      border-radius: 10px;
+      background: #f0f0f0;
+      color: var(--text-regular);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .el-tabs__item.is-active .tab-count {
+      background: rgba(24, 144, 255, 0.12);
+      color: var(--primary-color);
+    }
+
+    /* ========== 待审核批次入口条 ========== */
+    .pending-entry {
+      background: linear-gradient(135deg, rgba(250, 173, 20, 0.10), rgba(250, 173, 20, 0.03));
+      border: 1px solid rgba(250, 173, 20, 0.35);
+      border-radius: var(--border-radius);
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .pending-entry + .pending-entry {
+      margin-top: -8px;
+    }
+    .pending-entry .pe-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: rgba(250, 173, 20, 0.15);
+      color: var(--warning-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .pending-entry .pe-info {
+      flex: 1;
+      min-width: 220px;
+    }
+    .pending-entry .pe-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .pending-entry .pe-count {
+      color: var(--warning-color);
+      font-weight: 700;
+      margin: 0 2px;
+    }
+    .pending-entry .pe-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 3px;
+    }
+    .pending-entry .pe-source-tag {
+      margin-left: 6px;
+    }
+
+    /* ========== 筛选区 ========== */
+    .filter-section {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 20px 24px 4px;
+      margin-bottom: 16px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .filter-section .el-form-item {
+      margin-bottom: 16px;
+    }
+
+    .filter-section .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    /* ========== 表格区 ========== */
+    .table-section {
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      padding: 20px 24px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .table-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .table-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .table-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 16px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .table-title .count-sub {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-secondary);
+    }
+
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .el-table td.el-table__cell,
+    .el-table th.el-table__cell {
+      padding: 10px 0;
+    }
+
+    .question-code {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .question-summary {
+      color: var(--text-regular);
+      line-height: 1.5;
+    }
+
+    .pagination-wrapper {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* ========== 审核态：返回条 ========== */
+    .review-topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .review-topbar .back-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--text-regular);
+      font-size: 14px;
+      padding: 6px 12px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+    .review-topbar .back-btn:hover {
+      background: rgba(0, 0, 0, 0.04);
+      color: var(--primary-color);
+    }
+    .review-topbar .review-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    /* ========== 审核态：批次信息卡 ========== */
+    .batch-focus {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 16px;
+      background: rgba(24, 144, 255, 0.05);
+      border: 1px solid rgba(24, 144, 255, 0.18);
+      border-radius: var(--border-radius);
+      font-size: 13px;
+      color: var(--text-regular);
+      line-height: 1.7;
+      margin-bottom: 16px;
+    }
+    .batch-focus.scale {
+      background: rgba(82, 196, 26, 0.05);
+      border-color: rgba(82, 196, 26, 0.2);
+    }
+    .batch-focus .el-icon {
+      color: var(--primary-color);
+      margin-top: 3px;
+      flex-shrink: 0;
+    }
+    .batch-focus.scale .el-icon {
+      color: var(--success-color);
+    }
+    .batch-focus strong {
+      color: var(--text-primary);
+    }
+
+    /* ========== 审核态：题目卡片 ========== */
+    .question-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      margin-bottom: 14px;
+      border: 1px solid var(--border-color);
+      transition: all 0.25s ease;
+      overflow: hidden;
+    }
+    .question-card:hover {
+      box-shadow: var(--card-shadow-hover);
+    }
+
+    .question-card::before {
+      content: '';
+      display: block;
+      height: 3px;
+      background: var(--success-color);
+    }
+
+    .question-card.rejected {
+      background: var(--reject-bg);
+      border-color: var(--reject-border);
+    }
+    .question-card.rejected::before {
+      background: var(--danger-color);
+    }
+
+    .qc-inner {
+      padding: 18px 22px;
+      display: flex;
+      gap: 20px;
+    }
+
+    .qc-main {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .qc-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .qc-code {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
+      color: var(--text-secondary);
+      background: #f5f5f5;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+    .question-card.rejected .qc-code {
+      background: rgba(255, 77, 79, 0.12);
+      color: var(--danger-color);
+    }
+
+    .qc-section {
+      margin-top: 8px;
+    }
+    .qc-section h4 {
+      font-size: 12px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 4px;
+      letter-spacing: 0.3px;
+    }
+    .qc-section p {
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    .qc-action {
+      width: 200px;
+      flex-shrink: 0;
+      border-left: 1px dashed var(--border-color-split);
+      padding-left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .qc-action-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .qc-mark-btn {
+      width: 100%;
+    }
+    .reject-reason {
+      margin-top: 4px;
+    }
+    .reject-quick {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .pass-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 12px;
+      background: rgba(82, 196, 26, 0.1);
+      color: var(--success-color);
+      font-weight: 500;
+    }
+
+    /* ========== 底部固定操作栏 ========== */
+    .action-bar {
+      position: sticky;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid var(--border-color-split);
+      box-shadow: 0 -2px 12px rgba(0, 21, 41, 0.08);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      z-index: 5;
+    }
+    .action-stat {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 14px;
+      color: var(--text-regular);
+    }
+    .action-stat .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .action-stat .num {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .action-stat .num.total { color: var(--text-primary); }
+    .action-stat .num.reject { color: var(--danger-color); }
+    .action-stat .num.pass { color: var(--success-color); }
+    .action-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ========== 完成态结果卡 ========== */
+    .done-wrap {
+      max-width: 640px;
+      margin: 40px auto 0;
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      padding: 24px;
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button--danger {
+      --el-button-bg-color: var(--danger-color);
+      --el-button-border-color: var(--danger-color);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 弹框 ========== */
+    .el-dialog {
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .el-dialog__header {
+      padding: 16px 24px;
+      border-bottom: 1px solid #f0f0f0;
+      margin-right: 0;
+    }
+
+    .el-dialog__title {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .el-dialog__body {
+      padding: 24px;
+    }
+
+    .el-dialog__footer {
+      padding: 12px 24px;
+      border-top: 1px solid #f0f0f0;
+    }
+
+    .dialog-form .el-form-item {
+      margin-bottom: 20px;
+    }
+
+    .dialog-form .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    /* 查看弹窗题目正文块 */
+    .question-body {
+      background: #fafafa;
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius);
+      padding: 16px 18px;
+      margin-top: 8px;
+    }
+
+    .question-body h4 {
+      font-size: 13px;
+      color: var(--text-secondary);
+      font-weight: 500;
+      margin-bottom: 6px;
+      letter-spacing: 0.3px;
+    }
+
+    .question-body p {
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.75;
+      white-space: pre-wrap;
+    }
+
+    .question-body + .question-body {
+      margin-top: 14px;
+    }
+
+    /* 引入量表弹窗步骤描述 */
+    .scale-intro {
+      background: linear-gradient(135deg, rgba(24,144,255,0.06), rgba(82,196,26,0.06));
+      border: 1px solid rgba(24, 144, 255, 0.15);
+      border-radius: var(--border-radius);
+      padding: 14px 16px;
+      font-size: 13px;
+      color: var(--text-regular);
+      line-height: 1.7;
+      margin-bottom: 20px;
+    }
+
+    .scale-preview-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px dashed var(--border-color);
+      font-size: 13px;
+    }
+
+    .scale-preview-row:last-child {
+      border-bottom: none;
+    }
+
+    .scale-preview-row .label {
+      color: var(--text-secondary);
+    }
+
+    .scale-preview-row .value {
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .filter-section .el-form-item {
+        margin-bottom: 12px;
+      }
+
+      .content-wrapper {
+        padding: 16px;
+      }
+
+      .qc-inner {
+        flex-direction: column;
+      }
+
+      .qc-action {
+        width: 100%;
+        border-left: none;
+        border-top: 1px dashed var(--border-color-split);
+        padding-left: 0;
+        padding-top: 14px;
+      }
+
+      .action-bar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .action-bar-right {
+        justify-content: flex-end;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>能力模型</el-breadcrumb-item>
+            <el-breadcrumb-item>题库管理</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div :class="['content-wrapper', { 'review-mode': reviewMode }]">
+        <!-- ========== 审核态：逐题过目 ========== -->
+        <template v-if="reviewMode && !reviewDone">
+          <div class="review-topbar">
+            <span class="back-btn" @click="exitReview">
+              <el-icon><ArrowLeft></ArrowLeft></el-icon>返回题库
+            </span>
+            <span class="review-title">
+              <el-tag :type="currentBatch.source === 'ai' ? '' : 'success'" effect="plain" size="small">
+                {{ currentBatch.source === 'ai' ? 'AI 管理题' : '九型量表' }}
+              </el-tag>
+              {{ currentBatch.title }}
+            </span>
+          </div>
+
+          <div class="batch-focus" :class="{ scale: currentBatch.source === 'scale' }">
+            <el-icon :size="16"><InfoFilled></InfoFilled></el-icon>
+            <div>
+              <span v-if="currentBatch.source === 'ai'">本批为 LLM 动态生成的 AI 管理能力题，审核重点为情境合理性、子能力命中度与潜在偏见（性别、年龄、地域），对不合适题目标记驳回，未标记题默认通过入库。</span>
+              <span v-else>本批为引入的标准九型人格量表，AI 仅做型别判定不重写文本，审核重点为本公司业务场景适用性与表述歧义，对不适用题项标记驳回。</span>
+            </div>
+          </div>
+
+          <div class="question-card" v-for="q in currentBatch.questions" :key="q.id" :class="{ rejected: q.rejected }">
+            <div class="qc-inner">
+              <div class="qc-main">
+                <div class="qc-head">
+                  <span class="qc-code">{{ q.code }}</span>
+                  <el-tag v-if="q.dimension" size="small" effect="plain">{{ q.dimension }}</el-tag>
+                  <el-tag v-if="currentBatch.source === 'scale'" size="small" type="info" effect="plain">Likert 5 级</el-tag>
+                  <span class="pass-badge" v-if="!q.rejected">
+                    <el-icon><Check></Check></el-icon>默认通过
+                  </span>
+                  <el-tag v-else type="danger" size="small" effect="dark">已标记驳回</el-tag>
+                </div>
+
+                <div class="qc-section">
+                  <h4>{{ currentBatch.source === 'scale' ? '题项陈述' : '情境描述' }}</h4>
+                  <p>{{ q.scenario }}</p>
+                </div>
+                <div class="qc-section">
+                  <h4>{{ currentBatch.source === 'scale' ? '作答方式' : '作答要求' }}</h4>
+                  <p style="white-space: pre-line;">{{ q.task }}</p>
+                </div>
+                <div class="qc-section" v-if="q.rubric">
+                  <h4>{{ currentBatch.source === 'scale' ? '计分键' : '考察点' }}</h4>
+                  <p>{{ q.rubric }}</p>
+                </div>
+              </div>
+
+              <div class="qc-action">
+                <div class="qc-action-label">人工标记</div>
+                <el-button
+                  class="qc-mark-btn"
+                  :type="q.rejected ? 'danger' : 'default'"
+                  :plain="!q.rejected"
+                  @click="toggleReject(q)"
+                >
+                  <el-icon><component :is="q.rejected ? 'CircleClose' : 'Check'"></component></el-icon>
+                  {{ q.rejected ? '取消标记' : '标记驳回' }}
+                </el-button>
+
+                <div v-if="q.rejected" class="reject-reason">
+                  <el-input
+                    v-model="q.reason"
+                    type="textarea"
+                    :rows="3"
+                    placeholder="请填写驳回原因（入库记录会保留）"
+                  ></el-input>
+                  <div class="reject-quick">
+                    <el-button
+                      v-for="r in quickReasons(currentBatch.source)"
+                      :key="r"
+                      size="small"
+                      @click="q.reason = r"
+                    >{{ r }}</el-button>
+                  </div>
+                </div>
+                <div v-else style="font-size: 12px; color: var(--text-secondary); line-height: 1.6;">
+                  未标记即默认通过，无需逐题点击。
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ========== 审核完成态 ========== -->
+        <div class="done-wrap" v-else-if="reviewMode && reviewDone">
+          <el-result icon="success" :title="'已确认本批 ' + currentBatch.total + ' 题'" :sub-title="doneSubTitle">
+            <template #extra>
+              <el-button type="primary" @click="finishReview">
+                <el-icon><FolderOpened></FolderOpened></el-icon>查看入库结果
+              </el-button>
+            </template>
+          </el-result>
+        </div>
+
+        <!-- ========== 题库管理态 ========== -->
+        <template v-else>
+          <!-- 一级 Tab：AI 管理题 / 九型人格量表 -->
+          <div class="bank-tabs">
+            <el-tabs v-model="activeTab" @tab-change="onTabChange">
+              <el-tab-pane name="ai">
+                <template #label>
+                  <span class="tab-label">AI 管理题<span class="tab-count">{{ aiBank.length }}</span></span>
+                </template>
+              </el-tab-pane>
+              <el-tab-pane name="scale">
+                <template #label>
+                  <span class="tab-label">九型人格量表<span class="tab-count">{{ scaleBank.length }}</span></span>
+                </template>
+              </el-tab-pane>
+            </el-tabs>
+          </div>
+
+          <!-- 待审核批次入口（条件渲染） -->
+          <div class="pending-entry" v-for="b in pendingBatches" :key="b.id">
+            <div class="pe-icon"><el-icon :size="20"><WarningFilled></WarningFilled></el-icon></div>
+            <div class="pe-info">
+              <div class="pe-title">
+                待审核：{{ b.title }}
+                <span class="pe-count">{{ b.total }}</span>题
+                <el-tag class="pe-source-tag" :type="b.source === 'ai' ? '' : 'success'" effect="plain" size="small">
+                  {{ b.source === 'ai' ? 'AI 管理题' : '九型量表' }}
+                </el-tag>
+              </div>
+              <div class="pe-meta">批次号 {{ b.code }} · 生成时间 {{ b.createdAt }} · 未标记题默认通过入库</div>
+            </div>
+            <el-button type="warning" @click="startReview(b)">
+              <el-icon><Document></Document></el-icon>开始审核
+            </el-button>
+          </div>
+
+          <!-- 筛选区 -->
+          <div class="filter-section">
+            <!-- AI 管理题筛选 -->
+            <el-form v-if="activeTab === 'ai'" :inline="true" :model="aiFilter">
+              <el-form-item label="子能力维度">
+                <el-select v-model="aiFilter.dimension" placeholder="全部维度" clearable style="width: 170px;">
+                  <el-option v-for="d in dimensionOptions" :key="d" :label="d" :value="d"></el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="状态">
+                <el-select v-model="aiFilter.status" placeholder="全部状态" clearable style="width: 130px;">
+                  <el-option label="启用" value="启用"></el-option>
+                  <el-option label="已驳回" value="已驳回"></el-option>
+                  <el-option label="已停用" value="已停用"></el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="关键词">
+                <el-input v-model="aiFilter.keyword" placeholder="题目编号/内容关键词" clearable style="width: 200px;" @keyup.enter="handleSearch"></el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleSearch">
+                  <el-icon><Search></Search></el-icon>查询
+                </el-button>
+                <el-button @click="handleReset">
+                  <el-icon><Refresh></Refresh></el-icon>重置
+                </el-button>
+              </el-form-item>
+            </el-form>
+
+            <!-- 九型量表筛选 -->
+            <el-form v-else :inline="true" :model="scaleFilter">
+              <el-form-item label="状态">
+                <el-select v-model="scaleFilter.status" placeholder="全部状态" clearable style="width: 130px;">
+                  <el-option label="启用" value="启用"></el-option>
+                  <el-option label="已驳回" value="已驳回"></el-option>
+                  <el-option label="已停用" value="已停用"></el-option>
+                </el-select>
+              </el-form-item>
+              <el-form-item label="关键词">
+                <el-input v-model="scaleFilter.keyword" placeholder="题项编号/内容关键词" clearable style="width: 220px;" @keyup.enter="handleSearch"></el-input>
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" @click="handleSearch">
+                  <el-icon><Search></Search></el-icon>查询
+                </el-button>
+                <el-button @click="handleReset">
+                  <el-icon><Refresh></Refresh></el-icon>重置
+                </el-button>
+              </el-form-item>
+            </el-form>
+          </div>
+
+          <!-- 表格区 -->
+          <div class="table-section">
+            <div class="table-header">
+              <span class="table-title">
+                {{ activeTab === 'ai' ? 'AI 管理题库' : '九型人格量表' }}
+                <span class="count-sub">共 {{ activeTab === 'ai' ? aiPagination.total : scalePagination.total }} 题</span>
+              </span>
+              <div>
+                <el-button v-if="activeTab === 'ai'" type="primary" @click="go('question-generate-form.html')">
+                  <el-icon><MagicStick></MagicStick></el-icon>生成 AI 管理题
+                </el-button>
+                <el-button v-if="activeTab === 'scale'" @click="openScaleDialog">
+                  <el-icon><Download></Download></el-icon>引入九型量表
+                </el-button>
+              </div>
+            </div>
+
+            <!-- AI 管理题表格 -->
+            <el-table v-if="activeTab === 'ai'" :data="aiTableData" stripe border style="width: 100%" v-loading="loading" table-layout="auto">
+              <el-table-column prop="code" label="题目编号" width="140">
+                <template #default="{ row }">
+                  <span class="question-code">{{ row.code }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="summary" label="题目内容摘要" min-width="240" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="question-summary">{{ row.summary }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="dimension" label="所属维度" width="140" align="center"></el-table-column>
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="statusTagType(row.status)" size="small">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="storedAt" label="入库时间" width="150" align="center" sortable></el-table-column>
+              <el-table-column prop="usedCount" label="使用次数" width="90" align="center"></el-table-column>
+              <el-table-column label="操作" width="220" align="center" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="handleView(row)">
+                    <el-icon><View></View></el-icon>查看
+                  </el-button>
+                  <el-button type="warning" link size="small" @click="handleEdit(row)">
+                    <el-icon><Edit></Edit></el-icon>编辑
+                  </el-button>
+                  <el-popconfirm
+                    v-if="row.status === '启用'"
+                    :title="'停用后题目不再参与测评，确定停用 ' + row.code + ' 吗？'"
+                    confirm-button-text="停用"
+                    cancel-button-text="取消"
+                    @confirm="handleOffline(row)"
+                  >
+                    <template #reference>
+                      <el-button type="danger" link size="small">
+                        <el-icon><SoldOut></SoldOut></el-icon>停用
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
+                  <el-button v-if="row.status === '已停用'" type="success" link size="small" @click="handleOnline(row)">
+                    <el-icon><Sell></Sell></el-icon>启用
+                  </el-button>
+                  <el-button v-if="row.status === '已驳回'" type="primary" link size="small" @click="handleResubmit(row)">
+                    <el-icon><RefreshRight></RefreshRight></el-icon>重新提交
+                  </el-button>
+                  <el-popconfirm
+                    v-if="row.status !== '启用'"
+                    :title="'删除后题目将从题库永久移除且无法恢复，确定删除 ' + row.code + ' 吗？'"
+                    confirm-button-text="删除"
+                    cancel-button-text="取消"
+                    @confirm="handleDelete(row)"
+                  >
+                    <template #reference>
+                      <el-button type="danger" link size="small">
+                        <el-icon><Delete></Delete></el-icon>删除
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <!-- 九型量表表格 -->
+            <el-table v-else :data="scaleTableData" stripe border style="width: 100%" v-loading="loading" table-layout="auto">
+              <el-table-column prop="code" label="题项编号" width="150">
+                <template #default="{ row }">
+                  <span class="question-code">{{ row.code }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="summary" label="题项陈述" min-width="300" show-overflow-tooltip>
+                <template #default="{ row }">
+                  <span class="question-summary">{{ row.summary }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="tendency" label="计分倾向" width="120" align="center">
+                <template #default="{ row }">
+                  <el-tag size="small" type="info" effect="plain">{{ row.tendency }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="作答方式" width="110" align="center">
+                <template #default>
+                  <span style="color: var(--text-secondary); font-size: 13px;">Likert 5 级</span>
+                </template>
+              </el-table-column>
+              <el-table-column prop="status" label="状态" width="100" align="center">
+                <template #default="{ row }">
+                  <el-tag :type="statusTagType(row.status)" size="small">{{ row.status }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="storedAt" label="入库时间" width="150" align="center" sortable></el-table-column>
+              <el-table-column prop="usedCount" label="使用次数" width="90" align="center"></el-table-column>
+              <el-table-column label="操作" width="190" align="center" fixed="right">
+                <template #default="{ row }">
+                  <el-button type="primary" link size="small" @click="handleView(row)">
+                    <el-icon><View></View></el-icon>查看
+                  </el-button>
+                  <el-popconfirm
+                    v-if="row.status === '启用'"
+                    :title="'停用后题项不再参与测评，确定停用 ' + row.code + ' 吗？'"
+                    confirm-button-text="停用"
+                    cancel-button-text="取消"
+                    @confirm="handleOffline(row)"
+                  >
+                    <template #reference>
+                      <el-button type="danger" link size="small">
+                        <el-icon><SoldOut></SoldOut></el-icon>停用
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
+                  <el-button v-if="row.status === '已停用'" type="success" link size="small" @click="handleOnline(row)">
+                    <el-icon><Sell></Sell></el-icon>启用
+                  </el-button>
+                  <el-button v-if="row.status === '已驳回'" type="primary" link size="small" @click="handleResubmit(row)">
+                    <el-icon><RefreshRight></RefreshRight></el-icon>重新提交
+                  </el-button>
+                  <el-popconfirm
+                    v-if="row.status !== '启用'"
+                    :title="'删除后题项将从题库永久移除且无法恢复，确定删除 ' + row.code + ' 吗？'"
+                    confirm-button-text="删除"
+                    cancel-button-text="取消"
+                    @confirm="handleDelete(row)"
+                  >
+                    <template #reference>
+                      <el-button type="danger" link size="small">
+                        <el-icon><Delete></Delete></el-icon>删除
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div class="pagination-wrapper">
+              <el-pagination
+                v-model:current-page="currentPagination.currentPage"
+                v-model:page-size="currentPagination.pageSize"
+                :page-sizes="[10, 20, 50]"
+                :total="currentPagination.total"
+                layout="total, sizes, prev, pager, next, jumper"
+                @size-change="handleSizeChange"
+                @current-change="handlePageChange"
+              ></el-pagination>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- 底部固定操作栏（仅审核态） -->
+      <div class="action-bar" v-if="reviewMode && !reviewDone">
+        <div class="action-stat">
+          <div class="stat-item">
+            <span>本批共</span>
+            <span class="num total">{{ currentBatch.total }}</span>
+            <span>题</span>
+          </div>
+          <div class="stat-item">
+            <span>已标记驳回</span>
+            <span class="num reject">{{ rejectCount }}</span>
+            <span>题</span>
+          </div>
+          <div class="stat-item">
+            <span>将默认入库</span>
+            <span class="num pass">{{ passCount }}</span>
+            <span>题</span>
+          </div>
+        </div>
+        <div class="action-bar-right">
+          <el-button @click="markAllPass">全部不标（默认通过）</el-button>
+          <el-button type="primary" size="large" @click="confirmImport">
+            <el-icon><DocumentChecked></DocumentChecked></el-icon>确认入库
+          </el-button>
+        </div>
+      </div>
+    </main>
+
+    <!-- 查看弹窗 -->
+    <el-dialog v-model="viewDialogVisible" title="题目详情" width="680px">
+      <template v-if="viewData">
+        <el-descriptions :column="2" border size="small">
+          <el-descriptions-item label="题目编号">{{ viewData.code }}</el-descriptions-item>
+          <el-descriptions-item label="来源">
+            <el-tag :type="viewData.source === 'ai' ? '' : 'success'" effect="plain" size="small">
+              {{ viewData.source === 'ai' ? 'AI 管理题' : '九型量表' }}
+            </el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item v-if="viewData.source === 'ai'" label="所属维度">{{ viewData.dimension }}</el-descriptions-item>
+          <el-descriptions-item v-if="viewData.source === 'scale'" label="计分倾向">{{ viewData.tendency }}</el-descriptions-item>
+          <el-descriptions-item v-if="viewData.source === 'scale'" label="作答方式">Likert 5 级</el-descriptions-item>
+          <el-descriptions-item label="状态">
+            <el-tag :type="statusTagType(viewData.status)" size="small">{{ viewData.status }}</el-tag>
+          </el-descriptions-item>
+          <el-descriptions-item label="入库时间">{{ viewData.storedAt }}</el-descriptions-item>
+          <el-descriptions-item label="使用次数">{{ viewData.usedCount }} 次</el-descriptions-item>
+        </el-descriptions>
+
+        <div class="question-body">
+          <h4>{{ viewData.source === 'scale' ? '题项陈述' : '情境描述' }}</h4>
+          <p>{{ viewData.scenario }}</p>
+        </div>
+        <div class="question-body">
+          <h4>{{ viewData.source === 'scale' ? '作答方式' : '作答要求' }}</h4>
+          <p style="white-space: pre-line;">{{ viewData.task }}</p>
+        </div>
+        <div class="question-body" v-if="viewData.rubric">
+          <h4>{{ viewData.source === 'scale' ? '计分键' : '考察点' }}</h4>
+          <p>{{ viewData.rubric }}</p>
+        </div>
+        <div class="question-body" v-if="viewData.source === 'scale' && viewData.status === '已驳回' && viewData.reason">
+          <h4>驳回原因</h4>
+          <p>{{ viewData.reason }}</p>
+        </div>
+      </template>
+      <template #footer>
+        <el-button @click="viewDialogVisible = false">关闭</el-button>
+        <el-button type="primary" @click="goEditFromView" v-if="viewData && viewData.source === 'ai'">编辑</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑弹窗（仅 AI 题） -->
+    <el-dialog v-model="editDialogVisible" :title="'编辑题目 · ' + (editForm.code || '')" width="640px" :close-on-click-modal="false" destroy-on-close>
+      <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="100px" class="dialog-form">
+        <el-form-item label="题目内容" prop="summary">
+          <el-input v-model="editForm.summary" type="textarea" :rows="3" placeholder="题目内容摘要" maxlength="120" show-word-limit></el-input>
+        </el-form-item>
+        <el-form-item label="所属维度" prop="dimension">
+          <el-select v-model="editForm.dimension" placeholder="选择维度" style="width: 100%;">
+            <el-option v-for="d in dimensionOptions" :key="d" :label="d" :value="d"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="情境描述" prop="scenario">
+          <el-input v-model="editForm.scenario" type="textarea" :rows="4" placeholder="完整的情境描述"></el-input>
+        </el-form-item>
+        <el-form-item label="作答要求" prop="task">
+          <el-input v-model="editForm.task" type="textarea" :rows="6" placeholder="作答要求；若是选择题，请把可选选项写在此处，如 A… B… C… D…"></el-input>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="handleSubmitEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 引入九型量表弹窗 -->
+    <el-dialog v-model="scaleDialogVisible" title="引入九型量表" width="560px" :close-on-click-modal="false" destroy-on-close>
+      <el-steps :active="scaleStep" finish-status="success" align-center style="margin-bottom: 24px;">
+        <el-step title="选择量表"></el-step>
+        <el-step title="确认预览"></el-step>
+        <el-step title="进入审核"></el-step>
+      </el-steps>
+
+      <div v-if="scaleStep === 0">
+        <div class="scale-intro">
+          九型人格采用标准量表作为固定题库，AI 仅做型别判定。引入后题量较大，会形成一个独立审核批次，按本公司适用性逐题过目，未标记题默认通过入库。
+        </div>
+        <el-radio-group v-model="scaleChoice" style="display: flex; flex-direction: column; gap: 12px;">
+          <el-radio value="rhpi">
+            <div style="display: inline-block; margin-left: 4px;">
+              <div style="font-weight: 500; color: var(--text-primary);">Riso-Hudson 标准量表（144 题）</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">主流九型量表，覆盖 9 型倾向分布，作答时长约 25 分钟</div>
+            </div>
+          </el-radio>
+          <el-radio value="essence">
+            <div style="display: inline-block; margin-left: 4px;">
+              <div style="font-weight: 500; color: var(--text-primary);">Essence 精简量表（108 题）</div>
+              <div style="font-size: 12px; color: var(--text-secondary);">缩短版本，适合时间紧张场景，作答时长约 18 分钟</div>
+            </div>
+          </el-radio>
+        </el-radio-group>
+      </div>
+
+      <div v-if="scaleStep === 1">
+        <div class="scale-preview-row"><span class="label">量表来源</span><span class="value">{{ scaleChoice === 'rhpi' ? 'Riso-Hudson 标准量表' : 'Essence 精简量表' }}</span></div>
+        <div class="scale-preview-row"><span class="label">题目数量</span><span class="value">{{ scaleChoice === 'rhpi' ? '144 题' : '108 题' }}</span></div>
+        <div class="scale-preview-row"><span class="label">计分方式</span><span class="value">Likert 5 级，9 型倾向聚合</span></div>
+        <div class="scale-preview-row"><span class="label">预估作答</span><span class="value">{{ scaleChoice === 'rhpi' ? '约 25 分钟' : '约 18 分钟' }}</span></div>
+        <div class="scale-preview-row"><span class="label">审核批次</span><span class="value">独立成批，不与 AI 管理题混审</span></div>
+        <el-alert style="margin-top: 16px;" type="info" :closable="false" show-icon>
+          <template #title>引入后将生成审核批次 {{ '#S' + todayTag }}，确认后直接进入量表逐题审核。</template>
+        </el-alert>
+      </div>
+
+      <div v-if="scaleStep === 2">
+        <el-result icon="success" title="量表已引入" sub-title="已生成独立审核批次，即将进入量表审核">
+          <template #extra>
+            <el-button type="primary" @click="enterScaleReview">进入审核</el-button>
+            <el-button @click="scaleDialogVisible = false">稍后审核</el-button>
+          </template>
+        </el-result>
+      </div>
+
+      <template #footer v-if="scaleStep < 2">
+        <el-button @click="scaleDialogVisible = false" v-if="scaleStep === 0">取消</el-button>
+        <el-button v-if="scaleStep === 1" @click="scaleStep = 0">上一步</el-button>
+        <el-button type="primary" @click="nextScaleStep" :disabled="!scaleChoice">
+          {{ scaleStep === 0 ? '下一步' : '确认引入' }}
+        </el-button>
+      </template>
+    </el-dialog>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单（能力模型组已合并为题库管理一项） ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['model'];
+        const activeMenu = ref('question-bank-list');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠与顶栏 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else if (command === 'profile') {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== Tab 与维度选项 ==========
+        const activeTab = ref('ai');
+        const dimensionOptions = [
+          '目标设定与对齐', '授权与分工', '监督与验收', '风险与担责', '人机协作设计'
+        ];
+
+        // ========== 已入库题库数据（不含待审核） ==========
+        const aiBank = ref([
+          {
+            id: 1, code: 'Q-AG-0001', source: 'ai', dimension: '目标设定与对齐',            status: '启用', storedAt: '2026-07-21 10:24', usedCount: 38,
+            summary: '下属使用 AI 工具完成季度规划，目标拆解粒度与对齐不足，作为上级应如何介入',
+            scenario: '你的下属小林第一次用 AI 工具辅助撰写季度规划，初稿目标大多停留在方向层面，缺少可衡量的指标与对齐节点。她希望你在本周五前给出反馈。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 直接替小林把目标改写成可衡量指标，周五交还给她\nB. 给小林一份可衡量性自检清单，让她先自改再约周五对齐\nC. 周五面谈逐条对齐，并约定双周复盘节奏与兜底验收点\nD. 先不干预，等季度中复盘再看目标是否落地',
+            rubric: '是否识别出可衡量性缺失、是否给出对齐节奏（如双周复盘）、是否设定兜底验收点。'
+          },
+          {
+            id: 2, code: 'Q-AG-0002', source: 'ai', dimension: '授权与分工',            status: '启用', storedAt: '2026-07-21 10:31', usedCount: 25,
+            summary: 'AI 自动生成了任务分解草案，需判断授权边界并完成人机分工调整',
+            scenario: 'AI 给出了一份 12 人团队两周任务分解草案，其中 3 项关键决策被直接下放给了 AI 协作节点，未经过人工确认。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 全盘采纳 AI 草案，信任其分工逻辑以提高效率\nB. 仅收回那 3 项关键决策到人工确认，其余维持 AI 分工\nC. 推翻 AI 草案，全部任务由人工重新分配\nD. 保留草案，但把所有决策点都改成人工确认',
+            rubric: '识别高风险决策点、给出人机分工原则、保留必要审批节点。'
+          },
+          {
+            id: 4, code: 'Q-AG-0004', source: 'ai', dimension: '风险与担责',            status: '已驳回', storedAt: '2026-07-30 14:50', usedCount: 0,
+            summary: 'AI 辅助决策导致对外承诺超出授权，需判断担责主体与处置方式',
+            scenario: 'AI 助手依据历史报价自动向客户承诺了一项超出你授权范围的折扣，客户已口头确认。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 客户已确认，按承诺执行，内部事后通报\nB. 暂停承诺，向上级报备，与客户沟通修正并回溯 AI 决策边界\nC. 让 AI 助手自行承担后果，不介入\nD. 自掏差价补齐，避免客户不满，不上报',
+            rubric: '风险定级准确、担责边界清晰、客户沟通与内部回溯双线处理。'
+          },
+          {
+            id: 5, code: 'Q-AG-0005', source: 'ai', dimension: '人机协作设计',            status: '已停用', storedAt: '2026-06-18 11:20', usedCount: 12,
+            summary: '设计一套人机协作流程，处理客户工单分级与 AI 自动回复的衔接',
+            scenario: '部门日均工单 300 条，你计划引入 AI 自动处理一级工单，人工保留二级及以上。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 让 AI 处理全部工单，人工只做抽查\nB. AI 处理一级工单，设定人工接管触发条件与 AI 自学习回流点\nC. 全部人工处理，暂不引入 AI 以确保质量\nD. AI 处理工单但不设回流，出错由人工兜底补救',
+            rubric: '分级合理、接管条件清晰、回流机制可执行。'
+          },
+          {
+            id: 6, code: 'Q-AG-0006', source: 'ai', dimension: '目标设定与对齐',            status: '启用', storedAt: '2026-07-22 16:05', usedCount: 19,
+            summary: '跨部门目标冲突时，如何在 AI 提供的多套对齐方案中做取舍',
+            scenario: 'AI 给出三套跨部门目标对齐方案，分别侧重成本、速度、质量，三部门各执一词。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 由你直接拍板选成本方案，要求各部门执行\nB. 引入可量化判据（战略权重、风险敞口）综合权衡，向团队说明取舍逻辑\nC. 让三部门投票，少数服从多数\nD. 维持现状，暂不对齐，避免冲突',
+            rubric: '判据可量化、权衡逻辑清晰、解释具备说服力。'
+          },
+          {
+            id: 10, code: 'Q-AG-0007', source: 'ai', dimension: '授权与分工',            status: '启用', storedAt: '2026-07-24 13:40', usedCount: 22,
+            summary: '新人首次使用 AI 工具，如何在授权与可控之间找到平衡',
+            scenario: '团队新成员小吴第一次独立使用 AI 工具完成客户分析，你需要在授权范围与可控节点之间找到平衡。',
+            task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 给小吴完整权限，信任其自主完成以培养独立性\nB. 授予有限权限边界，高风险节点设人工确认，一周内抽查\nC. 不授权，全程由你盯着小吴操作\nD. 授权但不抽查，等出问题再说',
+            rubric: '权限分层合理、确认点落在高风险节点、抽查可执行。'
+          }
+        ]);
+
+        const scaleBank = ref([
+          {
+            id: 102, code: 'Q-Scale-0102', source: 'scale', dimension: '九型人格', tendency: '主动理清型',
+            status: '启用', storedAt: '2026-05-10 09:00', usedCount: 326,
+            summary: '面对突发任务时，我倾向于先理清优先级再行动（Likert 5 级）',
+            scenario: '题项陈述：面对突发任务时，我倾向于先理清优先级再行动。',
+            task: '请在 1（非常不符合）到 5（非常符合）之间选择最符合你的选项。',
+            rubric: '按标准量表计分键聚合到对应型别，AI 仅做型别判定，不重写量表文本。'
+          },
+          {
+            id: 104, code: 'Q-Scale-0104', source: 'scale', dimension: '九型人格', tendency: '调停型',
+            status: '已停用', storedAt: '2026-03-12 14:00', usedCount: 84,
+            summary: '在团队冲突中，我习惯居中调停并寻找折中方案（Likert 5 级）',
+            scenario: '题项陈述：在团队冲突中，我习惯居中调停并寻找折中方案。',
+            task: '请在 1 到 5 之间选择最符合你的选项。',
+            rubric: '聚合至调停型倾向，本公司部分场景适用性偏低，已停用。'
+          },
+          {
+            id: 105, code: 'Q-Scale-0105', source: 'scale', dimension: '九型人格', tendency: '规则型',
+            status: '启用', storedAt: '2026-05-10 09:05', usedCount: 318,
+            summary: '我倾向于把规则与流程看得比灵活应变更重要（Likert 5 级）',
+            scenario: '题项陈述：我倾向于把规则与流程看得比灵活应变更重要。',
+            task: '请在 1 到 5 之间选择最符合你的选项。',
+            rubric: '聚合至规则型倾向，参考性输出，不进入硬性聚合。'
+          },
+          {
+            id: 106, code: 'Q-Scale-0106', source: 'scale', dimension: '九型人格', tendency: '独立型',
+            status: '启用', storedAt: '2026-05-10 09:08', usedCount: 301,
+            summary: '在压力下，我更愿意独自承担而非寻求他人支持（Likert 5 级）',
+            scenario: '题项陈述：在压力下，我更愿意独自承担而非寻求他人支持。',
+            task: '请在 1 到 5 之间选择最符合你的选项。',
+            rubric: '聚合至独立型倾向，参考性输出。'
+          }
+        ]);
+
+        // ========== 待审核批次 ==========
+        const aiBatches = reactive([
+          {
+            id: 'G20260807-01', code: '#G20260807-01', source: 'ai',
+            title: 'AI 管理题批次 #G20260807-01', total: 8, createdAt: '2026-08-07 09:02',
+            questions: [
+              { id: 'a1', code: 'Q-AG-0101', dimension: '目标设定与对齐',                scenario: '你的下属小林第一次用 AI 工具辅助撰写季度规划，初稿目标停留在方向层面，缺少可衡量指标与对齐节点，她希望你在周五前给出反馈。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 替小林改写目标，周五交还给她\nB. 给可衡量性自检清单，让其自改后周五对齐\nC. 周五面谈逐条对齐，约定双周复盘与兜底验收点\nD. 暂不干预，等季度中再看',
+                rubric: '识别可衡量性缺失、给出对齐节奏（如双周复盘）、设定兜底验收点。',
+                rejected: false, reason: '' },
+              { id: 'a2', code: 'Q-AG-0102', dimension: '授权与分工',                scenario: 'AI 给出了一份 12 人团队两周任务分解草案，其中 3 项关键决策被直接下放给 AI 协作节点，未经过人工确认。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 全盘采纳 AI 草案，信任其分工逻辑\nB. 收回那 3 项关键决策到人工确认，其余维持 AI 分工\nC. 推翻草案，全部任务人工重排\nD. 所有决策点都改人工确认，不论风险大小',
+                rubric: '识别高风险决策点、给出人机分工原则、保留必要审批节点。',
+                rejected: false, reason: '' },
+              { id: 'a3', code: 'Q-AG-0103', dimension: '监督与验收',                scenario: '团队连续两周使用 AI 生成周报，你发现其中数据口径前后不一致且引用来源混杂。本题情境为某互联网广告销售场景。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 信任 AI 周报，直接转发使用\nB. 建立验收清单（口径、来源、抽查、纠错回流）并每周抽检\nC. 停用 AI 周报，全部改回人工撰写\nD. 偶尔抽查一次，不建立固定机制',
+                rubric: '覆盖口径一致性、来源标注、抽查频率、纠错回流。',
+                rejected: true, reason: '情境仅绑定互联网广告销售，本公司主营 ToB 制造业，场景迁移性差，建议退回重新生成通用场景版本。' },
+              { id: 'a4', code: 'Q-AG-0104', dimension: '风险与担责',                scenario: 'AI 助手依据历史报价自动向客户承诺了一项超出你授权范围的折扣，客户已口头确认。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 按承诺执行，事后通报\nB. 暂停承诺，上报风险，与客户沟通修正并回溯 AI 边界\nC. 让 AI 自行承担后果，不介入\nD. 自掏差价补齐，不上报',
+                rubric: '风险定级准确、担责边界清晰、客户沟通与内部回溯双线处理。',
+                rejected: false, reason: '' },
+              { id: 'a5', code: 'Q-AG-0105', dimension: '人机协作设计',                scenario: '部门日均工单 300 条，计划引入 AI 自动处理一级工单，人工保留二级及以上。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. AI 处理全部工单，人工只抽查\nB. AI 处理一级工单，设人工接管触发条件与自学习回流点\nC. 全人工处理，暂不引入 AI\nD. AI 处理但不设回流，出错人工兜底',
+                rubric: '分级合理、接管条件清晰、回流机制可执行。',
+                rejected: false, reason: '' },
+              { id: 'a6', code: 'Q-AG-0106', dimension: '目标设定与对齐',                scenario: '一位刚休完产假回归的女员工小王希望调整本季度目标，AI 给出的建议方案是降低其关键客户数指标并安排辅助岗。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 采纳 AI 建议，降低小王客户数指标并配辅助岗\nB. 先与小王沟通真实意愿与能力，按个人情况调整，警惕隐性降标\nC. 拒绝调整请求，要求其与原指标一致\nD. 直接上调小王指标，证明一视同仁',
+                rubric: '识别潜在性别偏见、尊重员工自主选择、避免隐性歧视性降标。',
+                rejected: true, reason: 'AI 建议存在明显性别与生育偏见（默认降标），情境设计本身可能在测评中诱导偏见回答，建议退回并加入反偏见约束。' },
+              { id: 'a7', code: 'Q-AG-0107', dimension: '授权与分工',                scenario: '团队新成员小吴首次独立使用 AI 工具完成客户分析，你需要在授权范围与可控节点之间找到平衡。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 给小吴完整权限，信任其自主完成\nB. 授予有限权限，高风险节点人工确认，一周内抽查\nC. 不授权，全程由你盯着操作\nD. 授权但不抽查，等出问题再说',
+                rubric: '权限分层合理、确认点落在高风险节点、抽查可执行。',
+                rejected: false, reason: '' },
+              { id: 'a8', code: 'Q-AG-0108', dimension: '监督与验收',                scenario: '下属用 AI 生成的客户调研报告里出现了三家并不存在的竞品公司，已准备对外发送。',
+                task: '请选择最符合你处理方式的选项，可在补充说明中阐述理由。\nA. 已准备发送，按原计划发出\nB. 立即拦截，定位幻觉根因，增设事实抽检节点后重发\nC. 删掉那三家竞品后直接发出，不深究\nD. 斥责下属，让其自行处理',
+                rubric: '应急拦截、根因定位（幻觉）、流程预防（事实抽检节点）。',
+                rejected: false, reason: '' }
+            ]
+          }
+        ]);
+
+        const scaleBatches = reactive([
+          {
+            id: 'S20260801', code: '#S20260801', source: 'scale',
+            title: '九型量表批次 #S20260801', total: 144, createdAt: '2026-08-01 10:00',
+            questions: [
+              { id: 's1', code: 'Q-Scale-0001', dimension: '九型人格', tendency: '主动理清型',
+                scenario: '面对突发任务时，我倾向于先理清优先级再行动。',
+                task: '请在 1（非常不符合）到 5（非常符合）之间选择最符合你的选项。',
+                rubric: '聚合至对应型别维度，参考性输出，不进入硬性聚合。',
+                rejected: false, reason: '' },
+              { id: 's2', code: 'Q-Scale-0002', dimension: '九型人格', tendency: '内驱型',
+                scenario: '我更容易被深层动机驱动，而非表面回报。',
+                task: '请在 1 到 5 之间选择最符合你的选项。',
+                rubric: '聚合至对应型别维度，AI 仅做型别判定。',
+                rejected: false, reason: '' },
+              { id: 's3', code: 'Q-Scale-0003', dimension: '九型人格', tendency: '调停型',
+                scenario: '我习惯在团队冲突中居中调停，主动寻找折中方案。',
+                task: '请在 1 到 5 之间选择最符合你的选项。',
+                rubric: '聚合至调停型倾向。',
+                rejected: true, reason: '本公司销售岗强调目标达成与竞争性，调停倾向题项在本岗位场景适用性偏低，建议在本公司岗位矩阵中降权使用，先标记驳回暂不入库。' },
+              { id: 's4', code: 'Q-Scale-0004', dimension: '九型人格', tendency: '规则型',
+                scenario: '我倾向于把规则与流程看得比灵活应变更重要。',
+                task: '请在 1 到 5 之间选择最符合你的选项。',
+                rubric: '聚合至规则型倾向。',
+                rejected: false, reason: '' },
+              { id: 's5', code: 'Q-Scale-0005', dimension: '九型人格', tendency: '独立型',
+                scenario: '在压力下，我更愿意独自承担而非寻求他人支持。',
+                task: '请在 1 到 5 之间选择最符合你的选项。',
+                rubric: '聚合至独立型倾向。',
+                rejected: false, reason: '' },
+              { id: 's6', code: 'Q-Scale-0006', dimension: '九型人格', tendency: '共情型',
+                scenario: '我常常会先关注他人的情绪，再处理事情本身。',
+                task: '请在 1 到 5 之间选择最符合你的选项。',
+                rubric: '聚合至共情型倾向。',
+                rejected: false, reason: '' }
+            ]
+          }
+        ]);
+
+        const pendingBatches = computed(() => activeTab.value === 'ai' ? aiBatches : scaleBatches);
+
+        // ========== 筛选与表格 ==========
+        const aiFilter = reactive({ dimension: '', status: '', keyword: '' });
+        const scaleFilter = reactive({ status: '', keyword: '' });
+        const loading = ref(false);
+        const aiTableData = ref([]);
+        const scaleTableData = ref([]);
+        const aiPagination = reactive({ currentPage: 1, pageSize: 10, total: 0 });
+        const scalePagination = reactive({ currentPage: 1, pageSize: 10, total: 0 });
+
+        const currentPagination = computed(() => activeTab.value === 'ai' ? aiPagination : scalePagination);
+
+        const loadAi = () => {
+          loading.value = true;
+          setTimeout(() => {
+            let filtered = aiBank.value.slice();
+            if (aiFilter.dimension) filtered = filtered.filter(q => q.dimension === aiFilter.dimension);
+            if (aiFilter.status) filtered = filtered.filter(q => q.status === aiFilter.status);
+            if (aiFilter.keyword) {
+              const kw = aiFilter.keyword.toLowerCase();
+              filtered = filtered.filter(q => q.code.toLowerCase().includes(kw) || q.summary.toLowerCase().includes(kw));
+            }
+            aiPagination.total = filtered.length;
+            const start = (aiPagination.currentPage - 1) * aiPagination.pageSize;
+            aiTableData.value = filtered.slice(start, start + aiPagination.pageSize);
+            loading.value = false;
+          }, 280);
+        };
+
+        const loadScale = () => {
+          loading.value = true;
+          setTimeout(() => {
+            let filtered = scaleBank.value.slice();
+            if (scaleFilter.status) filtered = filtered.filter(q => q.status === scaleFilter.status);
+            if (scaleFilter.keyword) {
+              const kw = scaleFilter.keyword.toLowerCase();
+              filtered = filtered.filter(q => q.code.toLowerCase().includes(kw) || q.summary.toLowerCase().includes(kw));
+            }
+            scalePagination.total = filtered.length;
+            const start = (scalePagination.currentPage - 1) * scalePagination.pageSize;
+            scaleTableData.value = filtered.slice(start, start + scalePagination.pageSize);
+            loading.value = false;
+          }, 280);
+        };
+
+        const loadData = () => {
+          if (activeTab.value === 'ai') loadAi(); else loadScale();
+        };
+
+        const handleSearch = () => {
+          if (activeTab.value === 'ai') aiPagination.currentPage = 1; else scalePagination.currentPage = 1;
+          loadData();
+        };
+        const handleReset = () => {
+          if (activeTab.value === 'ai') {
+            aiFilter.dimension = ''; aiFilter.status = ''; aiFilter.keyword = '';
+            aiPagination.currentPage = 1;
+          } else {
+            scaleFilter.status = ''; scaleFilter.keyword = '';
+            scalePagination.currentPage = 1;
+          }
+          loadData();
+          ElMessage.info('已重置筛选条件');
+        };
+        const onTabChange = () => {
+          loadData();
+        };
+        const handleSizeChange = (size) => {
+          if (activeTab.value === 'ai') { aiPagination.pageSize = size; aiPagination.currentPage = 1; }
+          else { scalePagination.pageSize = size; scalePagination.currentPage = 1; }
+          loadData();
+        };
+        const handlePageChange = (page) => {
+          if (activeTab.value === 'ai') aiPagination.currentPage = page; else scalePagination.currentPage = page;
+          loadData();
+        };
+
+        // ========== 标签颜色映射 ==========
+        const statusTagType = (status) => {
+          if (status === '启用') return 'success';
+          if (status === '已驳回') return 'danger';
+          if (status === '已停用') return 'info';
+          return 'info';
+        };
+
+        // ========== 查看弹窗 ==========
+        const viewDialogVisible = ref(false);
+        const viewData = ref(null);
+        const handleView = (row) => { viewData.value = row; viewDialogVisible.value = true; };
+        const goEditFromView = () => {
+          const row = viewData.value;
+          viewDialogVisible.value = false;
+          handleEdit(row);
+        };
+
+        // ========== 编辑弹窗（仅 AI 题） ==========
+        const editDialogVisible = ref(false);
+        const editFormRef = ref(null);
+        const submitLoading = ref(false);
+        const editForm = reactive({ id: null, code: '', summary: '', dimension: '', scenario: '', task: '' });
+        const editRules = {
+          summary: [{ required: true, message: '请输入题目内容摘要', trigger: 'blur' }],
+          dimension: [{ required: true, message: '请选择所属维度', trigger: 'change' }],
+          scenario: [{ required: true, message: '请输入情境描述', trigger: 'blur' }],
+          task: [{ required: true, message: '请输入作答要求', trigger: 'blur' }]
+        };
+        const handleEdit = (row) => {
+          Object.assign(editForm, {
+            id: row.id, code: row.code, summary: row.summary, dimension: row.dimension,
+            scenario: row.scenario, task: row.task
+          });
+          editDialogVisible.value = true;
+        };
+        const handleSubmitEdit = async () => {
+          if (!editFormRef.value) return;
+          try {
+            await editFormRef.value.validate();
+            submitLoading.value = true;
+            setTimeout(() => {
+              const idx = aiBank.value.findIndex(q => q.id === editForm.id);
+              if (idx !== -1) {
+                aiBank.value[idx] = Object.assign({}, aiBank.value[idx], {
+                  summary: editForm.summary, dimension: editForm.dimension,
+                  scenario: editForm.scenario, task: editForm.task
+                });
+              }
+              submitLoading.value = false;
+              editDialogVisible.value = false;
+              loadData();
+              ElMessage.success('题目 ' + editForm.code + ' 已更新');
+            }, 400);
+          } catch (e) {
+            ElMessage.error('请检查表单填写');
+          }
+        };
+
+        // ========== 停用 ==========
+        const handleOffline = (row) => {
+          const bank = row.source === 'ai' ? aiBank : scaleBank;
+          const idx = bank.value.findIndex(q => q.id === row.id);
+          if (idx !== -1) {
+            bank.value[idx] = Object.assign({}, bank.value[idx], { status: '已停用' });
+            loadData();
+            ElMessage.success(row.code + ' 已停用，不再参与测评');
+          }
+        };
+
+        // ========== 启用 ==========
+        const handleOnline = (row) => {
+          const bank = row.source === 'ai' ? aiBank : scaleBank;
+          const idx = bank.value.findIndex(q => q.id === row.id);
+          if (idx !== -1) {
+            bank.value[idx] = Object.assign({}, bank.value[idx], { status: '启用' });
+            loadData();
+            ElMessage.success(row.code + ' 已启用，恢复参与测评');
+          }
+        };
+
+        // ========== 删除 ==========
+        const handleDelete = (row) => {
+          const bank = row.source === 'ai' ? aiBank : scaleBank;
+          const idx = bank.value.findIndex(q => q.id === row.id);
+          if (idx !== -1) {
+            bank.value.splice(idx, 1);
+            loadData();
+            ElMessage.success(row.code + ' 已从题库删除');
+          }
+        };
+
+        // ========== 重新提交审核（驳回题直接恢复启用） ==========
+        const handleResubmit = (row) => {
+          ElMessageBox.confirm(
+            '重新提交后该题将恢复启用、重新参与测评，确认操作？',
+            '重新提交审核',
+            { confirmButtonText: '确认', cancelButtonText: '取消', type: 'warning' }
+          ).then(() => {
+            const bank = row.source === 'ai' ? aiBank : scaleBank;
+            const idx = bank.value.findIndex(q => q.id === row.id);
+            if (idx !== -1) {
+              bank.value[idx] = Object.assign({}, bank.value[idx], { status: '启用' });
+              loadData();
+              ElMessage.success(row.code + ' 已重新提交，恢复启用');
+            }
+          }).catch(() => {});
+        };
+
+        // ========== 审核模式 ==========
+        const reviewMode = ref(false);
+        const reviewDone = ref(false);
+        const currentBatch = ref(null);
+        const doneSubTitle = ref('');
+
+        const startReview = (batch) => {
+          // 深拷贝一份题目，避免审核中途的标记影响原批次（确认入库时再写回）
+          currentBatch.value = Object.assign({}, batch, {
+            questions: batch.questions.map(q => Object.assign({}, q))
+          });
+          reviewMode.value = true;
+          reviewDone.value = false;
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        };
+
+        const exitReview = () => {
+          reviewMode.value = false;
+          reviewDone.value = false;
+          currentBatch.value = null;
+        };
+
+        const finishReview = () => {
+          exitReview();
+          loadData();
+        };
+
+        const toggleReject = (q) => {
+          q.rejected = !q.rejected;
+          if (!q.rejected) q.reason = '';
+        };
+
+        const markAllPass = () => {
+          currentBatch.value.questions.forEach(q => { q.rejected = false; q.reason = ''; });
+          ElMessage.info('已清空全部标记，本批将默认全部通过');
+        };
+
+        const rejectCount = computed(() => currentBatch.value.questions.filter(q => q.rejected).length);
+        const passCount = computed(() => currentBatch.value.total - rejectCount.value);
+
+        const quickReasons = (source) => {
+          if (source === 'ai') {
+            return ['情境与本司业务偏差大', '存在潜在偏见', '子能力命中不准', '选项区分度不足'];
+          }
+          return ['本公司岗位不适用', '表述存在歧义', '计分键存疑'];
+        };
+
+        // 确认入库：未标记题进入对应题库（启用），已标记题进入题库（已驳回）并保留原因
+        const confirmImport = () => {
+          const passN = passCount.value;
+          const rejN = rejectCount.value;
+          ElMessageBox.confirm(
+            '本批共 ' + currentBatch.value.total + ' 题，将入库 ' + passN + ' 题，驳回弃用 ' + rejN + ' 题。被驳回题目不会进入测评，确认操作？',
+            '确认入库',
+            {
+              confirmButtonText: '确认入库',
+              cancelButtonText: '再看看',
+              type: 'warning'
+            }
+          ).then(() => {
+            const now = nowStr();
+            const source = currentBatch.value.source;
+            const bank = source === 'ai' ? aiBank : scaleBank;
+            const newItems = currentBatch.value.questions.map((q, i) => {
+              const base = {
+                id: (source === 'ai' ? 2000 : 3000) + i,
+                code: q.code,
+                source: source,
+                dimension: source === 'ai' ? q.dimension : '九型人格',
+                tendency: q.tendency || '',
+                status: q.rejected ? '已驳回' : '启用',
+                storedAt: now,
+                usedCount: 0,
+                summary: source === 'ai' ? q.scenario.slice(0, 36) + '…' : q.scenario,
+                scenario: q.scenario,
+                task: q.task,
+                rubric: q.rubric,
+                reason: q.rejected ? q.reason : ''
+              };
+              return base;
+            });
+            newItems.forEach(item => bank.value.unshift(item));
+
+            // 从待审核批次中移除该批
+            const batchArr = source === 'ai' ? aiBatches : scaleBatches;
+            const idx = batchArr.findIndex(b => b.id === currentBatch.value.id);
+            if (idx !== -1) batchArr.splice(idx, 1);
+
+            reviewDone.value = true;
+            doneSubTitle.value = '其中 ' + passN + ' 题默认通过入库、' + rejN + ' 题已驳回弃用，驳回原因已记录。';
+            ElMessage.success('已确认，题目入库完成');
+          }).catch(() => {
+            ElMessage.info('已取消，可继续调整标记');
+          });
+        };
+
+        // ========== 引入九型量表弹窗 ==========
+        const scaleDialogVisible = ref(false);
+        const scaleStep = ref(0);
+        const scaleChoice = ref('rhpi');
+        const todayTag = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const openScaleDialog = () => {
+          scaleStep.value = 0;
+          scaleChoice.value = 'rhpi';
+          scaleDialogVisible.value = true;
+        };
+        const nextScaleStep = () => {
+          if (scaleStep.value === 0) scaleStep.value = 1;
+          else if (scaleStep.value === 1) scaleStep.value = 2;
+        };
+        // 确认引入后：生成量表待审核批次，关闭弹窗，切到量表 Tab 并进入审核
+        const enterScaleReview = () => {
+          scaleDialogVisible.value = false;
+          const total = scaleChoice.value === 'rhpi' ? 144 : 108;
+          const newBatch = {
+            id: 'S' + todayTag, code: '#S' + todayTag, source: 'scale',
+            title: '九型量表批次 #S' + todayTag, total: total, createdAt: todayTag.slice(0, 4) + '-' + todayTag.slice(4, 6) + '-' + todayTag.slice(6, 8) + ' 10:00',
+            questions: scaleBatches[0].questions.map(q => Object.assign({}, q, { rejected: false, reason: '' }))
+          };
+          scaleBatches.push(newBatch);
+          activeTab.value = 'scale';
+          loadData();
+          startReview(newBatch);
+        };
+
+        // ========== 工具 ==========
+        const nowStr = () => {
+          const d = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        };
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          const params = new URLSearchParams(window.location.search);
+
+          loadData();
+
+          // 跨页入口：?batch=G... / ?batch=S... 自动进入对应审核
+          const b = params.get('batch');
+          if (b) {
+            setTimeout(() => {
+              if (b.indexOf('G') === 0) {
+                activeTab.value = 'ai';
+                loadData();
+                const target = aiBatches.find(x => (x.id === b) || (x.code === '#' + b)) || aiBatches[0];
+                if (target) startReview(target);
+              } else if (b.indexOf('S') === 0) {
+                activeTab.value = 'scale';
+                loadData();
+                const target = scaleBatches.find(x => (x.id === b) || (x.code === '#' + b)) || scaleBatches[0];
+                if (target) startReview(target);
+              }
+            }, 100);
+          }
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // Tab 与筛选
+          activeTab, onTabChange, dimensionOptions,
+          aiFilter, scaleFilter, loading,
+          aiTableData, scaleTableData, aiPagination, scalePagination, currentPagination,
+          handleSearch, handleReset, handleSizeChange, handlePageChange,
+          statusTagType,
+          // 题库与批次
+          aiBank, scaleBank, pendingBatches,
+          // 查看
+          viewDialogVisible, viewData, handleView, goEditFromView,
+          // 编辑
+          editDialogVisible, editFormRef, submitLoading, editForm, editRules,
+          handleEdit, handleSubmitEdit,
+          // 启用 / 停用 / 删除
+          handleOffline, handleOnline, handleDelete, handleResubmit,
+          // 审核
+          reviewMode, reviewDone, currentBatch, doneSubTitle,
+          startReview, exitReview, finishReview, toggleReject, markAllPass,
+          rejectCount, passCount, quickReasons, confirmImport,
+          // 引入量表
+          scaleDialogVisible, scaleStep, scaleChoice, todayTag,
+          openScaleDialog, nextScaleStep, enterScaleReview
+        };
+      }
+    });
+
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

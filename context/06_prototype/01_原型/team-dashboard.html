@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>团队看板 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      /* 主色 */
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      /* 侧栏 */
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      /* 内容区与卡片 */
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      /* 文字色阶 */
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      /* 边框 */
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      /* 表格 */
+      --table-header-bg: #fafafa;
+
+      /* 状态色 */
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      /* 圆角与间距 */
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      /* 布局尺寸 */
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 20px 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 工具条 ========== */
+    .toolbar-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 14px 20px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .toolbar-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      height: 22px;
+      background: var(--border-color-split);
+    }
+
+    .toolbar-spacer {
+      flex: 1;
+    }
+
+    .update-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .update-hint .el-icon {
+      color: var(--text-secondary);
+    }
+
+    /* ========== 通用卡片 ========== */
+    .chart-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 18px 20px 20px;
+      box-shadow: var(--card-shadow);
+      transition: box-shadow 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-card:hover {
+      box-shadow: var(--card-shadow-hover);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 11px;
+    }
+
+    .card-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 15px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .card-extra {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .legend-dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+    }
+
+    /* ========== 活跃度概览 ========== */
+    .overview-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 18px 20px 20px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+    }
+
+    .overview-body {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) 1.3fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .activity-stats {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 14px;
+    }
+
+    .activity-stat {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 12px 16px;
+      border-radius: var(--border-radius);
+      background: var(--content-bg);
+      border-left: 4px solid transparent;
+      transition: transform 0.2s ease;
+    }
+
+    .activity-stat:hover {
+      transform: translateX(2px);
+    }
+
+    .activity-stat.is-active {
+      border-left-color: var(--success-color);
+    }
+
+    .activity-stat.is-low {
+      border-left-color: var(--warning-color);
+    }
+
+    .activity-stat.is-unused {
+      border-left-color: var(--text-secondary);
+    }
+
+    .stat-num {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+    }
+
+    .stat-unit {
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      margin-left: 2px;
+    }
+
+    .stat-name {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--text-regular);
+    }
+
+    .stat-pct {
+      margin-left: 6px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .activity-chart-wrap {
+      min-height: 240px;
+    }
+
+    /* ========== 行布局 ========== */
+    .row-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .row-full {
+      margin-bottom: 16px;
+    }
+
+    /* ========== 图表画布 ========== */
+    .chart-canvas {
+      width: 100%;
+      height: 300px;
+    }
+
+    .chart-canvas.radar {
+      height: 358px;
+    }
+
+    /* ========== 雷达图下方共性短板标签 ========== */
+    .radar-weakness {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px dashed var(--border-color-split);
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .radar-weakness-label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      flex-shrink: 0;
+      letter-spacing: 0.2px;
+    }
+
+    /* ========== 九型人格：左图右文 ========== */
+    .enneagram-body {
+      display: grid;
+      grid-template-columns: 58% 42%;
+      gap: 28px;
+      align-items: center;
+    }
+
+    .enneagram-canvas {
+      width: 100%;
+      height: 320px;
+    }
+
+    .enneagram-note {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .analysis-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .analysis-num {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--primary-color);
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-top: 1px;
+    }
+
+    .analysis-text {
+      font-size: 13.5px;
+      color: var(--text-regular);
+      line-height: 1.7;
+    }
+
+    .analysis-text b {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ========== 表格通用样式 ========== */
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1280px) {
+      .overview-body {
+        grid-template-columns: 1fr;
+      }
+
+      .row-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .enneagram-body {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 14px;
+      }
+
+      .toolbar-card {
+        gap: 12px;
+      }
+
+      .toolbar-divider {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>结果洞察</el-breadcrumb-item>
+            <el-breadcrumb-item>团队看板</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper">
+        <!-- 板块 1：工具条 -->
+        <section class="toolbar-card">
+          <div class="toolbar-group">
+            <span class="toolbar-label">评估区间</span>
+            <el-select v-model="currentPeriod" size="default" style="width: 120px;">
+              <el-option v-for="p in periods" :key="p.value" :label="p.label" :value="p.value"></el-option>
+            </el-select>
+            <el-tooltip content="每周日 23:15 自动更新" placement="top">
+              <span class="update-hint"><el-icon><Clock></Clock></el-icon>数据更新于 {{ updateTime }}</span>
+            </el-tooltip>
+          </div>
+        </section>
+
+        <!-- 板块 2：活跃度概览 -->
+        <section class="overview-card">
+          <div class="card-header">
+            <span class="card-title">活跃度概览</span>
+            <span class="card-sub">全员 {{ totalPeople }} 人 · 未使用判定窗口 7 天</span>
+            <span class="card-extra">
+              <el-icon><RefreshRight></RefreshRight></el-icon>
+              <template v-if="activeDelta">较上期：活跃
+                <span style="color: var(--success-color); font-weight: 600;">+{{ activeDelta.active }}</span>　未使用
+                <span style="color: var(--success-color); font-weight: 600;">{{ activeDelta.unused }}</span>
+              </template>
+              <template v-else>
+                <span style="color: var(--text-secondary);">首期基线 · 无环比数据</span>
+              </template>
+            </span>
+          </div>
+          <div class="overview-body">
+            <div class="activity-stats">
+              <div :class="['activity-stat', 'is-active']">
+                <div class="stat-num">{{ activityStats[0].value }}<span class="stat-unit">人</span></div>
+                <div class="stat-body">
+                  <div class="stat-name">活跃<span class="stat-pct">占比 {{ activityStats[0].pct }}</span></div>
+                </div>
+              </div>
+              <div :class="['activity-stat', 'is-low']">
+                <div class="stat-num">{{ activityStats[1].value }}<span class="stat-unit">人</span></div>
+                <div class="stat-body">
+                  <div class="stat-name">低频<span class="stat-pct">占比 {{ activityStats[1].pct }}</span></div>
+                </div>
+              </div>
+              <div :class="['activity-stat', 'is-unused']">
+                <div class="stat-num">{{ activityStats[2].value }}<span class="stat-unit">人</span></div>
+                <div class="stat-body">
+                  <div class="stat-name">未使用<span class="stat-pct">占比 {{ activityStats[2].pct }}</span></div>
+                </div>
+              </div>
+            </div>
+            <div ref="activityChartRef" class="activity-chart-wrap"></div>
+          </div>
+        </section>
+
+        <!-- 板块 3：能力雷达（使用能力 + 管理能力） -->
+        <section class="row-2">
+          <div class="chart-card">
+            <div class="card-header">
+              <span class="card-title">AI 使用能力 · 整体均分</span>
+              <span class="card-sub">底层 4 维 + 上层 4 维 · 走对话分析</span>
+              <span class="card-extra">
+                <el-button type="primary" link size="small" @click="go('team-ability-trend.html?type=use')">
+                  <el-icon><TrendCharts></TrendCharts></el-icon>查看逐期趋势
+                </el-button>
+              </span>
+            </div>
+            <div ref="abilityRadarRef" class="chart-canvas radar"></div>
+            <div class="radar-weakness">
+              <span class="radar-weakness-label">共性短板</span>
+              <el-tag
+                v-for="w in useWeakTags"
+                :key="w.dim"
+                type="danger"
+                effect="light"
+                size="small"
+              >{{ w.dim }} {{ w.score }} 分 · {{ w.ratio }}% 低分</el-tag>
+            </div>
+          </div>
+          <div class="chart-card">
+            <div class="card-header">
+              <span class="card-title">AI 管理能力 · 整体均分</span>
+              <span class="card-sub">5 子能力 · 走主动测试场景题</span>
+              <span class="card-extra">
+                <el-button type="primary" link size="small" @click="go('team-ability-trend.html?type=manage')">
+                  <el-icon><TrendCharts></TrendCharts></el-icon>查看逐期趋势
+                </el-button>
+              </span>
+            </div>
+            <div ref="manageRadarRef" class="chart-canvas radar"></div>
+            <div class="radar-weakness">
+              <span class="radar-weakness-label">共性短板</span>
+              <el-tag
+                v-for="w in mgmtWeakTags"
+                :key="w.dim"
+                type="danger"
+                effect="light"
+                size="small"
+              >{{ w.dim }} {{ w.score }} 分 · {{ w.ratio }}% 低分</el-tag>
+            </div>
+          </div>
+        </section>
+
+        <!-- 板块 4：九型人格（左图右文） -->
+        <section class="chart-card row-full">
+          <div class="card-header">
+            <span class="card-title">团队人格构成</span>
+            <span class="card-sub">九型人格分布 · 走主动测试标准量表</span>
+          </div>
+          <div class="enneagram-body">
+            <div ref="enneagramChartRef" class="enneagram-canvas"></div>
+            <div class="enneagram-note">
+              <div class="analysis-item">
+                <span class="analysis-num">1</span>
+                <span class="analysis-text"><b>主导型 · 成就型 {{ enneagramNotes.achieve }}%：</b>务实、目标导向，擅长推动结果落地。</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-num">2</span>
+                <span class="analysis-text"><b>次主导 · 忠诚型 {{ enneagramNotes.loyal }}%：</b>稳健、风险敏感，注重流程合规与风险预判。</span>
+              </div>
+              <div class="analysis-item">
+                <span class="analysis-num">3</span>
+                <span class="analysis-text"><b>理智型 {{ enneagramNotes.reason }}%</b> 与 <b>挑战型 {{ enneagramNotes.challenge }}%</b> 提供思辨与决断力，整体团队风格偏执行与稳健。</span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Vue / Element Plus / 图标（CDN 版本锁定） -->
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <!-- ECharts（锁定 5.4.3） -->
+  <script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"></script>
+
+  <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单（与 index.html 完全一致） ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['insight', 'assessment', 'model', 'system'];
+        const activeMenu = ref('team-dashboard');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 看板状态：评估区间选择 ==========
+        const periods = [
+          { value: 25, label: '06-15 至 06-21' },{ value: 26, label: '06-22 至 06-28' },
+          { value: 27, label: '06-29 至 07-05' },{ value: 28, label: '07-06 至 07-12' },
+          { value: 29, label: '07-13 至 07-19' },{ value: 30, label: '07-20 至 07-26' },
+          { value: 31, label: '07-27 至 08-02' },{ value: 32, label: '08-03 至 08-09' }
+        ];
+        const currentPeriod = ref(32); // 默认最近一周
+        const periodIdx = computed(() => currentPeriod.value - 25);
+
+        // ========== 多区间原始数据序列（索引顺序对应 06-15 至 08-09 共 8 个周区间） ==========
+        // AI 使用能力 8 维（底层 4 + 上层 4）
+        const abilityNames = ['任务适配\n判断力','指令与\nprompt 设计','对话驾驭','Skill\n调用','Harness\n编排驾驭','Skill\n编写能力','价值产出\n质量','知识沉淀\n与复用'];
+        const abilityShorts = ['任务适配判断力','指令与 prompt 设计','对话驾驭','Skill 调用','Harness 编排驾驭','Skill 编写能力','价值产出质量','知识沉淀与复用'];
+        const abilityScores = [
+          [70,72,73,75,76,77,78,80], // 任务适配判断力
+          [64,66,67,69,70,71,72,74], // 指令与 prompt 设计
+          [62,63,64,66,67,68,71,70], // 对话驾驭
+          [58,59,60,61,62,63,64,66], // Skill 调用
+          [50,51,52,54,55,56,57,60], // Harness 编排驾驭
+          [42,44,45,47,48,50,52,54], // Skill 编写能力
+          [64,65,66,67,68,69,70,72], // 价值产出质量
+          [38,40,41,43,45,47,49,52]  // 知识沉淀与复用
+        ];
+
+        // AI 管理能力 5 维
+        const manageNames = ['目标设定\n与对齐','授权与分工','监督与验收','风险与担责','人机协作\n设计'];
+        const manageShorts = ['目标设定与对齐','授权与分工','监督与验收','风险与担责','人机协作设计'];
+        const manageScores = [
+          [56,57,58,59,60,61,63,65], // 目标设定与对齐
+          [52,53,54,55,56,57,58,60], // 授权与分工
+          [48,49,50,51,52,54,59,58], // 监督与验收
+          [55,56,57,58,59,60,61,63], // 风险与担责
+          [40,42,43,45,47,49,51,54]  // 人机协作设计
+        ];
+
+        // 活跃度（全员 326 人，每区间 [活跃,低频,未使用]，三者之和均为 326）
+        const activityRaw = [
+          [180,88,58],[185,86,55],[190,84,52],[196,82,48],
+          [200,80,46],[205,78,43],[210,76,40],[218,72,36]
+        ];
+
+        // 九型人格 9 型占比（顺序：完美/助人/成就/艺术/理智/忠诚/活跃/挑战/和平，各区间 9 值之和为 100）
+        const enneagramRatios = [
+          [9,8,20,7,11,16,8,10,11],
+          [9,7,21,6,12,16,9,10,10],
+          [8,7,21,6,12,15,9,11,11],
+          [8,7,22,6,12,15,9,11,10],
+          [8,7,22,6,13,14,9,11,10],
+          [8,7,22,6,12,15,9,11,10],
+          [8,7,22,6,12,15,9,11,10],
+          [8,7,22,6,12,15,9,11,10]
+        ];
+        const enneagramNames = ['完美型','助人型','成就型','艺术型','理智型','忠诚型','活跃型','挑战型','和平型'];
+
+        // 共性短板低分占比（按 8 个区间）
+        const useWeakRatios = {
+          '知识沉淀与复用': [55,53,51,49,47,45,44,42],
+          'Skill 编写能力': [50,48,46,44,42,40,39,38]
+        };
+        const mgmtWeakRatios = {
+          '人机协作设计': [48,46,44,42,40,38,36,35],
+          '监督与验收': [40,38,36,34,32,30,29,28]
+        };
+
+        // 数据更新时间（每周更新一次）
+        const updateTimeList = [
+          '2026-06-19 09:15','2026-06-26 09:15','2026-07-03 09:15','2026-07-10 09:15',
+          '2026-07-17 09:15','2026-07-24 09:15','2026-07-31 09:15','2026-08-07 09:15'
+        ];
+
+        // ========== 派生 computed（依赖 currentPeriod） ==========
+        const totalPeople = 326;
+
+        const updateTime = computed(() => updateTimeList[periodIdx.value]);
+
+        const activityStats = computed(() => {
+          const raw = activityRaw[periodIdx.value];
+          const labels = ['活跃','低频','未使用'];
+          const keys = ['active','low','unused'];
+          return raw.map((v, i) => ({
+            key: keys[i],
+            label: labels[i],
+            value: v,
+            pct: ((v / totalPeople) * 100).toFixed(1) + '%'
+          }));
+        });
+
+        // 活跃度环比（与上一区间比较，首个区间为基线无环比）
+        const activeDelta = computed(() => {
+          const idx = periodIdx.value;
+          if (idx === 0) return null;
+          const cur = activityRaw[idx];
+          const prev = activityRaw[idx - 1];
+          return {
+            active: cur[0] - prev[0],
+            unused: cur[2] - prev[2]
+          };
+        });
+
+        const abilityDims = computed(() => {
+          const idx = periodIdx.value;
+          return abilityNames.map((name, i) => ({
+            name: name,
+            short: abilityShorts[i],
+            score: abilityScores[i][idx]
+          }));
+        });
+        const avgScore = computed(() =>
+          Math.round(abilityDims.value.reduce((s, d) => s + d.score, 0) / abilityDims.value.length)
+        );
+
+        const manageDims = computed(() => {
+          const idx = periodIdx.value;
+          return manageNames.map((name, i) => ({
+            name: name,
+            short: manageShorts[i],
+            score: manageScores[i][idx]
+          }));
+        });
+        const avgMgmtScore = computed(() =>
+          Math.round(manageDims.value.reduce((s, d) => s + d.score, 0) / manageDims.value.length)
+        );
+
+        // 共性短板：score 取该维度本期分数，ratio 取对应低分占比序列
+        const useWeakTags = computed(() => {
+          const idx = periodIdx.value;
+          return [
+            { dim: '知识沉淀与复用', score: abilityScores[7][idx], ratio: useWeakRatios['知识沉淀与复用'][idx] },
+            { dim: 'Skill 编写能力', score: abilityScores[5][idx], ratio: useWeakRatios['Skill 编写能力'][idx] }
+          ];
+        });
+        const mgmtWeakTags = computed(() => {
+          const idx = periodIdx.value;
+          return [
+            { dim: '人机协作设计', score: manageScores[4][idx], ratio: mgmtWeakRatios['人机协作设计'][idx] },
+            { dim: '监督与验收',   score: manageScores[2][idx], ratio: mgmtWeakRatios['监督与验收'][idx] }
+          ];
+        });
+
+        const enneagram = computed(() => {
+          const idx = periodIdx.value;
+          return enneagramRatios[idx].map((r, i) => ({
+            type: i + 1,
+            name: enneagramNames[i],
+            ratio: r
+          }));
+        });
+
+        // 九型研判文案数据（主导成就型 / 次主导忠诚型 / 理智型 / 挑战型 占比随区间变化）
+        const enneagramNotes = computed(() => {
+          const cur = enneagram.value;
+          return {
+            achieve: cur.find(e => e.type === 3).ratio,
+            loyal: cur.find(e => e.type === 6).ratio,
+            reason: cur.find(e => e.type === 5).ratio,
+            challenge: cur.find(e => e.type === 8).ratio
+          };
+        });
+
+        // ========== ECharts 实例（非响应式） ==========
+        const activityChartRef = ref(null);
+        const abilityRadarRef = ref(null);
+        const manageRadarRef = ref(null);
+        const enneagramChartRef = ref(null);
+        const charts = {};
+
+        // 统一配色
+        const COLOR = {
+          primary: '#1890ff',
+          primaryHover: '#40a9ff',
+          primaryDeep: '#096dd9',
+          success: '#52c41a',
+          warning: '#faad14',
+          danger: '#ff4d4f',
+          unused: '#8c8c8c',
+          reference: '#bfbfbf',
+          textPrimary: '#262626',
+          textRegular: '#595959',
+          textSecondary: '#8c8c8c',
+          split: '#f0f0f0',
+          splitDeep: '#e8e8e8'
+        };
+
+        // ========== 活跃度环形图 ==========
+        const renderActivityChart = () => {
+          if (!activityChartRef.value) return;
+          if (charts.activity) {
+            charts.activity.dispose();
+            charts.activity = null;
+          }
+          charts.activity = echarts.init(activityChartRef.value);
+
+          const stats = activityStats.value;
+          const data = stats.map((s, i) => ({
+            value: s.value,
+            name: s.label,
+            itemStyle: {
+              color: [COLOR.success, COLOR.warning, COLOR.unused][i]
+            }
+          }));
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                return p.name + '：' + p.value + ' 人（' + p.percent + '%）';
+              }
+            },
+            legend: {
+              bottom: 4,
+              icon: 'circle',
+              itemWidth: 8,
+              itemHeight: 8,
+              textStyle: { color: COLOR.textRegular, fontSize: 12 }
+            },
+            graphic: [
+              {
+                type: 'text',
+                left: 'center',
+                top: '40%',
+                style: {
+                  text: String(totalPeople),
+                  fontSize: 30,
+                  fontWeight: 'bold',
+                  fill: COLOR.textPrimary,
+                  textAlign: 'center'
+                }
+              },
+              {
+                type: 'text',
+                left: 'center',
+                top: '56%',
+                style: {
+                  text: '全员',
+                  fontSize: 12,
+                  fill: COLOR.textSecondary,
+                  textAlign: 'center'
+                }
+              }
+            ],
+            series: [{
+              type: 'pie',
+              radius: ['52%', '74%'],
+              center: ['50%', '46%'],
+              avoidLabelOverlap: true,
+              itemStyle: { borderColor: '#fff', borderWidth: 3 },
+              label: {
+                show: true,
+                position: 'outside',
+                formatter: '{b|{b}}\n{c|{c} 人 · {d}%}',
+                rich: {
+                  b: { fontSize: 12, color: COLOR.textSecondary, lineHeight: 18 },
+                  c: { fontSize: 13, fontWeight: 'bold', color: COLOR.textPrimary }
+                }
+              },
+              labelLine: { length: 10, length2: 12 },
+              data: data
+            }]
+          };
+          charts.activity.setOption(option);
+        };
+
+        // ========== AI 使用能力雷达（8 维 · primary 配色 · 含全维度均值参考线） ==========
+        const renderAbilityRadar = () => {
+          if (!abilityRadarRef.value) return;
+          if (charts.ability) {
+            charts.ability.dispose();
+            charts.ability = null;
+          }
+          charts.ability = echarts.init(abilityRadarRef.value);
+
+          const dims = abilityDims.value;
+          const avg = avgScore.value;
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const isAvg = p.seriesName === '全维度均值';
+                let html = '<div style="font-weight:600;margin-bottom:4px;">' + p.seriesName + '</div>';
+                p.value.forEach((v, i) => {
+                  html += '<div style="display:flex;justify-content:space-between;gap:18px;font-size:12px;line-height:18px;">'
+                    + '<span style="color:#8c8c8c;">' + dims[i].short + '</span>'
+                    + '<span style="font-weight:600;color:' + (isAvg ? COLOR.reference : '#262626') + ';">' + v + '</span></div>';
+                });
+                return html;
+              }
+            },
+            legend: {
+              data: ['公司整体均分', '全维度均值'],
+              bottom: 4,
+              icon: 'circle',
+              itemWidth: 8,
+              itemHeight: 8,
+              itemGap: 20,
+              textStyle: { color: COLOR.textRegular, fontSize: 12 }
+            },
+            radar: {
+              indicator: dims.map(d => ({ name: d.name, max: 100 })),
+              radius: '62%',
+              center: ['50%', '50%'],
+              shape: 'polygon',
+              axisName: {
+                color: COLOR.textRegular,
+                fontSize: 11,
+                lineHeight: 14
+              },
+              splitNumber: 4,
+              splitLine: { lineStyle: { color: COLOR.splitDeep } },
+              splitArea: { areaStyle: { color: ['#fafafa', '#fff'] } },
+              axisLine: { lineStyle: { color: COLOR.splitDeep } }
+            },
+            series: [{
+              type: 'radar',
+              symbol: 'circle',
+              symbolSize: 5,
+              emphasis: { focus: 'series' },
+              data: [
+                {
+                  value: dims.map(d => d.score),
+                  name: '公司整体均分',
+                  areaStyle: { color: 'rgba(24, 144, 255, 0.18)' },
+                  lineStyle: { color: COLOR.primary, width: 2 },
+                  itemStyle: { color: COLOR.primary, borderColor: '#fff', borderWidth: 1.5 }
+                },
+                {
+                  value: dims.map(() => avg),
+                  name: '全维度均值',
+                  symbol: 'none',
+                  areaStyle: { color: 'transparent' },
+                  lineStyle: { color: COLOR.reference, width: 1.5, type: 'dashed' }
+                }
+              ]
+            }]
+          };
+          charts.ability.setOption(option);
+        };
+
+        // ========== AI 管理能力雷达（5 维 · warning 配色 · 含全维度均值参考线） ==========
+        const renderManageRadar = () => {
+          if (!manageRadarRef.value) return;
+          if (charts.manage) {
+            charts.manage.dispose();
+            charts.manage = null;
+          }
+          charts.manage = echarts.init(manageRadarRef.value);
+
+          const dims = manageDims.value;
+          const avg = avgMgmtScore.value;
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const isAvg = p.seriesName === '全维度均值';
+                let html = '<div style="font-weight:600;margin-bottom:4px;">' + p.seriesName + '</div>';
+                p.value.forEach((v, i) => {
+                  html += '<div style="display:flex;justify-content:space-between;gap:18px;font-size:12px;line-height:18px;">'
+                    + '<span style="color:#8c8c8c;">' + dims[i].short + '</span>'
+                    + '<span style="font-weight:600;color:' + (isAvg ? COLOR.reference : '#262626') + ';">' + v + '</span></div>';
+                });
+                return html;
+              }
+            },
+            legend: {
+              data: ['公司整体均分', '全维度均值'],
+              bottom: 4,
+              icon: 'circle',
+              itemWidth: 8,
+              itemHeight: 8,
+              itemGap: 20,
+              textStyle: { color: COLOR.textRegular, fontSize: 12 }
+            },
+            radar: {
+              indicator: dims.map(d => ({ name: d.name, max: 100 })),
+              radius: '62%',
+              center: ['50%', '50%'],
+              shape: 'polygon',
+              axisName: {
+                color: COLOR.textRegular,
+                fontSize: 11,
+                lineHeight: 14
+              },
+              splitNumber: 4,
+              splitLine: { lineStyle: { color: COLOR.splitDeep } },
+              splitArea: { areaStyle: { color: ['#fafafa', '#fff'] } },
+              axisLine: { lineStyle: { color: COLOR.splitDeep } }
+            },
+            series: [{
+              type: 'radar',
+              symbol: 'circle',
+              symbolSize: 5,
+              emphasis: { focus: 'series' },
+              data: [
+                {
+                  value: dims.map(d => d.score),
+                  name: '公司整体均分',
+                  areaStyle: { color: 'rgba(250, 173, 20, 0.20)' },
+                  lineStyle: { color: COLOR.warning, width: 2 },
+                  itemStyle: { color: COLOR.warning, borderColor: '#fff', borderWidth: 1.5 }
+                },
+                {
+                  value: dims.map(() => avg),
+                  name: '全维度均值',
+                  symbol: 'none',
+                  areaStyle: { color: 'transparent' },
+                  lineStyle: { color: COLOR.reference, width: 1.5, type: 'dashed' }
+                }
+              ]
+            }]
+          };
+          charts.manage.setOption(option);
+        };
+
+        // ========== 九型人格分布柱图（主导型 3 高亮 primary，次主导 6 次高亮） ==========
+        const renderEnneagram = () => {
+          if (!enneagramChartRef.value) return;
+          if (charts.enneagram) {
+            charts.enneagram.dispose();
+            charts.enneagram = null;
+          }
+          charts.enneagram = echarts.init(enneagramChartRef.value);
+
+          const data = enneagram.value;
+          const xData = data.map(e => e.name);
+          const barData = data.map(e => {
+            let color = '#bae0ff';
+            if (e.type === 3) {
+              color = COLOR.primary;      // 主导型
+            } else if (e.type === 6) {
+              color = '#69c0ff';          // 次主导型
+            }
+            return {
+              value: e.ratio,
+              itemStyle: { color: color, borderRadius: [3, 3, 0, 0] }
+            };
+          });
+
+          const option = {
+            tooltip: {
+              trigger: 'item',
+              formatter: function (p) {
+                const e = data[p.dataIndex];
+                return e.name + '：占比 ' + e.ratio + '%';
+              }
+            },
+            grid: { left: 6, right: 6, top: 28, bottom: 4, containLabel: true },
+            xAxis: {
+              type: 'category',
+              data: xData,
+              axisLine: { lineStyle: { color: COLOR.splitDeep } },
+              axisTick: { show: false },
+              axisLabel: { color: COLOR.textRegular, fontSize: 11, interval: 0 }
+            },
+            yAxis: {
+              type: 'value',
+              show: false
+            },
+            series: [{
+              type: 'bar',
+              barWidth: 18,
+              data: barData,
+              label: {
+                show: true,
+                position: 'top',
+                formatter: '{c}%',
+                fontSize: 10,
+                color: COLOR.textRegular
+              }
+            }]
+          };
+          charts.enneagram.setOption(option);
+        };
+
+        // ========== 尺寸自适应 ==========
+        const handleResize = () => {
+          Object.keys(charts).forEach(k => { if (charts[k]) charts[k].resize(); });
+        };
+
+        // 折叠侧栏后图表自适应（待动画结束）
+        watch(isCollapse, () => {
+          setTimeout(handleResize, 320);
+        });
+
+        // 切换评估区间后重绘所有图表（等待响应式更新与 DOM 刷新）
+        watch(currentPeriod, () => {
+          nextTick(() => {
+            renderActivityChart();
+            renderAbilityRadar();
+            renderManageRadar();
+            renderEnneagram();
+          });
+        });
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          // 图表渲染（DOM 就绪后）
+          nextTick(() => {
+            renderActivityChart();
+            renderAbilityRadar();
+            renderManageRadar();
+            renderEnneagram();
+            window.addEventListener('resize', handleResize);
+          });
+        });
+
+        onBeforeUnmount(() => {
+          window.removeEventListener('resize', handleResize);
+          Object.keys(charts).forEach(k => { if (charts[k]) charts[k].dispose(); });
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 工具条：评估区间
+          currentPeriod, periods, updateTime,
+          // 活跃度概览
+          totalPeople, activityStats, activeDelta,
+          // 共性短板标签
+          useWeakTags, mgmtWeakTags,
+          // 九型研判文案
+          enneagramNotes,
+          // 图表 refs
+          activityChartRef, abilityRadarRef, manageRadarRef, enneagramChartRef
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

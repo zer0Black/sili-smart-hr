@@ -1,0 +1,18 @@
+feature_id: "P1_SYS_001_FEAT_系统初始化"
+name: "系统初始化"
+created_at: "2026-08-11"
+finalized: true
+sub_plans:
+  - id: "01"
+    name: "后端初始化链路"
+    file: "01_后端初始化链路.md"
+    status: "completed"
+  - id: "02"
+    name: "前端初始化向导"
+    file: "02_前端初始化向导.md"
+    status: "completed"
+  - id: "03"
+    name: "系统状态页"
+    file: "03_系统状态页.md"
+    status: "completed"
+execution_order: ["01", "02", "03"]

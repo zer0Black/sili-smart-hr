@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>能力逐期趋势 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      /* 主色 */
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      /* 侧栏 */
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      /* 内容区与卡片 */
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      /* 文字色阶 */
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      /* 边框 */
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      /* 表格 */
+      --table-header-bg: #fafafa;
+
+      /* 状态色 */
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      /* 圆角与间距 */
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      /* 布局尺寸 */
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .header-right .notification {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-right .notification:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right .notification .el-badge__content {
+      border: none;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 20px 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__inner.is-link,
+    .breadcrumb-wrapper .el-breadcrumb__inner a {
+      color: var(--text-regular);
+      font-weight: 400;
+      transition: color 0.2s ease;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__inner a:hover {
+      color: var(--primary-color);
+    }
+
+    /* ========== 通用卡片 ========== */
+    .chart-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 18px 20px 20px;
+      box-shadow: var(--card-shadow);
+      transition: box-shadow 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chart-card:hover {
+      box-shadow: var(--card-shadow-hover);
+    }
+
+    .card-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 11px;
+    }
+
+    .card-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 15px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .card-sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .card-extra {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-secondary);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .update-hint {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .update-hint .el-icon {
+      color: var(--text-secondary);
+    }
+
+    /* ========== 行布局 ========== */
+    .row-full {
+      margin-bottom: 16px;
+    }
+
+    /* ========== 头部摘要卡 ========== */
+    .overview-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 18px 20px 22px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 16px;
+    }
+
+    .overview-headline {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      padding: 8px 4px 0;
+      flex-wrap: wrap;
+    }
+
+    .headline-score {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .headline-score-row {
+      display: flex;
+      align-items: baseline;
+      gap: 14px;
+    }
+
+    .headline-score-num {
+      font-size: 44px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1;
+      letter-spacing: -0.5px;
+    }
+
+    .headline-score-unit {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-secondary);
+      margin-left: 2px;
+    }
+
+    .headline-delta {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      background: rgba(82, 196, 26, 0.10);
+      color: var(--success-color);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .headline-delta .el-icon {
+      font-size: 14px;
+    }
+
+    .headline-caption {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .headline-caption b {
+      color: var(--text-regular);
+      font-weight: 600;
+    }
+
+    .headline-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding-left: 28px;
+      border-left: 1px solid var(--border-color-split);
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.8;
+    }
+
+    .headline-meta-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .headline-meta b {
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    /* ========== 图表画布 ========== */
+    .chart-canvas {
+      width: 100%;
+      height: 300px;
+    }
+
+    .chart-canvas.trend {
+      height: 440px;
+    }
+
+    /* ========== 本期标记小标签 ========== */
+    .period-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      padding: 3px 9px;
+      border-radius: 4px;
+      background: rgba(24, 144, 255, 0.10);
+      color: var(--primary-color);
+    }
+
+    .period-tag .el-icon {
+      font-size: 13px;
+    }
+
+    /* ========== 表格 ========== */
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .delta-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .delta-cell .el-icon {
+      font-size: 13px;
+    }
+
+    .delta-cell.is-up {
+      color: var(--success-color);
+    }
+
+    .delta-cell.is-down {
+      color: var(--danger-color);
+    }
+
+    .dim-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .dim-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .dim-dot.is-weak {
+      box-shadow: 0 0 0 2px rgba(250, 173, 20, 0.18);
+    }
+
+    .score-cell {
+      font-variant-numeric: tabular-nums;
+      color: var(--text-regular);
+    }
+
+    .score-cell.is-curr {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 1280px) {
+      .overview-headline {
+        gap: 20px;
+      }
+      .headline-meta {
+        padding-left: 20px;
+      }
+      .chart-canvas.trend {
+        height: 380px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 14px;
+      }
+
+      .headline-meta {
+        padding-left: 0;
+        border-left: none;
+        border-top: 1px dashed var(--border-color-split);
+        padding-top: 10px;
+        margin-top: 4px;
+      }
+
+      .chart-canvas.trend {
+        height: 320px;
+      }
+    }
+
+    /* ========== 板块 2：small multiples 分面小图网格 ========== */
+    /* 注意：.dim-cell 用 .dim-grid 前缀限定，避免与板块 3 表格里的 span.dim-cell 冲突 */
+    .dim-grid {
+      display: grid;
+      gap: 12px;
+    }
+    .dim-grid.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .dim-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .dim-grid .dim-cell {
+      background: var(--content-bg);
+      border-radius: 8px;
+      padding: 12px 14px;
+      border-left: 3px solid transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .dim-grid .dim-cell.is-weak { border-left-color: var(--warning-color); }
+    .dim-cell-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .dim-cell-name { font-size: 13px; color: var(--text-regular); font-weight: 500; }
+    .dim-cell-score { display: flex; align-items: baseline; gap: 8px; }
+    .dim-cell-num { font-size: 24px; font-weight: 700; color: var(--text-primary); line-height: 1; }
+    .dim-cell-delta { font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 2px; }
+    .dim-cell-delta.is-up { color: var(--success-color); }
+    .dim-cell-delta.is-down { color: var(--danger-color); }
+    .dim-spark { width: 100%; height: 56px; }
+
+    @media (max-width: 1280px) {
+      .dim-grid.cols-4 { grid-template-columns: repeat(2, 1fr); }
+      .dim-grid.cols-3 { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .dim-grid.cols-4, .dim-grid.cols-3 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>结果洞察</el-breadcrumb-item>
+            <el-breadcrumb-item>
+              <a href="team-dashboard.html">团队看板</a>
+            </el-breadcrumb-item>
+            <el-breadcrumb-item>能力逐期趋势</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper">
+        <!-- 板块 1：头部摘要卡 -->
+        <section class="overview-card">
+          <div class="card-header">
+            <span class="card-title">{{ pageTitle }}</span>
+            <span class="card-sub">{{ pageSub }}</span>
+            <span class="card-extra">
+              <el-tag type="info" effect="plain" size="small">08-03 至 08-09</el-tag>
+              <el-tooltip content="每周日 23:15 自动更新" placement="top">
+                <span class="update-hint">
+                  <el-icon><Clock></Clock></el-icon>
+                  数据更新于 2026-08-07 09:15
+                </span>
+              </el-tooltip>
+            </span>
+          </div>
+          <div class="overview-headline">
+            <div class="headline-score">
+              <div class="headline-score-row">
+                <span class="headline-score-num">{{ overallScore }}<span class="headline-score-unit">分</span></span>
+                <span class="headline-delta">
+                  <el-icon><ArrowUp></ArrowUp></el-icon>较上期 +{{ overallDeltaText }} 分
+                </span>
+              </div>
+              <div class="headline-caption">
+                综合分（满分 100）· <b>{{ lastPeriodLabel }}</b> 较 <b>{{ prevPeriodLabel }}</b>
+              </div>
+            </div>
+            <div class="headline-meta">
+              <div class="headline-meta-row">评估维度：<b>{{ dimCount }}</b> 个</div>
+              <div class="headline-meta-row">数据来源：<b>{{ dataSource }}</b></div>
+              <div class="headline-meta-row">观察窗口：06-15 至 08-03（近 8 个评估区间）</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 板块 2：各维度逐期走势（主图 · small multiples 分面网格） -->
+        <section class="chart-card row-full">
+          <div class="card-header">
+            <span class="card-title">各维度逐期走势</span>
+            <span class="card-sub">每维度独立走势 · 纵轴按维度自适应 · 末端为本期值 · 橙色为短板</span>
+          </div>
+          <div :class="['dim-grid', isUse ? 'cols-4' : 'cols-3']">
+            <div
+              class="dim-cell"
+              :class="{ 'is-weak': d.weak }"
+              v-for="(d, i) in currentDims"
+              :key="d.name"
+            >
+              <div class="dim-cell-head">
+                <span class="dim-cell-name">{{ d.name }}</span>
+                <el-tag v-if="d.weak" size="small" type="warning" effect="light">短板</el-tag>
+              </div>
+              <div class="dim-cell-score">
+                <span class="dim-cell-num">{{ d.latest }}</span>
+                <span :class="['dim-cell-delta', d.delta >= 0 ? 'is-up' : 'is-down']">
+                  <el-icon><component :is="d.delta >= 0 ? 'ArrowUp' : 'ArrowDown'"></component></el-icon>{{ Math.abs(d.delta) }}
+                </span>
+              </div>
+              <div class="dim-spark"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 板块 3：本期较上期变化 -->
+        <section class="chart-card row-full">
+          <div class="card-header">
+            <span class="card-title">本期较上期变化</span>
+            <span class="card-sub">{{ lastPeriodLabel }} vs {{ prevPeriodLabel }} · 升为绿、降为红</span>
+            <span class="card-extra">短板维度以橙色点标识</span>
+          </div>
+          <el-table :data="diffRows" style="width: 100%;" stripe>
+            <el-table-column label="维度" min-width="220">
+              <template #default="{ row }">
+                <span class="dim-cell">
+                  <span :class="['dim-dot', { 'is-weak': row.isWeak }]" :style="{ background: row.dotColor }"></span>
+                  {{ row.dim }}
+                  <el-tag v-if="row.isWeak" type="warning" effect="plain" size="small" style="margin-left: 4px;">短板</el-tag>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="上期分" width="120" align="center">
+              <template #default="{ row }">
+                <span class="score-cell">{{ row.prev }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="本期分" width="120" align="center">
+              <template #default="{ row }">
+                <span class="score-cell is-curr">{{ row.curr }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="变化" width="160" align="center">
+              <template #default="{ row }">
+                <span :class="['delta-cell', row.delta > 0 ? 'is-up' : 'is-down']">
+                  <el-icon><component :is="row.delta > 0 ? 'ArrowUp' : 'ArrowDown'"></component></el-icon>
+                  {{ Math.abs(row.delta) }} 分
+                </span>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Vue / Element Plus / 图标（CDN 版本锁定） -->
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <!-- ECharts（锁定 5.4.3） -->
+  <script src="https://unpkg.com/echarts@5.4.3/dist/echarts.min.js"></script>
+
+  <script>
+    const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 类型参数（?type=use | manage）==========
+        const queryType = new URLSearchParams(window.location.search).get('type');
+        const type = ref(queryType === 'manage' ? 'manage' : 'use');
+        const isUse = computed(() => type.value !== 'manage');
+
+        // ========== 统一导航菜单（与 team-dashboard 完全一致） ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['insight', 'assessment', 'model', 'system'];
+        // 本页是团队看板的下钻，菜单高亮团队看板
+        const activeMenu = ref('team-dashboard');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const todoCount = ref(2);
+        const go = (href) => { window.location.href = href; };
+
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 数据 ==========
+        const periods = ['06-15', '06-22', '06-29', '07-06', '07-13', '07-20', '07-27', '08-03'];
+        // 小图 xAxis / tooltip 用的区间标签（periods 已是字符串数组，直接复用）
+        const periodLabels = periods;
+        const lastPeriodNum = 32;
+        const prevPeriodNum = 31;
+        const lastPeriodLabel = periods[periods.length - 1]; // 08-03
+        const prevPeriodLabel = periods[periods.length - 2]; // 07-27
+
+        // AI 使用能力 8 维
+        const useDimNames = [
+          '任务适配判断力', '指令与 prompt 设计', '对话驾驭', 'Skill 调用',
+          'Harness 编排驾驭', 'Skill 编写能力', '价值产出质量', '知识沉淀与复用'
+        ];
+        const useDimValues = [
+          [70, 72, 73, 75, 76, 77, 78, 80],
+          [64, 66, 67, 69, 70, 71, 72, 74],
+          [62, 63, 64, 66, 67, 68, 71, 70],
+          [58, 59, 60, 61, 62, 63, 64, 66],
+          [50, 51, 52, 54, 55, 56, 57, 60],
+          [42, 44, 45, 47, 48, 50, 52, 54],
+          [64, 65, 66, 67, 68, 69, 70, 72],
+          [38, 40, 41, 43, 45, 47, 49, 52]
+        ];
+        const useOverall = [56, 58, 59, 60, 61, 63, 64, 66];
+        const useWeakSet = ['Skill 编写能力', '知识沉淀与复用'];
+
+        const useDiff = [
+          { dim: '任务适配判断力',     prev: 78, curr: 80, delta: 2 },
+          { dim: '指令与 prompt 设计', prev: 72, curr: 74, delta: 2 },
+          { dim: '对话驾驭',           prev: 71, curr: 70, delta: -1 },
+          { dim: 'Skill 调用',  prev: 64, curr: 66, delta: 2 },
+          { dim: 'Harness 编排驾驭',   prev: 57, curr: 60, delta: 3 },
+          { dim: 'Skill 编写能力',     prev: 52, curr: 54, delta: 2 },
+          { dim: '价值产出质量',       prev: 70, curr: 72, delta: 2 },
+          { dim: '知识沉淀与复用',     prev: 49, curr: 52, delta: 3 }
+        ];
+
+        // AI 管理能力 5 维
+        const manageDimNames = [
+          '目标设定与对齐', '授权与分工', '监督与验收', '风险与担责', '人机协作设计'
+        ];
+        const manageDimValues = [
+          [56, 57, 58, 59, 60, 61, 63, 65],
+          [52, 53, 54, 55, 56, 57, 58, 60],
+          [48, 49, 50, 51, 52, 54, 59, 58],
+          [55, 56, 57, 58, 59, 60, 61, 63],
+          [40, 42, 43, 45, 47, 49, 51, 54]
+        ];
+        const manageOverall = [50, 51, 52, 54, 55, 56, 58, 60];
+        const manageWeakSet = ['人机协作设计'];
+
+        const manageDiff = [
+          { dim: '目标设定与对齐', prev: 63, curr: 65, delta: 2 },
+          { dim: '授权与分工',     prev: 58, curr: 60, delta: 2 },
+          { dim: '监督与验收',     prev: 59, curr: 58, delta: -1 },
+          { dim: '风险与担责',     prev: 61, curr: 63, delta: 2 },
+          { dim: '人机协作设计',   prev: 51, curr: 54, delta: 3 }
+        ];
+
+        // ========== 协调色板（综合分用深灰虚线，短板用 warning 橙）==========
+        const PALETTE = ['#1890ff', '#40a9ff', '#69c0ff', '#096dd9', '#36cfc9', '#597ef7', '#ff4d4f', '#13c2c2'];
+
+        const COLOR = {
+          primary: '#1890ff',
+          primaryHover: '#40a9ff',
+          primaryDeep: '#096dd9',
+          success: '#52c41a',
+          warning: '#faad14',
+          danger: '#ff4d4f',
+          unused: '#8c8c8c',
+          reference: '#bfbfbf',
+          textPrimary: '#262626',
+          textRegular: '#595959',
+          textSecondary: '#8c8c8c',
+          split: '#f0f0f0',
+          splitDeep: '#e8e8e8'
+        };
+
+        // 给维度分配颜色：短板用 warning 橙；其余按 PALETTE 循环
+        const buildDimColorMap = (names, weakSet) => {
+          const map = {};
+          let paletteIdx = 0;
+          names.forEach(name => {
+            if (weakSet.indexOf(name) >= 0) {
+              map[name] = COLOR.warning;
+            } else {
+              map[name] = PALETTE[paletteIdx % PALETTE.length];
+              paletteIdx++;
+            }
+          });
+          return map;
+        };
+
+        const useColorMap = buildDimColorMap(useDimNames, useWeakSet);
+        const manageColorMap = buildDimColorMap(manageDimNames, manageWeakSet);
+
+        // ========== 计算属性（依据 type 切换） ==========
+        const pageTitle = computed(() =>
+          isUse.value ? 'AI 使用能力 · 逐期趋势' : 'AI 管理能力 · 逐期趋势'
+        );
+        const pageSub = computed(() =>
+          isUse.value ? '底层 4 维 + 上层 4 维 · 走对话分析' : '5 子能力 · 走主动测试场景题'
+        );
+
+        const overallScore = computed(() => isUse.value ? 66 : 60);
+        const overallDelta = computed(() => 2.0);
+        const overallDeltaText = computed(() => overallDelta.value.toFixed(1));
+
+        const dimCount = computed(() => isUse.value ? useDimNames.length : manageDimNames.length);
+        const dataSource = computed(() => isUse.value ? '对话分析' : '主动测试场景题');
+
+        const dimNames = computed(() => isUse.value ? useDimNames : manageDimNames);
+        const dimValues = computed(() => isUse.value ? useDimValues : manageDimValues);
+        const overallArr = computed(() => isUse.value ? useOverall : manageOverall);
+        const colorMap = computed(() => isUse.value ? useColorMap : manageColorMap);
+        const weakSet = computed(() => isUse.value ? useWeakSet : manageWeakSet);
+
+        // 给表格 diffRows 附加颜色与短板标记
+        const diffRows = computed(() => {
+          const rows = isUse.value ? useDiff : manageDiff;
+          const cm = colorMap.value;
+          const ws = weakSet.value;
+          return rows.map(r => ({
+            dim: r.dim,
+            prev: r.prev,
+            curr: r.curr,
+            delta: r.delta,
+            dotColor: cm[r.dim],
+            isWeak: ws.indexOf(r.dim) >= 0
+          }));
+        });
+
+        // 板块 2 small multiples 每格数据：维度名、逐期序列、最新分、环比、短板标记
+        // names / values / diffs 三者按维度顺序索引对齐（use 与 manage 已对齐）
+        const currentDims = computed(() => {
+          const names = isUse.value ? useDimNames : manageDimNames;
+          const values = isUse.value ? useDimValues : manageDimValues;
+          const diffs = isUse.value ? useDiff : manageDiff;
+          const weak = isUse.value ? useWeakSet : manageWeakSet;
+          return names.map((n, i) => ({
+            name: n,
+            values: values[i],
+            latest: values[i][values[i].length - 1],
+            delta: diffs[i].delta,
+            weak: weak.includes(n)
+          }));
+        });
+
+        // ========== 图表实例（small multiples 多实例） ==========
+        const sparkCharts = [];
+
+        // ========== 主图：各维度逐期走势（small multiples 分面小图） ==========
+        // 每个维度一张独立小折线，渲染后用 querySelectorAll 统一取画布，互不串线
+        const renderSparks = () => {
+          sparkCharts.forEach(c => { if (c) c.dispose(); });
+          sparkCharts.length = 0;
+          const dims = currentDims.value;
+          const els = document.querySelectorAll('.dim-spark');
+          els.forEach((el, i) => {
+            const d = dims[i];
+            if (!d) return;
+            const lineColor = d.weak ? COLOR.warning : COLOR.primary;
+            const chart = echarts.init(el);
+            chart.setOption({
+              grid: { left: 0, right: 0, top: 2, bottom: 0 },
+              xAxis: { type: 'category', show: false, data: periodLabels, boundaryGap: false },
+              yAxis: {
+                type: 'value',
+                show: false,
+                min: function (value) { return Math.floor((value.min - 5) / 5) * 5; },
+                max: function (value) { return Math.ceil((value.max + 5) / 5) * 5; }
+              },
+              tooltip: {
+                trigger: 'axis',
+                confine: true,
+                formatter: function (p) { return p[0].name + '：' + p[0].value + ' 分'; }
+              },
+              series: [{
+                type: 'line',
+                data: d.values,
+                smooth: false,
+                showSymbol: true,
+                symbol: 'circle',
+                symbolSize: 5,
+                lineStyle: { color: lineColor, width: 2 },
+                itemStyle: { color: lineColor, borderColor: '#fff', borderWidth: 1 },
+                areaStyle: { color: d.weak ? 'rgba(250,173,20,0.12)' : 'rgba(24,144,255,0.10)' },
+                markPoint: {
+                  symbol: 'circle',
+                  symbolSize: 7,
+                  label: { show: false },
+                  itemStyle: { color: lineColor, borderColor: '#fff', borderWidth: 1.5 },
+                  data: [{ coord: [d.values.length - 1, d.values[d.values.length - 1]] }]
+                }
+              }]
+            });
+            sparkCharts.push(chart);
+          });
+        };
+
+        // ========== 尺寸自适应 ==========
+        const handleResize = () => {
+          sparkCharts.forEach(c => { if (c) c.resize(); });
+        };
+
+        // 折叠侧栏后图表自适应（待动画结束）
+        watch(isCollapse, () => {
+          setTimeout(handleResize, 320);
+        });
+
+        // ========== 初始化 ==========
+        onMounted(() => {
+          // 图表渲染（DOM 就绪后）
+          nextTick(() => {
+            renderSparks();
+            window.addEventListener('resize', handleResize);
+          });
+        });
+
+        onBeforeUnmount(() => {
+          window.removeEventListener('resize', handleResize);
+          sparkCharts.forEach(c => { if (c) c.dispose(); });
+          sparkCharts.length = 0;
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          todoCount, go, handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 类型
+          type, isUse,
+          // 头部摘要
+          pageTitle, pageSub, overallScore, overallDelta, overallDeltaText,
+          lastPeriodNum, prevPeriodNum, lastPeriodLabel, prevPeriodLabel, dimCount, dataSource,
+          // 主图（small multiples 分面网格）
+          currentDims,
+          // 表格
+          diffRows
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

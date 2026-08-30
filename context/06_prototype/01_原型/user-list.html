@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户管理 · sili-smart-hr</title>
+  <link rel="stylesheet" href="https://unpkg.com/element-plus@2.13.5/dist/index.css">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    #app {
+      height: 100%;
+      display: flex;
+    }
+
+    /* ========== 设计系统变量 ========== */
+    :root {
+      /* 主色 */
+      --primary-color: #1890ff;
+      --primary-color-hover: #40a9ff;
+      --primary-color-active: #096dd9;
+
+      /* 侧栏 */
+      --sidebar-bg-start: #001529;
+      --sidebar-bg-end: #002140;
+      --sidebar-text: rgba(255, 255, 255, 0.65);
+      --sidebar-text-hover: #fff;
+      --sidebar-active-bg: rgba(24, 144, 255, 0.15);
+      --sidebar-active-border: #1890ff;
+
+      /* 内容区与卡片 */
+      --content-bg: #f0f2f5;
+      --card-bg: #fff;
+      --card-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+      --card-shadow-hover: 0 1px 2px -2px rgba(0, 0, 0, 0.16), 0 3px 6px 0 rgba(0, 0, 0, 0.12), 0 5px 12px 4px rgba(0, 0, 0, 0.09);
+
+      /* 文字色阶 */
+      --text-primary: #262626;
+      --text-regular: #595959;
+      --text-secondary: #8c8c8c;
+
+      /* 边框 */
+      --border-color: #f0f0f0;
+      --border-color-split: #e8e8e8;
+
+      /* 表格 */
+      --table-header-bg: #fafafa;
+
+      /* 状态色 */
+      --success-color: #52c41a;
+      --warning-color: #faad14;
+      --danger-color: #ff4d4f;
+      --info-color: #1890ff;
+
+      /* 圆角与间距 */
+      --border-radius: 6px;
+      --border-radius-lg: 8px;
+      --spacing-sm: 8px;
+      --spacing-md: 16px;
+      --spacing-lg: 24px;
+
+      /* 布局尺寸 */
+      --sidebar-width: 220px;
+      --sidebar-width-collapsed: 64px;
+      --header-height: 56px;
+    }
+
+    /* ========== 左侧菜单样式 ========== */
+    .sidebar {
+      width: 220px;
+      height: 100%;
+      background: linear-gradient(180deg, var(--sidebar-bg-start) 0%, var(--sidebar-bg-end) 100%);
+      transition: width 0.3s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+      box-shadow: 2px 0 8px 0 rgba(29, 35, 41, 0.05);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar.collapsed {
+      width: 64px;
+    }
+
+    .sidebar-header {
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      flex-shrink: 0;
+    }
+
+    .sidebar-header .logo {
+      color: #fff;
+      font-size: 17px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .sidebar-header .logo::before {
+      content: 'S';
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      background: var(--primary-color);
+      border-radius: 6px;
+      flex-shrink: 0;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: 0;
+    }
+
+    .sidebar.collapsed .sidebar-header .logo {
+      font-size: 0;
+    }
+
+    .sidebar-menu {
+      border-right: none;
+      background: transparent;
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .sidebar-menu:not(.el-menu--collapse) {
+      width: 220px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.12);
+      border-radius: 3px;
+    }
+
+    .sidebar-menu::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .sidebar-menu .el-menu-item,
+    .sidebar-menu .el-sub-menu__title {
+      height: 46px;
+      line-height: 46px;
+      color: var(--sidebar-text);
+      padding-left: 22px !important;
+      margin: 4px 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item .el-icon,
+    .sidebar-menu .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text);
+      font-size: 16px;
+      margin-right: 10px;
+      transition: color 0.2s ease;
+    }
+
+    .sidebar-menu .el-menu-item:hover,
+    .sidebar-menu .el-sub-menu__title:hover {
+      background-color: rgba(255, 255, 255, 0.06);
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item:hover .el-icon,
+    .sidebar-menu .el-sub-menu__title:hover .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-menu-item.is-active {
+      background: var(--sidebar-active-bg);
+      color: var(--sidebar-text-hover);
+      border-left: 3px solid var(--sidebar-active-border);
+      margin-left: 5px;
+      padding-left: 17px !important;
+    }
+
+    .sidebar-menu .el-menu-item.is-active .el-icon {
+      color: var(--primary-color);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu.is-opened > .el-sub-menu__title .el-icon {
+      color: var(--sidebar-text-hover);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu {
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item {
+      height: 40px;
+      line-height: 40px;
+      padding-left: 52px !important;
+      min-width: auto;
+      font-size: 13px;
+    }
+
+    .sidebar-menu .el-sub-menu .el-menu-item.is-active {
+      padding-left: 45px !important;
+    }
+
+    .sidebar-menu .el-sub-menu__title .el-sub-menu__icon-arrow {
+      color: var(--sidebar-text);
+      font-size: 12px;
+      margin-top: -2px;
+    }
+
+    /* ========== 右侧主区域 ========== */
+    .main-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+      background: var(--content-bg);
+    }
+
+    /* ========== 顶栏 ========== */
+    .header {
+      height: 56px;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-left .collapse-btn {
+      cursor: pointer;
+      padding: 8px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+      color: var(--text-regular);
+      display: flex;
+      align-items: center;
+    }
+
+    .header-left .collapse-btn:hover {
+      background: rgba(0, 0, 0, 0.025);
+      color: var(--primary-color);
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--border-radius);
+      transition: all 0.2s ease;
+    }
+
+    .user-info:hover {
+      background: rgba(0, 0, 0, 0.025);
+    }
+
+    .user-info .username {
+      font-size: 14px;
+      color: var(--text-primary);
+      font-weight: 500;
+    }
+
+    .user-info .el-icon {
+      color: var(--text-secondary);
+      font-size: 12px;
+      transition: transform 0.2s ease;
+    }
+
+    .user-info:hover .el-icon {
+      color: var(--primary-color);
+    }
+
+    /* ========== 内容区 ========== */
+    .content-wrapper {
+      flex: 1;
+      padding: 24px;
+      overflow: auto;
+    }
+
+    .breadcrumb-wrapper .el-breadcrumb__item:first-child .el-breadcrumb__inner {
+      color: var(--primary-color);
+      font-weight: 500;
+    }
+
+    /* ========== 页面标题 ========== */
+    .page-title-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .page-title-bar h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+    }
+
+    .page-title-bar h1::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 4px;
+      height: 20px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .page-title-bar .page-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* ========== 统计卡 ========== */
+    .stat-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .stat-card .stat-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .stat-card .stat-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-card .stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--text-primary);
+      line-height: 1.1;
+    }
+
+    .stat-card .stat-label {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .stat-icon.bg-blue { background: rgba(24, 144, 255, 0.1); color: var(--primary-color); }
+    .stat-icon.bg-green { background: rgba(82, 196, 26, 0.1); color: var(--success-color); }
+    .stat-icon.bg-orange { background: rgba(250, 173, 20, 0.1); color: var(--warning-color); }
+    .stat-icon.bg-red { background: rgba(255, 77, 79, 0.1); color: var(--danger-color); }
+
+    /* ========== 表格卡片 ========== */
+    .table-card {
+      background: var(--card-bg);
+      border-radius: var(--border-radius-lg);
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+    }
+
+    .table-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .table-header .title-group {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .table-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-primary);
+      position: relative;
+      padding-left: 12px;
+      white-space: nowrap;
+    }
+
+    .table-title::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 3px;
+      height: 16px;
+      background: var(--primary-color);
+      border-radius: 2px;
+    }
+
+    .table-search {
+      width: 240px;
+    }
+
+    /* ========== 表格 ========== */
+    .el-table {
+      --el-table-border-color: var(--border-color);
+      --el-table-header-bg-color: var(--table-header-bg);
+    }
+
+    .el-table th.el-table__cell {
+      background: #fafafa;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell {
+      background: #fafafa;
+    }
+
+    .el-table td.el-table__cell,
+    .el-table th.el-table__cell {
+      padding: 12px 0;
+    }
+
+    .user-name-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-name-cell .account {
+      font-weight: 500;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    }
+
+    .user-name-cell .uname {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .pwd-mask {
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+      font-size: 15px;
+      color: var(--text-secondary);
+      letter-spacing: 2px;
+    }
+
+    .login-time {
+      font-size: 13px;
+      color: var(--text-regular);
+    }
+
+    /* ========== 表格底部 ========== */
+    .table-footer {
+      padding: 14px 24px;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fafafa;
+    }
+
+    .table-footer .footer-tip {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+    }
+
+    /* ========== 按钮与输入框圆角 ========== */
+    .el-button {
+      border-radius: var(--border-radius);
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+
+    .el-button--primary {
+      --el-button-bg-color: var(--primary-color);
+      --el-button-border-color: var(--primary-color);
+      --el-button-hover-bg-color: var(--primary-color-hover);
+      --el-button-hover-border-color: var(--primary-color-hover);
+      --el-button-active-bg-color: var(--primary-color-active);
+      --el-button-active-border-color: var(--primary-color-active);
+    }
+
+    .el-button:focus {
+      outline: none;
+    }
+
+    .el-input__wrapper,
+    .el-select__wrapper,
+    .el-date-editor .el-input__wrapper {
+      border-radius: var(--border-radius);
+    }
+
+    .el-dropdown-menu__item {
+      padding: 8px 16px;
+      font-size: 14px;
+    }
+
+    .el-dropdown-menu__item .el-icon {
+      margin-right: 8px;
+    }
+
+    /* ========== 弹窗表单 ========== */
+    .dialog-form .el-form-item {
+      margin-bottom: 20px;
+    }
+
+    .dialog-form .el-form-item__label {
+      color: var(--text-regular);
+      font-weight: 500;
+    }
+
+    .dialog-form .field-tip {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+      margin-top: 4px;
+    }
+
+    .el-dialog {
+      border-radius: var(--border-radius-lg);
+      overflow: hidden;
+    }
+
+    .el-dialog__header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-color);
+      margin-right: 0;
+    }
+
+    .el-dialog__title {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .el-dialog__body {
+      padding: 24px;
+    }
+
+    .el-dialog__footer {
+      padding: 12px 24px;
+      border-top: 1px solid var(--border-color);
+    }
+
+    /* ========== 响应式 ========== */
+    @media (max-width: 768px) {
+      .sidebar {
+        position: fixed;
+        z-index: 1000;
+        height: 100%;
+      }
+
+      .sidebar.collapsed {
+        width: 0;
+        padding: 0;
+      }
+
+      .content-wrapper {
+        padding: 16px;
+      }
+
+      .stat-cards {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .table-search {
+        display: none;
+      }
+
+      .table-header {
+        padding: 14px 16px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧菜单 -->
+    <aside :class="['sidebar', { collapsed: isCollapse }]">
+      <div class="sidebar-header">
+        <span class="logo">{{ isCollapse ? '' : 'sili-smart-hr' }}</span>
+      </div>
+      <el-menu
+        :default-active="activeMenu"
+        class="sidebar-menu"
+        :collapse="isCollapse"
+        :collapse-transition="false"
+        :default-openeds="openedKeys"
+        background-color="transparent"
+        text-color="#bfcbd9"
+        active-text-color="#1890ff"
+        @select="handleMenuSelect"
+      >
+        <template v-for="group in menuGroups" :key="group.key">
+          <el-sub-menu v-if="group.children.length > 1" :index="group.key">
+            <template #title>
+              <el-icon><component :is="group.icon"></component></el-icon>
+              <span>{{ group.title }}</span>
+            </template>
+            <el-menu-item v-for="child in group.children" :key="child.index" :index="child.index">
+              {{ child.title }}
+            </el-menu-item>
+          </el-sub-menu>
+          <el-menu-item v-else :index="group.children[0].index">
+            <el-icon><component :is="group.icon"></component></el-icon>
+            <template #title>{{ group.children[0].title }}</template>
+          </el-menu-item>
+        </template>
+      </el-menu>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main class="main-container">
+      <!-- 顶栏 -->
+      <header class="header">
+        <div class="header-left">
+          <div class="collapse-btn" @click="toggleCollapse">
+            <el-icon :size="20"><component :is="isCollapse ? 'Expand' : 'Fold'"></component></el-icon>
+          </div>
+          <el-breadcrumb separator="/" class="breadcrumb-wrapper">
+            <el-breadcrumb-item>sili-smart-hr</el-breadcrumb-item>
+            <el-breadcrumb-item>系统配置</el-breadcrumb-item>
+            <el-breadcrumb-item>用户管理</el-breadcrumb-item>
+          </el-breadcrumb>
+        </div>
+
+        <div class="header-right">
+          <el-dropdown @command="handleUserCommand">
+            <div class="user-info">
+              <el-avatar :size="32" style="background: var(--primary-color);">{{ avatarText }}</el-avatar>
+              <span class="username">{{ currentUser.name }}</span>
+              <el-icon><ArrowDown></ArrowDown></el-icon>
+            </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="profile">
+                  <el-icon><User></User></el-icon>个人中心
+                </el-dropdown-item>
+                <el-dropdown-item divided command="logout">
+                  <el-icon><SwitchButton></SwitchButton></el-icon>退出登录
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </header>
+
+      <!-- 内容区 -->
+      <div class="content-wrapper">
+        <!-- 页面标题 -->
+        <div class="page-title-bar">
+          <h1>用户管理</h1>
+          <span class="page-sub">维护可登录平台的账号台账（账号、姓名、密码、启停、最近登录）</span>
+        </div>
+
+        <!-- 统计卡 -->
+        <div class="stat-cards">
+          <div class="stat-card">
+            <div class="stat-icon bg-blue"><el-icon :size="22"><UserFilled /></el-icon></div>
+            <div class="stat-meta">
+              <span class="stat-value">{{ total }}</span>
+              <span class="stat-label">账号总数</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon bg-red"><el-icon :size="22"><CircleClose /></el-icon></div>
+            <div class="stat-meta">
+              <span class="stat-value">{{ disabledCount }}</span>
+              <span class="stat-label">已停用</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 表格卡片 -->
+        <div class="table-card">
+          <div class="table-header">
+            <div class="title-group">
+              <span class="table-title">账号列表</span>
+              <el-input
+                v-model="searchKey"
+                class="table-search"
+                placeholder="搜索账号 / 姓名"
+                clearable
+                @keyup.enter="() => {}"
+              >
+                <template #prefix>
+                  <el-icon><Search></Search></el-icon>
+                </template>
+              </el-input>
+            </div>
+            <el-button type="primary" @click="openAdd">
+              <el-icon><Plus></Plus></el-icon>新增账号
+            </el-button>
+          </div>
+
+          <el-table
+            :data="filteredUsers"
+            stripe
+            style="width: 100%"
+            v-loading="loading"
+            table-layout="auto"
+          >
+            <el-table-column label="账号" min-width="180">
+              <template #default="{ row }">
+                <div class="user-name-cell">
+                  <span class="account">{{ row.account }}</span>
+                  <span class="uname">{{ row.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="密码" width="120" align="center">
+              <template #default>
+                <span class="pwd-mask">······</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="启用状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-switch
+                  v-model="row.enabled"
+                  :before-change="() => beforeToggleEnabled(row)"
+                  @change="onEnabledChange(row)"
+                ></el-switch>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近登录" min-width="150">
+              <template #default="{ row }">
+                <span class="login-time">{{ row.lastLogin }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="220" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+                <el-button type="warning" link size="small" @click="openReset(row)">重置密码</el-button>
+                <el-button type="danger" link size="small" @click="deleteUser(row)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="table-footer">
+            <span class="footer-tip">
+              共 {{ filteredUsers.length }} 个账号 · 当前启用 <strong style="color: var(--text-regular);">{{ total - disabledCount }}</strong> 个 · 至少保留一个启用账号 · 演示数据
+            </span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 新增 / 编辑账号弹窗 -->
+    <el-dialog
+      v-model="formDialogVisible"
+      :title="formDialogTitle"
+      width="520px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <el-form
+        ref="formDialogRef"
+        :model="formData"
+        :rules="formRules"
+        label-width="80px"
+        class="dialog-form"
+      >
+        <el-form-item label="账号" prop="account">
+          <el-input v-model="formData.account" :disabled="editMode" placeholder="登录用账号，如 zhangmin" maxlength="30"></el-input>
+          <div class="field-tip">登录系统时输入的账号，保存后不可修改。</div>
+        </el-form-item>
+        <el-form-item label="姓名" prop="name">
+          <el-input v-model="formData.name" placeholder="真实姓名" maxlength="20"></el-input>
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="formData.password" type="password" show-password placeholder="留空表示不修改"></el-input>
+          <div class="field-tip">{{ editMode ? '留空保持原密码不变。' : '初始登录密码，建议登录后修改。' }}</div>
+        </el-form-item>
+        <el-form-item label="启用状态">
+          <el-switch v-model="formData.enabled"></el-switch>
+          <div class="field-tip">停用的账号无法登录系统。</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="formDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="submitLoading" @click="submitForm">
+          {{ editMode ? '保存修改' : '确定新增' }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 重置密码弹窗 -->
+    <el-dialog
+      v-model="resetDialogVisible"
+      :title="'重置密码 · ' + resetData.account"
+      width="460px"
+      :close-on-click-modal="false"
+      destroy-on-close
+    >
+      <el-form
+        ref="resetFormRef"
+        :model="resetForm"
+        :rules="resetRules"
+        label-width="80px"
+        class="dialog-form"
+      >
+        <el-form-item label="账号">
+          <span style="color: var(--text-secondary);">{{ resetData.account }}（{{ resetData.name }}）</span>
+        </el-form-item>
+        <el-form-item label="新密码" prop="newPwd">
+          <el-input v-model="resetForm.newPwd" type="password" show-password placeholder="请输入新密码"></el-input>
+          <div class="field-tip">密码长度不少于 6 位，重置后原密码立即失效。</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="resetDialogVisible = false">取消</el-button>
+        <el-button type="warning" :loading="submitLoading" @click="submitReset">确认重置</el-button>
+      </template>
+    </el-dialog>
+  </div>
+
+  <script src="https://unpkg.com/vue@3.4.0/dist/vue.global.js"></script>
+  <script src="https://unpkg.com/element-plus@2.13.5"></script>
+  <script src="https://unpkg.com/@element-plus/icons-vue@2.3.1"></script>
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+    const { ElMessage, ElMessageBox } = ElementPlus;
+
+    const app = createApp({
+      setup() {
+        // ========== 用户 ==========
+        const currentUser = computed(() => ({ name: '张敏' }));
+        const avatarText = computed(() => currentUser.value.name.charAt(0));
+
+        // ========== 统一导航菜单 ==========
+        const menuGroups = [
+          {
+            key: 'workbench', title: '工作台', icon: 'Odometer',
+            children: [{ index: 'workbench', title: '工作台首页', href: 'index.html' }]
+          },
+          {
+            key: 'insight', title: '结果洞察', icon: 'DataAnalysis',
+            children: [
+              { index: 'team-dashboard', title: '团队看板', href: 'team-dashboard.html' },
+              { index: 'profile-list', title: '人员画像', href: 'profile-list.html' }
+            ]
+          },
+          {
+            key: 'assessment', title: '评估运营', icon: 'Promotion',
+            children: [
+              { index: 'assessment-center', title: '评测运营中心', href: 'assessment-batch-list.html' }
+            ]
+          },
+          {
+            key: 'model', title: '能力模型', icon: 'Operation',
+            children: [
+              { index: 'dimension-config-list', title: '维度与权重', href: 'dimension-config-list.html' },
+              { index: 'question-bank-list', title: '题库管理', href: 'question-bank-list.html' }
+            ]
+          },
+          {
+            key: 'system', title: '系统配置', icon: 'Setting',
+            children: [
+              { index: 'system-config', title: '系统参数', href: 'system-config.html' },
+              { index: 'secret-config', title: '大模型配置', href: 'secret-config.html' },
+              { index: 'user-list', title: '用户管理', href: 'user-list.html' },
+              { index: 'operation-log', title: '操作日志', href: 'operation-log.html' }
+            ]
+          }
+        ];
+
+        const routeMap = {};
+        menuGroups.forEach(g => g.children.forEach(c => { routeMap[c.index] = c.href; }));
+
+        const openedKeys = ['system'];
+        const activeMenu = ref('user-list');
+
+        const handleMenuSelect = (index) => {
+          if (routeMap[index]) {
+            window.location.href = routeMap[index];
+          }
+        };
+
+        // ========== 侧栏折叠 ==========
+        const isCollapse = ref(false);
+        const toggleCollapse = () => { isCollapse.value = !isCollapse.value; };
+
+        // ========== 顶栏交互 ==========
+        const handleUserCommand = (command) => {
+          if (command === 'logout') {
+            ElMessageBox.confirm('确定要退出登录吗？', '提示', {
+              confirmButtonText: '确定',
+              cancelButtonText: '取消',
+              type: 'warning'
+            }).then(() => {
+              window.location.href = 'login.html';
+            }).catch(() => {});
+          } else if (command === 'profile') {
+            ElMessage.info('演示入口，该功能在原型中暂未实现');
+          }
+        };
+
+        // ========== 账号数据 ==========
+        const loading = ref(false);
+        const searchKey = ref('');
+
+        const usersData = ref([
+          { id: 1, account: 'admin', name: '张敏', password: 'silismart123', enabled: true, lastLogin: '2026-08-07 09:15' },
+          { id: 2, account: 'liting', name: '李婷', password: 'silismart123', enabled: true, lastLogin: '2026-08-06 17:40' },
+          { id: 3, account: 'wangzhiyuan', name: '王志远', password: 'silismart123', enabled: true, lastLogin: '2026-08-07 08:30' },
+          { id: 4, account: 'chenxiaoyan', name: '陈晓燕', password: 'silismart123', enabled: true, lastLogin: '2026-08-05 14:20' },
+          { id: 5, account: 'liujianhua', name: '刘建华', password: 'silismart123', enabled: false, lastLogin: '2026-07-28 10:00' },
+          { id: 6, account: 'zhaomin', name: '赵敏', password: 'silismart123', enabled: true, lastLogin: '2026-08-06 16:00' },
+          { id: 7, account: 'sunwei', name: '孙伟', password: 'silismart123', enabled: true, lastLogin: '2026-08-07 10:05' },
+          { id: 8, account: 'zhoutao', name: '周涛', password: 'silismart123', enabled: true, lastLogin: '2026-08-04 09:00' }
+        ]);
+
+        const filteredUsers = computed(() => {
+          const kw = searchKey.value.trim().toLowerCase();
+          if (!kw) return usersData.value;
+          return usersData.value.filter(u =>
+            u.account.toLowerCase().includes(kw) || u.name.toLowerCase().includes(kw)
+          );
+        });
+
+        const total = computed(() => usersData.value.length);
+        const disabledCount = computed(() => usersData.value.filter(u => !u.enabled).length);
+        const enabledCount = () => usersData.value.filter(u => u.enabled).length;
+
+        // ========== 启用 / 停用 ==========
+        const beforeToggleEnabled = (row) => {
+          // 关闭当前账号前校验：至少保留一个启用账号
+          if (row.enabled && enabledCount() <= 1) {
+            ElMessage.warning('至少保留一个启用的账号，请先启用其他账号');
+            return false;
+          }
+          return true;
+        };
+
+        const onEnabledChange = (row) => {
+          ElMessage.success(row.enabled ? '已启用账号「' + row.account + '」' : '已停用账号「' + row.account + '」');
+        };
+
+        // ========== 删除 ==========
+        const deleteUser = (row) => {
+          if (row.enabled && enabledCount() <= 1) {
+            ElMessage.warning('至少保留一个启用的账号，无法删除当前唯一启用的账号');
+            return;
+          }
+          ElMessageBox.confirm(
+            '删除后无法恢复，确认删除账号「' + row.account + '」？',
+            '删除确认',
+            { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' }
+          ).then(() => {
+            usersData.value = usersData.value.filter(u => u.id !== row.id);
+            ElMessage.success('已删除账号「' + row.account + '」');
+          }).catch(() => {});
+        };
+
+        // ========== 新增 / 编辑 ==========
+        const formDialogVisible = ref(false);
+        const formDialogRef = ref(null);
+        const submitLoading = ref(false);
+        const editId = ref(null);
+        const editMode = computed(() => editId.value !== null);
+        const formDialogTitle = computed(() => editMode.value ? '编辑用户' : '新增用户');
+
+        const formData = reactive({ account: '', name: '', password: '', enabled: true });
+
+        const formRules = computed(() => ({
+          account: [
+            { required: true, message: '请输入账号', trigger: 'blur' },
+            { pattern: /^[a-zA-Z0-9_]{3,30}$/, message: '账号为 3-30 位字母、数字或下划线', trigger: 'blur' }
+          ],
+          name: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+          password: editMode.value ? [] : [
+            { required: true, message: '请输入密码', trigger: 'blur' },
+            { min: 6, message: '密码长度不少于 6 位', trigger: 'blur' }
+          ]
+        }));
+
+        const openAdd = () => {
+          editId.value = null;
+          Object.assign(formData, { account: '', name: '', password: '', enabled: true });
+          formDialogVisible.value = true;
+        };
+
+        const openEdit = (row) => {
+          editId.value = row.id;
+          Object.assign(formData, {
+            account: row.account,
+            name: row.name,
+            password: '',
+            enabled: row.enabled
+          });
+          formDialogVisible.value = true;
+        };
+
+        const submitForm = async () => {
+          if (!formDialogRef.value) return;
+          try {
+            await formDialogRef.value.validate();
+          } catch (e) {
+            ElMessage.error('请检查表单填写是否完整');
+            return;
+          }
+          // 账号唯一性校验
+          const dup = usersData.value.find(u => u.account === formData.account.trim() && u.id !== editId.value);
+          if (dup) {
+            ElMessage.error('账号「' + formData.account + '」已存在');
+            return;
+          }
+          // 编辑时若要把当前账号停用，需保留至少一个启用账号
+          if (editMode.value) {
+            const orig = usersData.value.find(u => u.id === editId.value);
+            if (orig.enabled && !formData.enabled && enabledCount() <= 1) {
+              ElMessage.warning('至少保留一个启用的账号');
+              return;
+            }
+          }
+          submitLoading.value = true;
+          setTimeout(() => {
+            if (editMode.value) {
+              const u = usersData.value.find(u => u.id === editId.value);
+              if (u) {
+                u.name = formData.name;
+                if (formData.password) u.password = formData.password;
+                u.enabled = formData.enabled;
+              }
+              ElMessage.success('账号「' + formData.account + '」已更新');
+            } else {
+              const newId = usersData.value.length ? Math.max(...usersData.value.map(u => u.id)) + 1 : 1;
+              usersData.value.unshift({
+                id: newId,
+                account: formData.account.trim(),
+                name: formData.name,
+                password: formData.password,
+                enabled: formData.enabled,
+                lastLogin: '—'
+              });
+              ElMessage.success('账号「' + formData.account + '」已新增');
+            }
+            submitLoading.value = false;
+            formDialogVisible.value = false;
+          }, 500);
+        };
+
+        // ========== 重置密码 ==========
+        const resetDialogVisible = ref(false);
+        const resetFormRef = ref(null);
+        const resetData = ref({ account: '', name: '' });
+        const resetForm = reactive({ newPwd: '' });
+        const resetRules = {
+          newPwd: [
+            { required: true, message: '请输入新密码', trigger: 'blur' },
+            { min: 6, message: '密码长度不少于 6 位', trigger: 'blur' }
+          ]
+        };
+
+        const openReset = (row) => {
+          resetData.value = { id: row.id, account: row.account, name: row.name };
+          resetForm.newPwd = '';
+          resetDialogVisible.value = true;
+        };
+
+        const submitReset = async () => {
+          if (!resetFormRef.value) return;
+          try {
+            await resetFormRef.value.validate();
+          } catch (e) {
+            return;
+          }
+          submitLoading.value = true;
+          setTimeout(() => {
+            const u = usersData.value.find(u => u.id === resetData.value.id);
+            if (u) u.password = resetForm.newPwd;
+            submitLoading.value = false;
+            resetDialogVisible.value = false;
+            ElMessage.success('账号「' + resetData.value.account + '」的密码已重置');
+          }, 500);
+        };
+
+        // ========== 初始化：模拟加载 ==========
+        onMounted(() => {
+          loading.value = true;
+          setTimeout(() => { loading.value = false; }, 300);
+        });
+
+        return {
+          // 菜单与折叠
+          isCollapse, toggleCollapse,
+          activeMenu, openedKeys, menuGroups, handleMenuSelect,
+          // 顶栏
+          handleUserCommand,
+          // 用户
+          currentUser, avatarText,
+          // 列表
+          loading, searchKey, usersData, filteredUsers,
+          total, disabledCount,
+          beforeToggleEnabled, onEnabledChange, deleteUser,
+          // 新增 / 编辑
+          formDialogVisible, formDialogRef, submitLoading,
+          editMode, formDialogTitle, formData, formRules,
+          openAdd, openEdit, submitForm,
+          // 重置密码
+          resetDialogVisible, resetFormRef, resetData, resetForm, resetRules,
+          openReset, submitReset
+        };
+      }
+    });
+
+    // 注册所有 Element Plus 图标组件
+    for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+      app.component(key, component);
+    }
+
+    app.use(ElementPlus);
+    app.mount('#app');
+  </script>
+</body>
+</html>

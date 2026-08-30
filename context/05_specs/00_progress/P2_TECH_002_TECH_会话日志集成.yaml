@@ -1,0 +1,41 @@
+feature_id: "P2_TECH_002_TECH_会话日志集成"                    # [阶段]_[模块代号]_[序号]_[类型]_[组件简述]
+module_code: "TECH"                                       # 模块代号（2-4位大写字母）：通用技术能力；会话日志集成归入 TECH
+phase: "P2"                                               # 阶段：P0/P1/P2/P3/P4，随依赖的 P2_SYS_001 配置域同阶段
+type: "TECH"                                              # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
+root_base: null                                           # 变更根节点（原始需求的feature_id），首次创建为null
+base_on: null                                             # 直接基线 feature_id，新建时为null
+change_group: null                                        # 跨模块变更组，单模块变更时null
+change_history: []                                        # 完整变更链：[root_base → ... → base_on → 当前]
+dependencies:                                             # 直接依赖的feature_id列表
+  - "P2_SYS_001_FEAT_系统参数与大模型配置"                  # 集成密钥（Bearer）与 sili-smart-api Base URL 来源；平台运行基座 T1（Wire 装配、错误码体系）为工程前置
+feature_name: "会话日志集成"
+creator: "lixuetao"
+created_at: "2026-08-18T06:45:06Z"
+updated_at: "2026-08-18T14:39:27Z"
+stages:
+  specs:
+    status: "completed"
+    started_at: null
+    completed_at: "2026-08-18T14:33:28Z"
+    check_owner: "lixuetao"   # 各阶段通过检查的人
+  interface:
+    status: "skipped"
+    started_at: "2026-08-18T14:33:28Z"
+    completed_at: null
+    check_owner: "lixuetao"
+  dev_plan:
+    status: "in_progress"
+    started_at: "2026-08-18T14:39:27Z"
+    completed_at: null
+    check_owner: null
+  dev_exec:
+    status: "pending"
+    started_at: null
+    completed_at: null
+    check_owner: null
+rollback_history:
+  - timestamp: "2026-08-18T14:39:27Z"
+    from_stage: "interface"
+    to_stage: "dev_plan"
+    reason: "进程内Go技术组件：无本系统对外HTTP接口、无新增数据库表，接口数据设计无设计对象（同类先例P2_TECH_001同路径跳过）"
+    type: "skip"
