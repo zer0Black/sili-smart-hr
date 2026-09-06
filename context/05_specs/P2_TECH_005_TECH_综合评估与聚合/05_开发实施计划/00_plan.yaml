@@ -1,7 +1,7 @@
 feature_id: "P2_TECH_005_TECH_综合评估与聚合"
 name: "综合评估与聚合"
 created_at: "2026-09-06"
-finalized: false
+finalized: true
 
 sub_plans:
   - id: "01"
