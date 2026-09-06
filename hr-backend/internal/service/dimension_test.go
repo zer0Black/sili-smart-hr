@@ -78,6 +78,10 @@ func (r *dimFakeRepo) ListAll(_ context.Context) ([]domain.Dimension, error) {
 	return r.listAllDim, r.listAllErr
 }
 
+func (r *dimFakeRepo) ListEnabledFullByDataSource(_ context.Context, _ string) ([]domain.Dimension, error) {
+	return nil, nil
+}
+
 func (r *dimFakeRepo) FindByID(_ context.Context, _ int64) (*domain.Dimension, error) {
 	r.findByIDCalls++
 	return r.findByIDDim, r.findByIDErr
