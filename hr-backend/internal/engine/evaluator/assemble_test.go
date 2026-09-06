@@ -251,7 +251,7 @@ func TestAssembleProfileSetEndToEnd(t *testing.T) {
 		row,
 		featRow("skip-1", domain.FeatureStatusSkipped, p.Start+300, p.Start+400),
 	}}
-	ev := New(nil, nil, repo, nil, nil, nil, nil)
+	ev := New(nil, nil, repo, nil, nil, nil, nil, nil, nil)
 	set, err := ev.AssembleProfileSet(context.Background(), "张三", p)
 	if err != nil {
 		t.Fatalf("AssembleProfileSet: %v", err)
@@ -267,7 +267,7 @@ func TestAssembleProfileSetEndToEnd(t *testing.T) {
 // TestAssembleProfileSetRepoError 仓储错误 wrap ErrProfileRead 上抛。
 func TestAssembleProfileSetRepoError(t *testing.T) {
 	repo := &fakeFeatureRepo{err: errors.New("db down")}
-	ev := New(nil, nil, repo, nil, nil, nil, nil)
+	ev := New(nil, nil, repo, nil, nil, nil, nil, nil, nil)
 	_, err := ev.AssembleProfileSet(context.Background(), "张三", testPeriod())
 	if !errors.Is(err, ErrProfileRead) {
 		t.Fatalf("err = %v, want ErrProfileRead", err)

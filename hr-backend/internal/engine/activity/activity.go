@@ -74,13 +74,21 @@ func New(cl SessionListFetcher, featureRepo repository.SessionFeatureRepository,
 // → 按 token_name 内存分组 → session_key 去重 → 走 StatPerson 共用逻辑。
 // 拉取失败按 ErrSessionListFetch 语义 error 上抛，不落任何行。
 func (a *Activity) StatPersonByKey(ctx context.Context, tokenName string, period Period) (*ActivityStat, error) {
+	stat, _, err := a.StatPersonByKeyWithSessions(ctx, tokenName, period)
+	return stat, err
+}
+
+// StatPersonByKeyWithSessions StatPersonByKey 的列表透出形态（specs §2.4 能力6
+// 组合入口消费）：额外返回拉取到的窗口内列表，供 EvaluatePerson 注入 Evaluate
+// 的签名识别列表口径，免二次拉取。
+func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName string, period Period) (*ActivityStat, []conversationlog.SessionSummary, error) {
 	secret, err := a.secrets(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("activity: resolve integration secret: %w", err)
+		return nil, nil, fmt.Errorf("activity: resolve integration secret: %w", err)
 	}
 	all, err := a.fetchAllSessions(ctx, secret, period)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	mine := make([]conversationlog.SessionSummary, 0, len(all))
 	for _, s := range all {
@@ -88,7 +96,11 @@ func (a *Activity) StatPersonByKey(ctx context.Context, tokenName string, period
 			mine = append(mine, s)
 		}
 	}
-	return a.StatPerson(ctx, mine, tokenName, period)
+	stat, err := a.StatPerson(ctx, mine, tokenName, period)
+	if err != nil {
+		return nil, nil, err
+	}
+	return stat, mine, nil
 }
 
 // fetchAllSessions 串行翻页拉全量列表（并发翻页会返回重复页，specs §2.4 能力3

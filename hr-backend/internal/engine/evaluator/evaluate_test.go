@@ -240,7 +240,7 @@ func newFixture(t *testing.T) *evalFixture {
 		scores: &fakeScoreRepo{},
 		params: &fakeSysParams{},
 	}
-	f.ev = New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params)
+	f.ev = New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params, nil, nil)
 	return f
 }
 

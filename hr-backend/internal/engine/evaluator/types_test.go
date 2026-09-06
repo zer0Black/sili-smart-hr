@@ -113,10 +113,10 @@ func TestEvaluateResultFields(t *testing.T) {
 
 // ---- New 构造 ----
 
-// TestNewConstructsEvaluator 七参构造返回非 nil（依赖零值 nil 可注入，
-// T6/T8 挂载方法前不触达依赖）。
+// TestNewConstructsEvaluator 九参构造返回非 nil（依赖零值 nil 可注入，
+// 挂载方法触达前不访问依赖）。
 func TestNewConstructsEvaluator(t *testing.T) {
-	e := New(nil, nil, nil, nil, nil, nil, nil)
+	e := New(nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if e == nil {
 		t.Fatal("New 返回 nil")
 	}
@@ -124,7 +124,7 @@ func TestNewConstructsEvaluator(t *testing.T) {
 
 // TestNewWithFakes 带全 fake 注入构造（类型面编译校验）。
 func TestNewWithFakes(t *testing.T) {
-	e := New(nil, nil, nil, &fakeSpecReader{}, &fakeThresholds{}, nil, &fakeSysParams{})
+	e := New(nil, nil, nil, &fakeSpecReader{}, &fakeThresholds{}, nil, &fakeSysParams{}, nil, nil)
 	if e == nil {
 		t.Fatal("New(带 fake) 返回 nil")
 	}

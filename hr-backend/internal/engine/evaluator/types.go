@@ -1,9 +1,12 @@
 package evaluator
 
 import (
+	"context"
 	"errors"
 
 	"sili-smart-hr/backend/internal/engine/activity"
+	"sili-smart-hr/backend/internal/engine/scorer"
+	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/llm"
 	"sili-smart-hr/backend/internal/repository"
 )
@@ -43,11 +46,14 @@ type DimensionScore struct {
 	Status        string // success / failed
 }
 
-// EvaluateResult 单人周期评估结果（specs §2.3）。
+// EvaluateResult 单人周期评估组合结果（specs §2.3）：窄形态（Scores/Skipped/
+// Reused，Evaluate 产出）扩展 Activity 与 Aggregate 两组合字段（EvaluatePerson 产出）。
 type EvaluateResult struct {
-	Scores  []DimensionScore // 维度评分行（含 insufficient 标记行）
-	Skipped bool             // 跳过 LLM 直接落全维度 insufficient（零有效档案或签名命中）
-	Reused  bool             // 命中既有 success 评分行复用未调 LLM（幂等）
+	Activity  *activity.ActivityStat // 活跃度统计行（EvaluatePerson 路径产出）
+	Scores    []DimensionScore       // 维度评分行（含 insufficient 标记行）
+	Aggregate *scorer.AggregateResult // 聚合结果（EvaluatePerson 路径产出）
+	Skipped   bool                   // 跳过 LLM 直接落全维度 insufficient（零有效档案或签名命中）
+	Reused    bool                   // 命中既有 success 评分行复用未调 LLM（幂等）
 }
 
 // 哨兵错误（specs §2.3 错误码表）：均 error 上抛交 Asynq 任务级重试，不落评分行。
@@ -63,8 +69,8 @@ var (
 )
 
 // Evaluator 跨会话综合评估组件（specs §2.4 能力1）。
-// AssembleProfileSet（T6）与 Evaluate（T8）挂本类型，此处前置定义结构体与构造
-// 保证各任务独立编译可验收。
+// AssembleProfileSet（T6）与 Evaluate（T8）挂本类型；EvaluatePerson（T10）经
+// act/sc 组合依赖编排活跃度与聚合（03 §2.1 组合形）。
 type Evaluator struct {
 	llm           llm.Client
 	modelProvider llm.EnabledModelProvider
@@ -73,13 +79,17 @@ type Evaluator struct {
 	thresholds    activity.ThresholdReader
 	scoreRepo     repository.DimensionScoreRepository
 	sysParams     repository.SystemParamReader
+	act           ActivityStatComponent
+	sc            ScoreAggregator
 }
 
-// New 构造 Evaluator，七个依赖集中注入。
+// New 构造 Evaluator，九个依赖集中注入（七参基础上追加 act/sc 组合件，03 §2.1）。
+// sc 传 *scorer.Scorer；act 组合件经 NewActivityStatComponent 适配 *activity.Activity。
 func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 	featureRepo repository.SessionFeatureRepository, specs DimensionSpecReader,
 	thresholds activity.ThresholdReader, scoreRepo repository.DimensionScoreRepository,
-	sysParams repository.SystemParamReader) *Evaluator {
+	sysParams repository.SystemParamReader, act ActivityStatComponent,
+	sc ScoreAggregator) *Evaluator {
 	return &Evaluator{
 		llm:           llmClient,
 		modelProvider: modelProvider,
@@ -88,5 +98,33 @@ func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 		thresholds:    thresholds,
 		scoreRepo:     scoreRepo,
 		sysParams:     sysParams,
+		act:           act,
+		sc:            sc,
 	}
+}
+
+// ActivityStatComponent EvaluatePerson 组合依赖窄面（合理实现形偏差：以接口
+// 窄化替代具体类型字段利测试探针注入）：ByKey 形态额外携带拉取到的窗口内列表，
+// 供 EvaluatePerson 注入 Evaluate 的签名识别列表口径（specs §2.2 sessions 参数
+// 说明）；*activity.Activity 经 NewActivityStatComponent 适配满足。
+type ActivityStatComponent interface {
+	statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, error)
+	statPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, error)
+}
+
+// activityStatAdapter 适配 *activity.Activity 到组合窄面：ByKey 路径消费
+// StatPersonByKeyWithSessions 列表透出形态，把拉取到的窗口内列表透出供
+// Evaluate 注入签名识别；统计本体复用 Activity 既有方法。
+type activityStatAdapter struct {
+	*activity.Activity
+}
+
+// NewActivityStatComponent 适配真实 Activity 为组合窄面。
+func NewActivityStatComponent(act *activity.Activity) ActivityStatComponent {
+	return &activityStatAdapter{Activity: act}
+}
+
+// ScoreAggregator EvaluatePerson 组合依赖窄面（*scorer.Scorer 满足）。
+type ScoreAggregator interface {
+	Aggregate(ctx context.Context, tokenName string, period activity.Period) (*scorer.AggregateResult, error)
 }
