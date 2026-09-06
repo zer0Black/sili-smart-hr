@@ -164,6 +164,9 @@ func allModels() []any {
 		&domain.LLMConfig{},
 		&domain.IntegrationSecret{},
 		&domain.SessionFeature{},
+		&domain.DimensionScore{},
+		&domain.AggregateScore{},
+		&domain.ActivityStat{},
 		&domain.SystemParam{},
 	}
 }
