@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 sili-smart-hr 是综合人才测评平台：把兄弟系统 sili-smart-api（LLM 网关）沉淀的 AI 对话日志周期性转化为能力评分，叠加主动测试形成人才画像，用于能力盘点与培训提升。
 
-当前处于 B 档可运行脚手架阶段，account 登录链路（POST /api/login、GET /api/me）是首个样板，用户管理、维度配置、系统参数、大模型配置、集成密钥等链路已前后端贯通。engine 在后端的 extractor（会话特征抽取）与 activity（使用活跃度统计）子域已实现，其余 4 个子域仍为占位，answer / questionbank / profile / dashboard / workspace 等业务域前后端均未开工。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
+当前处于 B 档可运行脚手架阶段，account 登录链路（POST /api/login、GET /api/me）是首个样板，用户管理、维度配置、系统参数、大模型配置、集成密钥等链路已前后端贯通。engine 在后端的 extractor（会话特征抽取）、activity（使用活跃度统计）、evaluator（跨会话综合评估）、scorer（多维聚合）四个子域已实现，其余 2 个子域（pipeline/fallback）仍为占位，answer / questionbank / profile / dashboard / workspace 等业务域前后端均未开工。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
 
 规格依据在 [context/](context/) 目录，[context/03_architecture/architecture.md](context/03_architecture/architecture.md) 是模块划分与依赖关系的权威来源，第 4 章承载运行时约定。
 
