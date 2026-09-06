@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_TECH_005_TECH_综合评估与聚合 |
 | 模块代号 | TECH（技术组件，engine/evaluator + scorer + activity 子域） |
-| 文档版本 | v1.3 |
+| 文档版本 | v1.6 |
 | 创建日期 | 2026-09-05 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[04_model_interface.md](04_model_interface.md) |
@@ -48,7 +48,8 @@ activity.Activity
     ├─ conversationlog.Client（P2_TECH_002，ListSessions 列表拉取 + 集成密钥 Bearer）
     ├─ SessionFeatureRepository（status 口径全集取数）
     ├─ ThresholdReader         （本 Feature 定义，见 §5.2）
-    └─ ActivityStatRepository （本 Feature 新增）
+    ├─ ActivityStatRepository （本 Feature 新增）
+    └─ SecretProvider          （集成密钥解密注入，装配经 service.ResolveIntegrationSecret，见 §7）
 
 scorer.Scorer
     ├─ DimensionScoreRepository（聚合读数，含 F7 写入的 active_test 行）
@@ -57,13 +58,15 @@ scorer.Scorer
 
 ### 2.1 Wire 装配
 
-三包各自 `New`，evaluator 组合持有 activity 与 scorer（specs §2.5 的 `evaluator.New` 七参为概念形：能力3/5 的接口分别挂在 `*Activity` 与 `*Scorer` 上且需独立导出供 T6/F6/F7 单独调用，单构造函数无法承载，与 T4 specs 四参→实现五参先例同款偏差）：
+三包各自 `New`，evaluator 组合持有 activity 与 scorer（specs §2.5 的 `evaluator.New` 七参为概念形：能力3/5 的接口分别挂在 `*Activity` 与 `*Scorer` 上且需独立导出供 T6/F6/F7 单独调用，单构造函数无法承载，与 T4 specs 四参→实现五参先例同款偏差）。实现组合形为九参：除下列三包外，evaluator 还需 thresholds（Evaluate 内签名识别经 IdentifyPopulation 三参注入低频阈值，§4.1）与 sysParams（rationale 兜底脱敏，§4.3）：
 
 ```go
-act := activity.New(cl, featureRepo, thresholdReader, actRepo)
+act := activity.New(cl, featureRepo, thresholdReader, actRepo, secrets)
 sc := scorer.New(scoreRepo, aggRepo)
 ev := evaluator.New(llmClient, modelProvider, featureRepo, dimSpecReader,
-    scoreRepo, sysParamReader, act, sc)
+    thresholdReader, scoreRepo, sysParamReader, act, sc)
+// secrets 为 activity.SecretProvider，装配层经 service.ResolveIntegrationSecret
+// 从 IntegrationSecretRepository 解密构造（extractor NewExtractorProvider 同款，§7 收敛点）。
 ```
 
 新增 provider 后 `go generate ./...` 再生 wire_gen.go。**评估专用 LLM client**（与 ExtractorLLMClient 同款命名类型规避 Wire 类型表冲突）：
@@ -291,7 +294,7 @@ type ThresholdReader interface {
 
 ## 8. SSOT 合规与一致性
 
-- [x] 组件接口集合与 specs §2.3 输出定义一一对应（EvaluatePerson/Evaluate/AssembleProfileSet/StatPersonByKey/StatPerson/IdentifyPopulation/Aggregate）。实现形差异逐条声明：IdentifyPopulation 三参（阈值注入）、evaluator.New 组合形（§2.1）、EvaluatorLLMClient 专用装配（§2.1）。
+- [x] 组件接口集合与 specs §2.3 输出定义一一对应（EvaluatePerson/Evaluate/AssembleProfileSet/StatPersonByKey/StatPerson/IdentifyPopulation/Aggregate）。实现形差异逐条声明：IdentifyPopulation 三参（阈值注入）、evaluator.New 九参组合形（§2.1，含 thresholds/sysParams/act/sc）、EvaluatorLLMClient 专用装配（§2.1）、ProfileDigest.LastTurn 实现形扩展（specs §2.2 两参概念形外的归一过滤判据字段，来源 domain 行 LastTurnAt，§4.3 档案取数口径消费）。
 - [x] 六个能力（综合评估/分层组装/活跃度统计/签名识别/聚合/原子入口）在方法契约与行为约定中均有承载。
 - [x] 错误码值域与 error/业务态双通道边界对齐 specs §2.3 错误码表（八错误码，ErrNoValidProfiles 走 Skipped 通道）。
 - [x] 隐私与安全约束（specs §3.3）在 §7 全量承接（TokenName 剥离、Redact 兜底、内存持有、日志最小化）。
@@ -312,6 +315,6 @@ type ThresholdReader interface {
 
 ---
 
-**文档版本：** v1.3
+**文档版本：** v1.6
 **最后更新：** 2026-09-06
 **作者：** lixuetao
