@@ -58,6 +58,8 @@ var (
 	ErrDimensionConfigRead = errors.New("evaluator: dimension config read failed")
 	// ErrProfileRead 档案表读取失败（wrap 底层错误）。
 	ErrProfileRead = errors.New("evaluator: profile read failed")
+	// ErrStoreWrite 评分行落库失败（wrap 底层错误）：不落行，error 上抛交任务重试。
+	ErrStoreWrite = errors.New("evaluator: store write failed")
 )
 
 // Evaluator 跨会话综合评估组件（specs §2.4 能力1）。
