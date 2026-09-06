@@ -7,7 +7,7 @@ sub_plans:
   - id: "01"
     name: "数据与活跃度"
     file: "01_数据与活跃度.md"
-    status: "pending"
+    status: "completed"
   - id: "02"
     name: "档案组装与评估"
     file: "02_档案组装与评估.md"
