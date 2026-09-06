@@ -30,6 +30,10 @@ type DimensionRepository interface {
 	GetActivitySetting(ctx context.Context) (*domain.DimensionSetting, error)
 	// UpdateActivitySetting UPDATE dimension_settings 单行（保存即覆盖，无乐观锁）。
 	UpdateActivitySetting(ctx context.Context, activeThreshold, lowFrequencyThreshold int) error
+	// ListEnabledFullByDataSource 取指定数据来源的启用未删维度全字段（含 prompt/anchor，
+	// 评分口径快照的数据来源），WHERE enabled AND data_source=? AND deleted_at IS NULL，
+	// 按 code ASC 排序。
+	ListEnabledFullByDataSource(ctx context.Context, dataSource string) ([]domain.Dimension, error)
 }
 
 type dimensionRepository struct {
@@ -125,4 +129,17 @@ func (r *dimensionRepository) UpdateActivitySetting(ctx context.Context, activeT
 			"active_threshold":        activeThreshold,
 			"low_frequency_threshold": lowFrequencyThreshold,
 		}).Error
+}
+
+// ListEnabledFullByDataSource 取启用未删指定来源维度全字段。与 ListAll 的 brief 投影
+// 相反，此处含 prompt/anchor 等长文本列：调用方（评分口径快照）需要全字段原文。
+func (r *dimensionRepository) ListEnabledFullByDataSource(ctx context.Context, dataSource string) ([]domain.Dimension, error) {
+	var list []domain.Dimension
+	if err := r.db.WithContext(ctx).
+		Where("enabled = ? AND data_source = ? AND deleted_at IS NULL", true, dataSource).
+		Order("code ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
 }

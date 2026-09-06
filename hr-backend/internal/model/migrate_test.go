@@ -101,6 +101,92 @@ func TestMigrateCreatesSessionFeatures(t *testing.T) {
 	}
 }
 
+// TestMigrateCreatesEvalTables 验证评估域三表迁移（04 §3）：三表、全列与三个
+// upsert 幂等唯一索引建出，观测索引兜底存在性。三表首启为空无 seed 断言。
+func TestMigrateCreatesEvalTables(t *testing.T) {
+	if err := snowflake.Init(1); err != nil {
+		t.Fatalf("snowflake init: %v", err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := migrateDB(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// 三表存在。
+	for _, table := range []string{"dimension_scores", "aggregate_scores", "activity_stats"} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("expected %s table exists", table)
+		}
+	}
+
+	// dimension_scores 全列（04 §3.1.1）。
+	dsCols := []string{
+		"id", "token_name", "period_start_at", "period_end_at", "dimension_code",
+		"module", "score", "rationale", "insufficient", "evidence_json",
+		"source", "model_name", "prompt_version", "status", "error_code",
+		"created_at", "updated_at",
+	}
+	for _, col := range dsCols {
+		if !db.Migrator().HasColumn(&domain.DimensionScore{}, col) {
+			t.Fatalf("expected dimension_scores.%s column exists", col)
+		}
+	}
+
+	// aggregate_scores 全列（04 §3.2.1）。
+	asCols := []string{
+		"id", "token_name", "period_start_at", "period_end_at", "module",
+		"module_score", "overview_score", "included_json", "excluded_json",
+		"created_at", "updated_at",
+	}
+	for _, col := range asCols {
+		if !db.Migrator().HasColumn(&domain.AggregateScore{}, col) {
+			t.Fatalf("expected aggregate_scores.%s column exists", col)
+		}
+	}
+
+	// activity_stats 全列（04 §3.3.1）。
+	atCols := []string{
+		"id", "token_name", "period_start_at", "period_end_at",
+		"session_count", "valid_session_count", "skipped_count", "total_turns",
+		"active_level", "population_note", "client_dist_json",
+		"created_at", "updated_at",
+	}
+	for _, col := range atCols {
+		if !db.Migrator().HasColumn(&domain.ActivityStat{}, col) {
+			t.Fatalf("expected activity_stats.%s column exists", col)
+		}
+	}
+
+	// 三表 upsert 幂等唯一索引（04 §5）。
+	if !db.Migrator().HasIndex(&domain.DimensionScore{}, "uk_person_period_dim") {
+		t.Fatal("expected uk_person_period_dim index exists")
+	}
+	if !db.Migrator().HasIndex(&domain.AggregateScore{}, "uk_person_period_module") {
+		t.Fatal("expected uk_person_period_module index exists")
+	}
+	if !db.Migrator().HasIndex(&domain.ActivityStat{}, "uk_person_period") {
+		t.Fatal("expected uk_person_period index exists")
+	}
+
+	// 观测与画像读取路径索引。
+	for _, idx := range []struct {
+		model any
+		name  string
+	}{
+		{&domain.DimensionScore{}, "idx_period_status"},
+		{&domain.DimensionScore{}, "idx_module_insufficient"},
+		{&domain.ActivityStat{}, "idx_period_level"},
+		{&domain.ActivityStat{}, "idx_period_note"},
+	} {
+		if !db.Migrator().HasIndex(idx.model, idx.name) {
+			t.Fatalf("expected %s index exists", idx.name)
+		}
+	}
+}
+
 // TestSeedParamsIdempotent 验证参数 seed 幂等：二次 migrateDB 后两行 param_value 不变且无重复行；
 // 参数页改过（行已存在）不覆盖。
 func TestSeedParamsIdempotent(t *testing.T) {

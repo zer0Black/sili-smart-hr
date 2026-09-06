@@ -404,3 +404,73 @@ func TestUpdateActivitySetting_NoRow(t *testing.T) {
 		t.Fatalf("empty setting still want ErrRecordNotFound, got got=%+v err=%v", got, err)
 	}
 }
+
+// TestListEnabledFullByDataSource 核心断言：预置启用/停用/软删除/不同 data_source 各行，
+// 只返回启用未删指定 source 行，且含 Prompt/Anchor 字段值（评分口径快照需要全字段）。
+func TestListEnabledFullByDataSource(t *testing.T) {
+	db := newDimensionTestDB(t)
+	// 命中行：启用 + CONVERSATION + 未删，故意乱序插入验证 code ASC。
+	seedConversation(t, db, "AI_B", true)
+	seedConversation(t, db, "AI_A", true)
+	// 停用行：不返回。
+	seedConversation(t, db, "AI_OFF", false)
+	// 软删除行：不返回。
+	del := seedConversation(t, db, "AI_DEL", true)
+	if err := db.Delete(&del).Error; err != nil {
+		t.Fatalf("seed delete: %v", err)
+	}
+	// 不同 data_source 行：不返回。
+	seedDimension(t, db, "RULE_X", "规则维", domain.ModuleActivity, true)
+
+	repo := repository.NewDimensionRepository(db)
+	list, err := repo.ListEnabledFullByDataSource(context.Background(), domain.SourceConversation)
+	if err != nil {
+		t.Fatalf("ListEnabledFullByDataSource: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("list len want 2, got %d (%+v)", len(list), list)
+	}
+	if list[0].Code != "AI_A" || list[1].Code != "AI_B" {
+		t.Fatalf("want code ASC [AI_A AI_B], got [%s %s]", list[0].Code, list[1].Code)
+	}
+	// 全字段断言：含 Prompt/Anchor 长文本列（与 ListAll 的 brief 投影相区分）。
+	for _, d := range list {
+		if d.Prompt != "提示词-"+d.Code || d.Anchor != "锚点-"+d.Code {
+			t.Fatalf("全字段未返回: code=%s prompt=%q anchor=%q", d.Code, d.Prompt, d.Anchor)
+		}
+	}
+}
+
+// seedConversation 写入 CONVERSATION 来源维度，带 Prompt/Anchor 全字段。
+func seedConversation(t *testing.T, db *gorm.DB, code string, enabled bool) domain.Dimension {
+	t.Helper()
+	d := domain.Dimension{
+		Code:        code,
+		Name:        "名-" + code,
+		ModuleCode:  domain.ModuleAIUsage,
+		DataSource:  domain.SourceConversation,
+		Prompt:      "提示词-" + code,
+		Anchor:      "锚点-" + code,
+		Weight:      10,
+		Enabled:     enabled,
+		Version:     1,
+		Description: "desc-" + code,
+	}
+	if err := db.Create(&d).Error; err != nil {
+		t.Fatalf("seed conversation %s: %v", code, err)
+	}
+	return d
+}
+
+// TestListEnabledFullByDataSource_NoMatch verifies no matching rows returns an empty list without error.
+func TestListEnabledFullByDataSource_NoMatch(t *testing.T) {
+	db := newDimensionTestDB(t)
+	repo := repository.NewDimensionRepository(db)
+	list, err := repo.ListEnabledFullByDataSource(context.Background(), domain.SourceTest)
+	if err != nil {
+		t.Fatalf("no match want nil error, got %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("no match want empty list, got %d rows", len(list))
+	}
+}

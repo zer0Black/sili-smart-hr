@@ -7,15 +7,15 @@ sub_plans:
   - id: "01"
     name: "数据与活跃度"
     file: "01_数据与活跃度.md"
-    status: "pending"
+    status: "completed"
   - id: "02"
     name: "档案组装与评估"
     file: "02_档案组装与评估.md"
-    status: "pending"
+    status: "completed"
   - id: "03"
     name: "聚合与装配"
     file: "03_聚合与装配.md"
-    status: "pending"
+    status: "completed"
 
 execution_order:
   - "01"

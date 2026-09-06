@@ -11,12 +11,12 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
+	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/model"
 	"sili-smart-hr/backend/internal/repository"
 	"sili-smart-hr/backend/internal/service"
 	"sili-smart-hr/backend/internal/worker/scheduler"
 	"sili-smart-hr/backend/internal/worker/server"
-	"sili-smart-hr/backend/internal/worker/task"
 )
 
 // Injectors from wire.go:
@@ -78,8 +78,18 @@ func InitializeApp(configPath string) (*App, error) {
 	v2 := NewExtractorSysParamDefaults()
 	systemParamReader := repository.NewSystemParamReader(db, v2)
 	extractor := NewExtractorProvider(extractorLLMClient, conversationlogClient, sessionFeatureRepository, systemParamReader, integrationSecretRepository, v)
-	handlerFunc := task.NewSessionExtractHandler(extractor)
-	serveMux := task.NewMux(handlerFunc)
+	sessionExtractHandler := NewSessionExtractHandlerTyped(extractor)
+	evaluatorLLMClient := NewEvaluatorLLMClient(enabledModelProvider)
+	dimensionSpecReaderAdapter := NewDimensionSpecReader(dimensionRepository)
+	activityThresholdReader := NewActivityThresholdReader(dimensionRepository)
+	dimensionScoreRepository := repository.NewDimensionScoreRepository(db)
+	activityStatRepository := repository.NewActivityStatRepository(db)
+	activity := NewActivityProvider(conversationlogClient, sessionFeatureRepository, activityThresholdReader, activityStatRepository, integrationSecretRepository, v)
+	aggregateScoreRepository := repository.NewAggregateScoreRepository(db)
+	scorerScorer := scorer.New(dimensionScoreRepository, aggregateScoreRepository)
+	evaluator := NewEvaluatorProvider(evaluatorLLMClient, enabledModelProvider, sessionFeatureRepository, dimensionSpecReaderAdapter, activityThresholdReader, dimensionScoreRepository, systemParamReader, activity, scorerScorer)
+	personEvaluateHandler := NewPersonEvaluateHandlerTyped(evaluator)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,
