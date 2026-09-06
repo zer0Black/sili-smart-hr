@@ -12,7 +12,11 @@ import (
 	"gorm.io/gorm"
 
 	"sili-smart-hr/backend/internal/config"
+	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/engine/activity"
+	"sili-smart-hr/backend/internal/engine/evaluator"
 	"sili-smart-hr/backend/internal/engine/extractor"
+	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/llm"
 	"sili-smart-hr/backend/internal/integration/userapi"
@@ -21,6 +25,7 @@ import (
 	"sili-smart-hr/backend/internal/pkg/rsakey"
 	"sili-smart-hr/backend/internal/repository"
 	"sili-smart-hr/backend/internal/service"
+	"sili-smart-hr/backend/internal/worker/task"
 )
 
 // App 聚合进程运行所需的各组件句柄。
@@ -216,4 +221,136 @@ func NewExtractorProvider(llmClient ExtractorLLMClient, cl *conversationlog.Clie
 		return service.ResolveIntegrationSecret(ctx, secretRepo, encKey)
 	})
 	return extractor.New(llmClient, cl, repo, params, secrets)
+}
+
+// EvaluatorLLMClient 用命名接口类型区分评估专用 client 与全局 llm.Client，
+// 规避 Wire 类型表 multiple bindings 冲突（与 ExtractorLLMClient 同款）。
+type EvaluatorLLMClient llm.Client
+
+// NewEvaluatorLLMClient 构造评估专用 LLM 客户端（03 §2.1）：Timeout 180s 覆盖
+// 建连到流式 body 读毕全程，支撑 120s 验收线与 180s p99 观测线；与全局及
+// extractor client 各持独立并发 gate。TokenBudget = MaxProfileSetTokens 30000
+// + 维度段与余量 17000 = 47000（20 维度上限标定）。任务级超时的单点声明在
+// worker/task 的 personEvaluateTimeout（1050s），调整本处参数须同步该处。
+func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient {
+	return llm.New(llm.Config{
+		Timeout:        180 * time.Second,
+		MaxRetries:     1,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     10 * time.Second,
+		MaxRetryAfter:  60 * time.Second,
+		TokenBudget:    evaluator.MaxProfileSetTokens + 17000,
+		TokenCounter:   llm.NewCharDiv3Counter(),
+	}, provider)
+}
+
+// ActivityThresholdReader 评估阈值适配器：把 DimensionRepository（GetActivitySetting）
+// 适配为 activity.ThresholdReader（03 §5.2 消费侧窄接口）。
+type ActivityThresholdReader struct {
+	dimRepo repository.DimensionRepository
+}
+
+// NewActivityThresholdReader 构造阈值读取适配器。
+func NewActivityThresholdReader(dimRepo repository.DimensionRepository) *ActivityThresholdReader {
+	return &ActivityThresholdReader{dimRepo: dimRepo}
+}
+
+// ActivityThresholds 读 dimension_settings 单行。任何读取失败（含
+// ErrRecordNotFound）一律 wrap ErrDimensionConfigRead 上抛：阈值不重复定义
+// 默认值，migrateDB seed 保证行存在，无回退分支。
+func (r *ActivityThresholdReader) ActivityThresholds(ctx context.Context) (int, int, error) {
+	s, err := r.dimRepo.GetActivitySetting(ctx)
+	if err != nil {
+		return 0, 0, fmt.Errorf("%w: %w", evaluator.ErrDimensionConfigRead, err)
+	}
+	return s.ActiveThreshold, s.LowFrequencyThreshold, nil
+}
+
+// 编译期断言：适配器满足 activity.ThresholdReader 窄接口。
+var _ activity.ThresholdReader = (*ActivityThresholdReader)(nil)
+
+// DimensionSpecReaderAdapter 维度口径适配器：把 DimensionRepository
+//（ListEnabledFullByDataSource）适配为 evaluator.DimensionSpecReader（03 §5.2）。
+type DimensionSpecReaderAdapter struct {
+	dimRepo repository.DimensionRepository
+}
+
+// NewDimensionSpecReader 构造维度口径读取适配器。
+func NewDimensionSpecReader(dimRepo repository.DimensionRepository) *DimensionSpecReaderAdapter {
+	return &DimensionSpecReaderAdapter{dimRepo: dimRepo}
+}
+
+// ListEnabledConversationSpecs 取启用 CONVERSATION 维度全字段组装为
+// []DimensionSpec（Module 取 ModuleCode 原值）。读取失败 wrap
+// ErrDimensionConfigRead 上抛（空集语义由 evaluator.loadSpecs 判定）。
+func (a *DimensionSpecReaderAdapter) ListEnabledConversationSpecs(ctx context.Context) ([]evaluator.DimensionSpec, error) {
+	dims, err := a.dimRepo.ListEnabledFullByDataSource(ctx, domain.SourceConversation)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", evaluator.ErrDimensionConfigRead, err)
+	}
+	specs := make([]evaluator.DimensionSpec, 0, len(dims))
+	for _, d := range dims {
+		specs = append(specs, evaluator.DimensionSpec{
+			Code:       d.Code,
+			Name:       d.Name,
+			Module:     d.ModuleCode,
+			PromptText: d.Prompt,
+			AnchorText: d.Anchor,
+			Weight:     d.Weight,
+			InOverview: d.IncludeOverview,
+		})
+	}
+	return specs, nil
+}
+
+// 编译期断言：适配器满足 evaluator.DimensionSpecReader 窄接口。
+var _ evaluator.DimensionSpecReader = (*DimensionSpecReaderAdapter)(nil)
+
+// NewActivityProvider 装配 activity 组件（五参）：secrets 经
+// service.ResolveIntegrationSecret 解密构造（NewExtractorProvider 同款收敛点）。
+func NewActivityProvider(cl *conversationlog.Client,
+	featureRepo repository.SessionFeatureRepository, thresholds *ActivityThresholdReader,
+	repo repository.ActivityStatRepository, secretRepo repository.IntegrationSecretRepository,
+	encKey []byte) *activity.Activity {
+	secrets := activity.SecretProvider(func(ctx context.Context) (string, error) {
+		return service.ResolveIntegrationSecret(ctx, secretRepo, encKey)
+	})
+	return activity.New(cl, featureRepo, thresholds, repo, secrets)
+}
+
+// SessionExtractHandler / PersonEvaluateHandler 是 Wire 装配用命名类型：NewMux
+// 双形参同为 asynq.HandlerFunc，wire 无法按类型区分（别名也视为同型），故用
+// 独立定义的 func 命名类型各占类型表一格，再由 NewMuxAdapter 收参适配
+//（DBProbe/RedisProbe 命名类型同款）。
+type SessionExtractHandler func(context.Context, *asynq.Task) error
+
+// PersonEvaluateHandler person-evaluate handler 命名类型（同上）。
+type PersonEvaluateHandler func(context.Context, *asynq.Task) error
+
+// NewSessionExtractHandlerTyped 构造 session-extract handler（命名类型透出，
+// Wire 装配入口；task 包内测试用原 NewSessionExtractHandler）。
+func NewSessionExtractHandlerTyped(ext *extractor.Extractor) SessionExtractHandler {
+	return SessionExtractHandler(task.NewSessionExtractHandler(ext))
+}
+
+// NewPersonEvaluateHandlerTyped 构造 person-evaluate handler（命名类型透出）。
+func NewPersonEvaluateHandlerTyped(ev *evaluator.Evaluator) PersonEvaluateHandler {
+	return PersonEvaluateHandler(task.NewPersonEvaluateHandler(ev))
+}
+
+// NewMuxAdapter Wire 装配适配器：接收两个命名类型 handler，转调 task.NewMux
+//（单一注册入口不变，签名不受 wire 同型参数限制）。
+func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler) *asynq.ServeMux {
+	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate))
+}
+
+// NewEvaluatorProvider 装配 evaluator（九参，03 §2.1 组合形）：act 窄面经
+// evaluator.NewActivityStatComponent 适配 *activity.Activity，sc 由 *scorer.Scorer
+// 鸭子满足，两窄面在此收敛规避 wire 对未导出接口值的绑定限制。
+func NewEvaluatorProvider(llmClient EvaluatorLLMClient, modelProvider llm.EnabledModelProvider,
+	featureRepo repository.SessionFeatureRepository, specs *DimensionSpecReaderAdapter,
+	thresholds *ActivityThresholdReader, scoreRepo repository.DimensionScoreRepository,
+	sysParams repository.SystemParamReader, act *activity.Activity, sc *scorer.Scorer) *evaluator.Evaluator {
+	return evaluator.New(llmClient, modelProvider, featureRepo, specs, thresholds,
+		scoreRepo, sysParams, evaluator.NewActivityStatComponent(act), sc)
 }

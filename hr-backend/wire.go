@@ -11,6 +11,7 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
+	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/model"
 	"sili-smart-hr/backend/internal/pkg/rsakey"
@@ -18,7 +19,6 @@ import (
 	"sili-smart-hr/backend/internal/service"
 	"sili-smart-hr/backend/internal/worker/scheduler"
 	"sili-smart-hr/backend/internal/worker/server"
-	"sili-smart-hr/backend/internal/worker/task"
 )
 
 // InitializeApp 单一 injector：config → db → redis → asynq → repository → service → handler → router。
@@ -65,7 +65,20 @@ func InitializeApp(configPath string) (*App, error) {
 		NewExtractorLLMClient,
 		NewExtractorProvider,
 		// worker 任务：session-extract handler 经参数注入 NewMux（单一注册入口）。
-		task.NewSessionExtractHandler,
+		NewSessionExtractHandlerTyped,
+		// 评估链装配（03 §2.1）：评估专用 LLM 客户端（180s Timeout，独立 gate）+
+		// DimensionRepository 双适配（阈值/维度口径窄接口）+ activity/scorer/evaluator
+		// 三组件 + person-evaluate handler 经参数注入 NewMux（单一注册入口）。
+		NewEvaluatorLLMClient,
+		NewActivityThresholdReader,
+		NewDimensionSpecReader,
+		repository.NewActivityStatRepository,
+		repository.NewDimensionScoreRepository,
+		repository.NewAggregateScoreRepository,
+		NewActivityProvider,
+		scorer.New,
+		NewEvaluatorProvider,
+		NewPersonEvaluateHandlerTyped,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,
 		handler.NewSetupHandler,
@@ -79,7 +92,7 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAsynqConnOpt,
 		asynq.NewClient,
 		server.NewServer,
-		task.NewMux,
+		NewMuxAdapter,
 		scheduler.NewScheduler,
 		NewHTTPAddr,
 		NewAsynqConcurrency,
