@@ -318,6 +318,32 @@ func TestEvaluatePersonSessionsEmptyFetch(t *testing.T) {
 	}
 }
 
+// TestEvaluatePersonDedupListBeforeSignature 补充：列表含重复 session_key（跨页
+// 重复）→ 透出列表先去重再进签名识别，活跃度行与评分侧签名口径一致（specs
+// §2.4 能力4 两处调用共用同一集合口径）。
+func TestEvaluatePersonDedupListBeforeSignature(t *testing.T) {
+	f := newPersonFixture(t)
+	f.llm.responses = []string{goodScoreJSON()}
+	dup := sessionsFor("张三")
+	dup = append(dup, dup[0]) // 同键重复行
+	f.list.rows = dup
+	f.ev = f.newProbingEvaluator()
+
+	res, err := f.ev.EvaluatePerson(context.Background(), "张三", testPeriod(), nil)
+	if err != nil {
+		t.Fatalf("EvaluatePerson: %v", err)
+	}
+	if len(f.actRepo.upserts) != 1 || f.actRepo.upserts[0].SessionCount != 2 {
+		t.Errorf("活跃度行 SessionCount = %d, want 2（重复键已去重）", len(f.actRepo.upserts))
+	}
+	if res.Activity == nil || res.Activity.SessionCount != 2 {
+		t.Errorf("res.Activity = %+v, want SessionCount=2", res.Activity)
+	}
+	if res.Skipped || res.Reused {
+		t.Errorf("正常档案不应跳过: Skipped=%v", res.Skipped)
+	}
+}
+
 // TestEvaluatePersonLLMFailNotBlockAggregate 锚点：fake LLM 持续失败 → 评分行
 // failed、聚合照常执行（Aggregate 被调）、活跃度行照常、err=nil。
 func TestEvaluatePersonLLMFailNotBlockAggregate(t *testing.T) {

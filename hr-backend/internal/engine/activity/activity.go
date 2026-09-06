@@ -91,10 +91,16 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 		return nil, nil, err
 	}
 	mine := make([]conversationlog.SessionSummary, 0, len(all))
+	seen := make(map[string]struct{}, len(all))
 	for _, s := range all {
-		if s.TokenName == tokenName {
-			mine = append(mine, s)
+		if s.TokenName != tokenName {
+			continue
 		}
+		if _, dup := seen[s.SessionKey]; dup { // 跨页重复，去重后透出（能力4 两处口径一致）
+			continue
+		}
+		seen[s.SessionKey] = struct{}{}
+		mine = append(mine, s)
 	}
 	stat, err := a.StatPerson(ctx, mine, tokenName, period)
 	if err != nil {

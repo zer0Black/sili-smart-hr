@@ -97,6 +97,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 	}
 
 	set := buildProfileSet(digests)
+	slog.Debug("profile set assembled", "token_name", tokenName, "period_start", period.Start,
+		"visible", set.VisibleCount, "total_success", set.TotalSuccess,
+		"summary_chars", len(set.SummaryBlock))
+	if set.VisibleCount < set.TotalSuccess {
+		slog.Warn("profile set truncated", "token_name", tokenName, "period_start", period.Start,
+			"visible", set.VisibleCount, "total_success", set.TotalSuccess)
+	}
 	prompt := buildPrompt(specs, set)
 
 	// 模型解析失败落空串不阻断（评分行 model_name 记空串，调用失败另走降级）。
