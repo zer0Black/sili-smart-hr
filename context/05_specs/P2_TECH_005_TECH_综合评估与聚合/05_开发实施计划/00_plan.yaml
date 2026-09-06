@@ -15,7 +15,7 @@ sub_plans:
   - id: "03"
     name: "聚合与装配"
     file: "03_聚合与装配.md"
-    status: "pending"
+    status: "completed"
 
 execution_order:
   - "01"
