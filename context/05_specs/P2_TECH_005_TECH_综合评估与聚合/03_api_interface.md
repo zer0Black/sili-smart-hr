@@ -77,13 +77,15 @@ type EvaluatorLLMClient llm.Client
 // 装配参数：Timeout 180s / MaxRetries 1 / InitialBackoff 5s / MaxBackoff 10s /
 // MaxRetryAfter 60s（与 extractor 专用 client 同构，超时推导见 §3.3）。
 // Timeout 覆盖建连到流式 body 读毕全程（底座 http.Client.Timeout 语义），
-// 评估输出 MaxTokens=4000 的多维度 JSON，120s 验收线（specs §3.1）与 180s
+// 评估输出多维度 JSON，120s 验收线（specs §3.1）与 180s
 // p99 观测线（specs §6.2）都要求单次调用预算至少 180s。
-// TokenBudget = MaxProfileSetTokens + 17000 = 47000：证据段 90000 字符（30000 token）
-// + 维度段按 specs §3.1 20 维度上限标定（20 × prompt≤2000 + anchor≤500 ≈ 50k 字符
-// ≈ 16.7k token 取整）+ 系统段、统计块与指令段余量；TokenCounter 用 CharDiv3Counter
-// （与 T4 同折算）。评分请求 MaxTokens=4000（20 维度 × 200 字理由 + JSON 结构余量，
-// ChatRequest 逐请求设置）。
+// TokenBudget = MaxProfileSetTokens + 18000 = 48000：证据段 90000 字符（30000 token）
+// + 维度段按 specs §3.1 20 维度满配标定（20 × (prompt≤2000 + anchor≤500 + 模板约 35)
+// ≈ 50.7k 字符 ≈ 16.9k token）+ 系统段、统计块与指令段约 800 token 余量；TokenCounter
+// 用 CharDiv3Counter（与 T4 同折算）。评分请求 MaxTokens=14000（20 维度 × 容差上限
+// 400 字理由按中文 1 字 ≈ 1.5 token + JSON 结构开销 ≈ 700 token/维，ChatRequest
+// 逐请求设置），低于此值时满配输出会在 max_tokens 处静默截断为非平衡 JSON，
+// 全维度误落 ErrSchemaInvalid failed 行。
 ```
 
 三个组件实例（act/sc/ev）均注册进 providers.go，worker/task 的 NewMux 经参数注入注册 person-evaluate handler（单一注册入口范式不变）。
@@ -114,7 +116,7 @@ const TypePersonEvaluate = "engine:person-evaluate"
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | token_name | string | 是 | 人员归属（上游调用令牌名）；空值 handler 记 ERROR 后返回 nil 丢弃任务（构造侧确定性错误，T4 同款） |
-| period_start | integer | 是 | 评估区间起点，Unix 秒（含） |
+| period_start | integer | 是 | 评估区间起点，Unix 秒（含）；period_start ≤ 0（缺字段落 0）视为坏 payload 同款丢弃，防 [0, end) 伪周期跑完整评估 |
 | period_end | integer | 是 | 评估区间终点，Unix 秒（不含）；period_end ≤ period_start 视为坏 payload 同款丢弃 |
 
 payload 由 T6 跑批编排构造入队（本 Feature 只定义 schema 与消费行为；周期批量场景 T6 应一次拉全量列表内存分组后经 EvaluatePerson 的 sessions 入参注入，避免逐人重复拉取，specs §2.5 完整示例）。
@@ -161,7 +163,7 @@ payload 由 T6 跑批编排构造入队（本 Feature 只定义 schema 与消费
 | Evaluate | Evaluator | (tokenName, period, sessions) → (*EvaluateResult, error) | 仅综合评估：读档案、签名识别、组装、调 LLM、评分行落库；幂等判定内聚（全 success 复用、failed 先删后评） | specs §2.4 能力1 |
 | AssembleProfileSet | Evaluator | (tokenName, period) → (*ProfileSet, error) | 档案集分层组装，纯读不调 LLM 不落库（内部读档案表，需 ctx） | specs §2.4 能力2 |
 | StatPersonByKey | Activity | (tokenName, period) → (*ActivityStat, error) | 活跃度统计，内部经 P2_TECH_002 拉列表 + 档案表取数，落库 | specs §2.4 能力3 |
-| StatPerson | Activity | (sessions, tokenName, period) → (*ActivityStat, error) | 活跃度统计，列表由调用方传入（档案侧数据仍内部读取），落库 | specs §2.4 能力3 |
+| StatPerson | Activity | (sessions, tokenName, period) → (*ActivityStat, []ProfileDigest, error) | 活跃度统计，列表由调用方传入（档案侧数据仍内部读取并透出，供组合入口注入 Evaluate 免二次取数），落库 | specs §2.4 能力3 |
 | IdentifyPopulation | activity 包级 | (sessions, profiles, lowFreqThreshold) → PopulationSignature | 人群签名识别纯函数。**实现形三参**：低频下限阈值入参注入（判据「列表会话量 ≥ 低频下限」需要阈值，specs §2.4 能力4 两参为概念签名，调用方从 ThresholdReader 读出后传入，测试可锚定边界），T4 ShouldSkip 三参先例 | specs §2.4 能力4 |
 | Aggregate | Scorer | (tokenName, period) → (*AggregateResult, error) | 读同人同周期全部 source 评分行重算聚合行，幂等 upsert | specs §2.4 能力5 |
 

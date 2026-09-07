@@ -40,9 +40,7 @@ type PopulationSignature struct {
 
 // IdentifyPopulation 人群签名识别（specs §2.4 能力4 判定次序唯一权威）：
 // failed 主导排除 → work_tc1 → bypass_orchestrator → auto_client → threshold 首期保留不生效。
-// lowFreqThreshold 为列表量门槛（DIM 低频下限），调用方从 ThresholdReader 读出注入。
-// sessions 空且 profiles 非空时跳过列表量门槛判据（Evaluate 独立调用退化形态，
-// specs §2.4 能力1 注意事项），档案侧判据照判。
+// sessions 空且 profiles 非空时跳过列表量门槛判据（Evaluate 独立调用退化形态）。
 func IdentifyPopulation(sessions []conversationlog.SessionSummary, profiles []ProfileDigest, lowFreqThreshold int) PopulationSignature {
 	total := len(profiles)
 	var success, failed int

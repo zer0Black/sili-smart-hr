@@ -44,11 +44,9 @@ const instructionTail = `【输出要求】
 - 每维度输出 0-100 整数分；证据不足标 insufficient 且 score 置 null，score 非 null 时须为 0-100 整数，禁止把证据不足判为低分。
 - rationale 理由 200 字以内。`
 
-// buildPrompt 五段组装（specs §2.4 能力1 prompt 五段结构）：系统段 + 维度段 +
-// 证据段 + 统计段 + 指令段。specs 须只含有提示词维度（空提示词维度由调用侧
-// 分流，不进 LLM 上下文）。入参不含人名（TokenName 由调用侧组装前剥离，
-// specs §3.3），本函数义务是不引入任何 token_name 人名；人群签名不进 prompt
-// （specs §2.2 组装规则表：C08-C12 承接在能力4 规则侧）。
+// buildPrompt 五段组装（specs §2.4 能力1）：系统段 + 维度段 + 证据段 + 统计段 +
+// 指令段。specs 只含有提示词维度；入参与产出都不含 token_name 人名（组装前剥离）；
+// 人群签名不进 prompt（C08-C12 承接在能力4 规则侧）。
 func buildPrompt(specs []DimensionSpec, set *ProfileSet) string {
 	var b strings.Builder
 	b.Grow(4096)

@@ -20,7 +20,7 @@ func scoreSpecs() []DimensionSpec {
 	}
 }
 
-// dimJSON 构造单维度 LLM 输出行。
+// dimJSON 构造单维度 LLM 输出行（score 为 nil 表示 insufficient）。
 func dimJSON(code string, score *int, insufficient bool, rationale string) string {
 	s := "null"
 	if score != nil {
@@ -28,6 +28,11 @@ func dimJSON(code string, score *int, insufficient bool, rationale string) strin
 	}
 	return `{"code":` + quoteJSON(code) + `,"score":` + s +
 		`,"insufficient":` + boolJSON(insufficient) + `,"rationale":` + quoteJSON(rationale) + `}`
+}
+
+// dimJSONInt 整数 score 形态的 dimJSON 简写。
+func dimJSONInt(code string, score int, insufficient bool, rationale string) string {
+	return dimJSON(code, &score, insufficient, rationale)
 }
 
 func itoa(n int) string {
@@ -76,10 +81,14 @@ func boolJSON(b bool) string {
 	return "false"
 }
 
+// scorePtr 构造 *scoreNumber（scoreDimension.Score 字段的测试简写）。
+func scorePtr(n int) *scoreNumber {
+	return &scoreNumber{n: n}
+}
+
 // TestParseScoreOutputPlain 纯 JSON 直接解析成功。
 func TestParseScoreOutputPlain(t *testing.T) {
-	s72 := 72
-	raw := `{"dimensions":[` + dimJSON("AI_INSTRUCTION", &s72, false, "指令明确") + `]}`
+	raw := `{"dimensions":[` + dimJSONInt("AI_INSTRUCTION", 72, false, "指令明确") + `]}`
 	out, err := parseScoreOutput(raw)
 	if err != nil {
 		t.Fatalf("合法 JSON 解析失败: %v", err)
@@ -88,16 +97,15 @@ func TestParseScoreOutputPlain(t *testing.T) {
 		t.Fatalf("维度数 = %d, want 1", len(out.Dimensions))
 	}
 	d := out.Dimensions[0]
-	if d.Code != "AI_INSTRUCTION" || d.Score == nil || *d.Score != 72 || d.Insufficient || d.Rationale != "指令明确" {
+	if d.Code != "AI_INSTRUCTION" || d.Score == nil || d.Score.n != 72 || d.Insufficient || d.Rationale != "指令明确" {
 		t.Errorf("维度字段不符: %+v", d)
 	}
 }
 
 // TestParseScoreOutputFenced 锚点：markdown 围栏包裹的合法 JSON → 解析成功且维度数正确。
 func TestParseScoreOutputFenced(t *testing.T) {
-	s60 := 60
 	raw := "```json\n" + `{"dimensions":[` +
-		dimJSON("AI_INSTRUCTION", &s60, false, "理由一") + `,` +
+		dimJSONInt("AI_INSTRUCTION", 60, false, "理由一") + `,` +
 		dimJSON("AI_VALUE", nil, true, "证据不足") + `]}` + "\n```"
 	out, err := parseScoreOutput(raw)
 	if err != nil {
@@ -113,8 +121,7 @@ func TestParseScoreOutputFenced(t *testing.T) {
 
 // TestParseScoreOutputTrailing 锚点：JSON 后跟解释文字 → 截取平衡对象解析成功。
 func TestParseScoreOutputTrailing(t *testing.T) {
-	s80 := 80
-	raw := `{"dimensions":[` + dimJSON("AI_VALUE", &s80, false, "高价值信号") + `]}` +
+	raw := `{"dimensions":[` + dimJSONInt("AI_VALUE", 80, false, "高价值信号") + `]}` +
 		"\n以上是各维度评分结果，供参考。"
 	out, err := parseScoreOutput(raw)
 	if err != nil {
@@ -128,9 +135,8 @@ func TestParseScoreOutputTrailing(t *testing.T) {
 // TestParseScoreOutputLeadingExample 前导说明文字内嵌平衡示例对象（{"ok":true} 形态）
 // 不得劫持截取：候选须含 dimensions 键。
 func TestParseScoreOutputLeadingExample(t *testing.T) {
-	s50 := 50
 	raw := "好的，示例形如 {\"ok\":true} 如下：\n" +
-		`{"dimensions":[` + dimJSON("AI_REVIEW", &s50, false, "审查充分") + `]}`
+		`{"dimensions":[` + dimJSONInt("AI_REVIEW", 50, false, "审查充分") + `]}`
 	out, err := parseScoreOutput(raw)
 	if err != nil {
 		t.Fatalf("前导示例对象不应劫持截取: %v", err)
@@ -156,11 +162,10 @@ func TestParseScoreOutputEmptyObject(t *testing.T) {
 
 // TestValidateConvergeBaseline 全部命中且合法：透传逐 spec 定位。
 func TestValidateConvergeBaseline(t *testing.T) {
-	s72, s88, s60 := 72, 88, 60
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_VALUE", Score: &s88, Rationale: "价值理由"},
-		{Code: "AI_INSTRUCTION", Score: &s72, Rationale: "指令理由"},
-		{Code: "AI_REVIEW", Score: &s60, Rationale: "审查理由"},
+		{Code: "AI_VALUE", Score: scorePtr(88), Rationale: "价值理由"},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(72), Rationale: "指令理由"},
+		{Code: "AI_REVIEW", Score: scorePtr(60), Rationale: "审查理由"},
 	}}
 	got, err := validateAndConverge(out, scoreSpecs())
 	if err != nil {
@@ -180,10 +185,9 @@ func TestValidateConvergeBaseline(t *testing.T) {
 // TestValidateConvergeUnknownCode 锚点（BR4）：输出含未知 code + 缺 1 维 →
 // 未知丢弃、缺失维补 insufficient 行、总行数 == len(specs)。
 func TestValidateConvergeUnknownCode(t *testing.T) {
-	s72 := 72
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_INSTRUCTION", Score: &s72, Rationale: "指令理由"},
-		{Code: "AI_HALLUCINATED", Score: &s72, Rationale: "幻觉维度"},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(72), Rationale: "指令理由"},
+		{Code: "AI_HALLUCINATED", Score: scorePtr(72), Rationale: "幻觉维度"},
 	}}
 	got, err := validateAndConverge(out, scoreSpecs())
 	if err != nil {
@@ -218,16 +222,15 @@ func TestValidateConvergeScoreRange(t *testing.T) {
 	for _, bad := range []int{-5, 105} {
 		bad := bad
 		out := &scoreOutput{Dimensions: []scoreDimension{
-			{Code: "AI_INSTRUCTION", Score: &bad, Rationale: "越界"},
+			{Code: "AI_INSTRUCTION", Score: scorePtr(bad), Rationale: "越界"},
 		}}
 		if _, err := validateAndConverge(out, scoreSpecs()); !errors.Is(err, ErrSchemaInvalid) {
 			t.Errorf("score=%d 应判 ErrSchemaInvalid, got %v", bad, err)
 		}
 	}
-	s0, s100 := 0, 100
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_INSTRUCTION", Score: &s0, Rationale: "下界"},
-		{Code: "AI_VALUE", Score: &s100, Rationale: "上界"},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(0), Rationale: "下界"},
+		{Code: "AI_VALUE", Score: scorePtr(100), Rationale: "上界"},
 	}}
 	got, err := validateAndConverge(out, scoreSpecs())
 	if err != nil {
@@ -241,15 +244,14 @@ func TestValidateConvergeScoreRange(t *testing.T) {
 // TestValidateConvergeRationaleLimit 锚点（BR6）：500 字判 ErrSchemaInvalid，
 // 399 字通过（含缺失补行场景的默认文案对照）。
 func TestValidateConvergeRationaleLimit(t *testing.T) {
-	s50 := 50
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_INSTRUCTION", Score: &s50, Rationale: strings.Repeat("理", 500)},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(50), Rationale: strings.Repeat("理", 500)},
 	}}
 	if _, err := validateAndConverge(out, scoreSpecs()); !errors.Is(err, ErrSchemaInvalid) {
 		t.Fatalf("500 字 rationale 应判 ErrSchemaInvalid, got %v", err)
 	}
 	ok := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_INSTRUCTION", Score: &s50, Rationale: strings.Repeat("理", 399)},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(50), Rationale: strings.Repeat("理", 399)},
 	}}
 	got, err := validateAndConverge(ok, scoreSpecs())
 	if err != nil {
@@ -263,9 +265,8 @@ func TestValidateConvergeRationaleLimit(t *testing.T) {
 // TestValidateConvergeInsufficientNullScore 锚点（BR7）：insufficient=true 且
 // score=72 → 收敛行 Score=0、Insufficient=true、Status=success、rationale 保留。
 func TestValidateConvergeInsufficientNullScore(t *testing.T) {
-	s72 := 72
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_INSTRUCTION", Score: &s72, Insufficient: true, Rationale: "证据不足说明"},
+		{Code: "AI_INSTRUCTION", Score: scorePtr(72), Insufficient: true, Rationale: "证据不足说明"},
 	}}
 	got, err := validateAndConverge(out, scoreSpecs())
 	if err != nil {
@@ -300,9 +301,8 @@ func TestValidateConvergeEmptyDimensions(t *testing.T) {
 
 // TestValidateConvergeFieldFill 收敛行 Module/Source 字段按 spec 与常量填充。
 func TestValidateConvergeFieldFill(t *testing.T) {
-	s50 := 50
 	out := &scoreOutput{Dimensions: []scoreDimension{
-		{Code: "AI_REVIEW", Score: &s50, Rationale: "审查理由"},
+		{Code: "AI_REVIEW", Score: scorePtr(50), Rationale: "审查理由"},
 	}}
 	got, err := validateAndConverge(out, scoreSpecs())
 	if err != nil {
@@ -314,5 +314,28 @@ func TestValidateConvergeFieldFill(t *testing.T) {
 	}
 	if row.Source != "conversation" {
 		t.Errorf("Source = %q, want conversation", row.Source)
+	}
+}
+
+// TestParseScoreOutputFloatForm 补充：模型输出 78.0 浮点形态（OpenAI 兼容通道
+// 无严格 integer schema 约束时的常见形态）应收敛为 78 而非解码失败。
+func TestParseScoreOutputFloatForm(t *testing.T) {
+	raw := `{"dimensions":[{"code":"AI_INSTRUCTION","score":78.0,"insufficient":false,"rationale":"指令清晰"}]}`
+	out, err := parseScoreOutput(raw)
+	if err != nil {
+		t.Fatalf("浮点整数形态应解析成功: %v", err)
+	}
+	d := out.Dimensions[0]
+	if d.Score == nil || d.Score.n != 78 {
+		t.Errorf("score = %+v, want 78", d.Score)
+	}
+}
+
+// TestParseScoreOutputFractionalRejected 补充：非整数小数（78.5）解码失败走
+// ErrSchemaInvalid 重试通道。
+func TestParseScoreOutputFractionalRejected(t *testing.T) {
+	raw := `{"dimensions":[{"code":"AI_INSTRUCTION","score":78.5,"insufficient":false,"rationale":"指令清晰"}]}`
+	if _, err := parseScoreOutput(raw); !errors.Is(err, ErrSchemaInvalid) {
+		t.Fatalf("非整数 score 应判 ErrSchemaInvalid, got %v", err)
 	}
 }

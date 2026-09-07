@@ -31,11 +31,14 @@ type PersonEvaluateTaskPayload struct {
 func NewPersonEvaluateHandler(ev *evaluator.Evaluator) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var p PersonEvaluateTaskPayload
-		if err := json.Unmarshal(t.Payload(), &p); err != nil || p.TokenName == "" || p.PeriodEnd <= p.PeriodStart {
+		parseErr := json.Unmarshal(t.Payload(), &p)
+		// period 语义校验含 PeriodStart > 0：缺字段的 Start=0 会以 [0, End) 伪周期
+		// 跑完整评估并落库（session_extract 只校验空串，无此项可对照）。
+		if parseErr != nil || p.TokenName == "" || p.PeriodStart <= 0 || p.PeriodEnd <= p.PeriodStart {
 			// 构造侧确定性错误，重试恒失败，丢弃任务记 ERROR（session_extract 同款）。
-			// 日志只记长度与错误码，payload 原文不落（03 §3.3 日志规范）。
+			// 日志只记长度与错误，payload 原文不落（03 §3.3 日志规范）。
 			slog.Error("person evaluate payload invalid, discard task",
-				"payload_bytes", len(t.Payload()), "err", err)
+				"payload_bytes", len(t.Payload()), "err", parseErr)
 			return nil
 		}
 		_, err := ev.EvaluatePerson(ctx, p.TokenName, activity.Period{Start: p.PeriodStart, End: p.PeriodEnd}, nil)

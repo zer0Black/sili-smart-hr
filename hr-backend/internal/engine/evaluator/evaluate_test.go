@@ -168,7 +168,9 @@ func (f *fakeScoreRepo) DeleteConversationFailed(ctx context.Context, tokenName 
 	kept := f.existing[:0]
 	var n int64
 	for _, r := range f.existing {
-		if r.Source == domain.ScoreSourceConversation && r.Status == domain.ScoreStatusFailed {
+		// 与真实仓储同语义：failed 行与 skip_no_llm 标记 success 行均删。
+		if r.Source == domain.ScoreSourceConversation &&
+			(r.Status == domain.ScoreStatusFailed || r.ErrorCode == domain.ErrorCodeSkipNoLLM) {
 			n++
 			continue
 		}
@@ -829,7 +831,8 @@ func TestEpochRowsExcluded(t *testing.T) {
 
 // ---- 补充边界与异常 ----
 
-// TestEvaluateMaxTokensSet 补充：ChatRequest.MaxTokens 逐请求设置为 4000。
+// TestEvaluateMaxTokensSet 补充：ChatRequest.MaxTokens 逐请求设置为 evalMaxTokens
+//（按 20 维最坏合法输出标定，见 evaluate.go 常量注释）。
 func TestEvaluateMaxTokensSet(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
@@ -838,8 +841,8 @@ func TestEvaluateMaxTokensSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
-	if f.llm.lastReq.MaxTokens != 4000 {
-		t.Errorf("MaxTokens = %d, want 4000", f.llm.lastReq.MaxTokens)
+	if f.llm.lastReq.MaxTokens != evalMaxTokens {
+		t.Errorf("MaxTokens = %d, want %d", f.llm.lastReq.MaxTokens, evalMaxTokens)
 	}
 }
 
@@ -991,5 +994,90 @@ func TestEvaluateActiveTestRowsNotInReuse(t *testing.T) {
 	}
 	if f.llm.calls != 1 {
 		t.Fatalf("LLM 调用 %d 次, want 1", f.llm.calls)
+	}
+}
+
+// TestEvaluateSkipRowsNotReused 锚点：零 LLM 跳过路径落的 insufficient(success)
+// 行带 skip_no_llm 标记，重跑（档案已就位）不进复用判定，先删后评正常走 LLM
+// （评估先于抽取落库的自愈通道）。
+func TestEvaluateSkipRowsNotReused(t *testing.T) {
+	f := newFixture(t)
+	p := testPeriod()
+	f.scores.existing = []domain.DimensionScore{
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, Insufficient: true, ErrorCode: domain.ErrorCodeSkipNoLLM},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, Insufficient: true, ErrorCode: domain.ErrorCodeSkipNoLLM},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, Insufficient: true, ErrorCode: domain.ErrorCodeSkipNoLLM},
+	}
+	f.llm.responses = []string{goodScoreJSON()}
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if res.Reused {
+		t.Fatal("skip_no_llm 标记行不应触发复用")
+	}
+	if f.scores.deleteCalls != 1 {
+		t.Fatalf("DeleteConversationFailed 调用 %d 次, want 1（先删后评）", f.scores.deleteCalls)
+	}
+	if f.llm.calls != 1 {
+		t.Fatalf("LLM 调用 %d 次, want 1（档案就位后正常评估）", f.llm.calls)
+	}
+	if len(f.scores.saved) != 3 {
+		t.Fatalf("落库行数 %d, want 3", len(f.scores.saved))
+	}
+	instr := scoreRowByCode(t, f.scores.saved, "AI_INSTRUCTION")
+	if instr.Score != 72 || instr.ErrorCode != "" {
+		t.Errorf("重评后应为 LLM 产出行 score=72 无标记, got %+v", instr)
+	}
+}
+
+// TestEvaluateSkippedRowsCarryMarker 锚点：零档案跳过路径落的全维 insufficient 行
+// 携带 skip_no_llm 标记（success 行 error_code 非空仅此形态与 failed 行）。
+func TestEvaluateSkippedRowsCarryMarker(t *testing.T) {
+	f := newFixture(t)
+	f.features.rows = nil
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("空档案集是业务态: %v", err)
+	}
+	if !res.Skipped {
+		t.Fatal("Skipped 应为 true")
+	}
+	for _, r := range f.scores.saved {
+		if r.Status != domain.ScoreStatusSuccess || r.ErrorCode != domain.ErrorCodeSkipNoLLM {
+			t.Errorf("skip 行应为 success + skip_no_llm 标记, got status=%s error_code=%q", r.Status, r.ErrorCode)
+		}
+	}
+}
+
+// TestEvaluateAllPromptEmptyShortCircuit 锚点：全部启用维度 prompt 为空（DB 直改
+// 绕过 service 校验）→ 零 LLM 调用直接短路落全量 insufficient 行。
+func TestEvaluateAllPromptEmptyShortCircuit(t *testing.T) {
+	f := newFixture(t)
+	specs := threeSpecs()
+	for i := range specs {
+		specs[i].PromptText = ""
+	}
+	f.specs.specs = specs
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if res.Skipped || res.Reused {
+		t.Fatalf("全空提示词短路 Skipped/Reused 应为 false")
+	}
+	if f.llm.calls != 0 {
+		t.Fatalf("LLM 调用 %d 次, want 0（零维度 prompt 无评分意义）", f.llm.calls)
+	}
+	if len(f.scores.saved) != 3 {
+		t.Fatalf("落库行数 %d, want 3（全量 insufficient）", len(f.scores.saved))
+	}
+	for _, r := range f.scores.saved {
+		if !r.Insufficient || r.Status != domain.ScoreStatusSuccess {
+			t.Errorf("空提示词维度应落 insufficient success 行: %+v", r)
+		}
 	}
 }

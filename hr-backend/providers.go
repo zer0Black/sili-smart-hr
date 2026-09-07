@@ -230,8 +230,9 @@ type EvaluatorLLMClient llm.Client
 // NewEvaluatorLLMClient 构造评估专用 LLM 客户端（03 §2.1）：Timeout 180s 覆盖
 // 建连到流式 body 读毕全程，支撑 120s 验收线与 180s p99 观测线；与全局及
 // extractor client 各持独立并发 gate。TokenBudget = MaxProfileSetTokens 30000
-// + 维度段与余量 17000 = 47000（20 维度上限标定）。任务级超时的单点声明在
-// worker/task 的 personEvaluateTimeout（1050s），调整本处参数须同步该处。
+// + 维度段与固定段余量 18000 = 48000（20 维度满配标定，见 03 §2.1 推导）。
+// 任务级超时的单点声明在 worker/task 的 personEvaluateTimeout（1050s），
+// 调整本处参数须同步该处。
 func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient {
 	return llm.New(llm.Config{
 		Timeout:        180 * time.Second,
@@ -239,7 +240,7 @@ func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient
 		InitialBackoff: 5 * time.Second,
 		MaxBackoff:     10 * time.Second,
 		MaxRetryAfter:  60 * time.Second,
-		TokenBudget:    evaluator.MaxProfileSetTokens + 17000,
+		TokenBudget:    evaluator.MaxProfileSetTokens + 18000,
 		TokenCounter:   llm.NewCharDiv3Counter(),
 	}, provider)
 }
@@ -344,13 +345,13 @@ func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEv
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate))
 }
 
-// NewEvaluatorProvider 装配 evaluator（九参，03 §2.1 组合形）：act 窄面经
-// evaluator.NewActivityStatComponent 适配 *activity.Activity，sc 由 *scorer.Scorer
-// 鸭子满足，两窄面在此收敛规避 wire 对未导出接口值的绑定限制。
+// NewEvaluatorProvider 装配 evaluator（九参，03 §2.1 组合形）：act 传
+// *activity.Activity（方法集结构化满足 ActivityStatComponent 窄面），sc 由
+// *scorer.Scorer 鸭子满足，两窄面在此收敛规避 wire 对未导出接口值的绑定限制。
 func NewEvaluatorProvider(llmClient EvaluatorLLMClient, modelProvider llm.EnabledModelProvider,
 	featureRepo repository.SessionFeatureRepository, specs *DimensionSpecReaderAdapter,
 	thresholds *ActivityThresholdReader, scoreRepo repository.DimensionScoreRepository,
 	sysParams repository.SystemParamReader, act *activity.Activity, sc *scorer.Scorer) *evaluator.Evaluator {
 	return evaluator.New(llmClient, modelProvider, featureRepo, specs, thresholds,
-		scoreRepo, sysParams, evaluator.NewActivityStatComponent(act), sc)
+		scoreRepo, sysParams, act, sc)
 }

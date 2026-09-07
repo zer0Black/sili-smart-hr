@@ -161,7 +161,7 @@ func TestWindowAttributionAndDedup(t *testing.T) {
 		sess("a", 3), sess("b", 4), sess("a", 3), // 重复键 a 去重
 	}
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), sessions, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), sessions, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestActivityLevelThresholds(t *testing.T) {
 		}
 		act := newAct(nil, &fakeFeatureRepo{rows: rows},
 			&fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-		stat, err := act.StatPerson(context.Background(), nil, "张三", p)
+		stat, _, err := act.StatPerson(context.Background(), nil, "张三", p)
 		if err != nil {
 			t.Fatalf("valid=%d: %v", tc.valid, err)
 		}
@@ -231,7 +231,7 @@ func TestValidSessionCount(t *testing.T) {
 	}
 	act := newAct(nil, &fakeFeatureRepo{rows: rows},
 		&fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), sessions, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), sessions, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
@@ -249,13 +249,13 @@ func TestActivityIdempotent(t *testing.T) {
 	}}
 	repo := &fakeStatRepo{}
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, repo)
-	if _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
+	if _, _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
 		t.Fatalf("first run: %v", err)
 	}
 	// 二跑前改档案：新行让 ValidSessionCount 变化，断言字段更新。
 	feats.rows = append(feats.rows,
 		featRow("k-2", domain.FeatureStatusSuccess, p.Start+300, p.Start+400, "opencode"))
-	if _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
+	if _, _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
 		t.Fatalf("second run: %v", err)
 	}
 	if len(repo.rows) != 1 {
@@ -283,12 +283,12 @@ func TestThresholdHotReload(t *testing.T) {
 	}
 	th := &fakeThresholds{active: 10, lowFreq: 5}
 	act := newAct(nil, &fakeFeatureRepo{rows: rows}, th, &fakeStatRepo{})
-	stat1, err := act.StatPerson(context.Background(), nil, "张三", p)
+	stat1, _, err := act.StatPerson(context.Background(), nil, "张三", p)
 	if err != nil || stat1.ActiveLevel != domain.ActiveLevelLowFreq {
 		t.Fatalf("first run level=%q err=%v, want low_freq", stat1.ActiveLevel, err)
 	}
 	th.active, th.lowFreq = 3, 1
-	stat2, err := act.StatPerson(context.Background(), nil, "张三", p)
+	stat2, _, err := act.StatPerson(context.Background(), nil, "张三", p)
 	if err != nil || stat2.ActiveLevel != domain.ActiveLevelActive {
 		t.Fatalf("second run level=%q err=%v, want active（阈值热更）", stat2.ActiveLevel, err)
 	}
@@ -303,7 +303,7 @@ func TestAutoClientForcedUnused(t *testing.T) {
 	}}
 	sessions := mkSessionsAt(20, p)
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), sessions, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), sessions, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
@@ -359,7 +359,7 @@ func TestStatPersonListCountOnly(t *testing.T) {
 		sess("a", 3), sess("b", 5), sess("c", 7), sess("d", 11), sess("b", 5),
 	}
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), sessions, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), sessions, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestActivityStatPerf(t *testing.T) {
 	act := newAct(nil, &fakeFeatureRepo{rows: rows},
 		&fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
 	start := time.Now()
-	if _, err := act.StatPerson(context.Background(), sessions, "张三", p); err != nil {
+	if _, _, err := act.StatPerson(context.Background(), sessions, "张三", p); err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
 	if d := time.Since(start); d >= 500*time.Millisecond {
@@ -464,7 +464,7 @@ func TestStatPersonThresholdReadError(t *testing.T) {
 	p := weekPeriod()
 	repo := &fakeStatRepo{}
 	act := newAct(nil, &fakeFeatureRepo{}, &fakeThresholds{err: errors.New("db down")}, repo)
-	if _, err := act.StatPerson(context.Background(), nil, "张三", p); err == nil {
+	if _, _, err := act.StatPerson(context.Background(), nil, "张三", p); err == nil {
 		t.Fatal("err = nil, want 非 nil（ErrDimensionConfigRead 语义）")
 	}
 	if repo.calls != 0 {
@@ -478,7 +478,7 @@ func TestStatPersonProfileReadError(t *testing.T) {
 	repo := &fakeStatRepo{}
 	act := newAct(nil, &fakeFeatureRepo{err: errors.New("db down")},
 		&fakeThresholds{active: 10, lowFreq: 5}, repo)
-	if _, err := act.StatPerson(context.Background(), nil, "张三", p); err == nil {
+	if _, _, err := act.StatPerson(context.Background(), nil, "张三", p); err == nil {
 		t.Fatal("err = nil, want 非 nil（ErrProfileRead 语义）")
 	}
 	if repo.calls != 0 {
@@ -494,7 +494,7 @@ func TestStatPersonStoreWriteError(t *testing.T) {
 	}}
 	repo := &fakeStatRepo{err: errors.New("write fail")}
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, repo)
-	if _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err == nil {
+	if _, _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err == nil {
 		t.Fatal("err = nil, want 非 nil（ErrStoreWrite 语义）")
 	}
 }
@@ -503,7 +503,7 @@ func TestStatPersonStoreWriteError(t *testing.T) {
 func TestStatPersonEmptyAll(t *testing.T) {
 	p := weekPeriod()
 	act := newAct(nil, &fakeFeatureRepo{}, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), nil, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), nil, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
@@ -525,7 +525,7 @@ func TestStatPersonPersistFields(t *testing.T) {
 	}}
 	repo := &fakeStatRepo{}
 	act := newAct(nil, feats, &fakeThresholds{active: 2, lowFreq: 1}, repo)
-	if _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
+	if _, _, err := act.StatPerson(context.Background(), sess1(), "张三", p); err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}
 	if len(repo.rows) != 1 {
@@ -571,7 +571,7 @@ func TestStatPersonBoundaryLastTurn(t *testing.T) {
 		featRow("at-end", domain.FeatureStatusSuccess, p.Start+100, p.End, "claude_code"),
 	}}
 	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
-	stat, err := act.StatPerson(context.Background(), nil, "张三", p)
+	stat, _, err := act.StatPerson(context.Background(), nil, "张三", p)
 	if err != nil {
 		t.Fatalf("StatPerson: %v", err)
 	}

@@ -114,14 +114,14 @@ type probeActivity struct {
 	recorder *callRecorder
 }
 
-func (p *probeActivity) statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error) {
+func (p *probeActivity) StatPersonByKeyWithSessions(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error) {
 	p.recorder.record("StatPersonByKey")
-	return p.act.statPersonByKey(ctx, tokenName, period)
+	return p.act.StatPersonByKeyWithSessions(ctx, tokenName, period)
 }
 
-func (p *probeActivity) statPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, error) {
+func (p *probeActivity) StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, []activity.ProfileDigest, error) {
 	p.recorder.record("StatPerson")
-	return p.act.statPerson(ctx, sessions, tokenName, period)
+	return p.act.StatPerson(ctx, sessions, tokenName, period)
 }
 
 // callRecorder 顺序记录组件调用名。
@@ -193,16 +193,16 @@ func newPersonFixture(t *testing.T) *personFixture {
 	return f
 }
 
-// newEvaluator 用真实组件构造 Evaluator（act 经适配器挂真实 Activity）。
+// newEvaluator 用真实组件构造 Evaluator（act 直接挂真实 Activity）。
 func (f *personFixture) newEvaluator() *Evaluator {
 	act, sc := f.assemble()
-	return New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params, NewActivityStatComponent(act), sc)
+	return New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params, act, sc)
 }
 
 // newProbingEvaluator 用探针包装组合窄面构造 Evaluator（调用序断言用）。
 func (f *personFixture) newProbingEvaluator() *Evaluator {
 	act, sc := f.assemble()
-	probed := &probeActivity{act: NewActivityStatComponent(act), recorder: f.recorder}
+	probed := &probeActivity{act: act, recorder: f.recorder}
 	return New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params, probed, sc)
 }
 

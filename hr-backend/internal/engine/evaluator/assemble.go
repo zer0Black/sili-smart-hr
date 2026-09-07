@@ -96,6 +96,8 @@ func aggregateWindow(digests []activity.ProfileDigest) *windowStats {
 		st := d.Stats
 		ws.userMsg += st.UserMsgCount
 		if st.UserMsgCount == 0 {
+			// 三态口径：skipped 空壳行 Stats 恒零值，计入本计数并另经
+			// sessions_skipped 披露（同一批会话双计数属既定口径）。
 			ws.zeroInput++
 		}
 		ws.interrupts += st.InterruptCount
@@ -188,7 +190,9 @@ func buildProfileSet(digests []activity.ProfileDigest) *ProfileSet {
 	used := 0
 	for _, c := range cands {
 		if used+c.size > MaxProfileSetChars {
-			break // 截取排序后前缀内预算容纳的 N 个，超出部分整块丢弃
+			// 前缀截取语义：首个装不下的块触发截断，其后更小的块一并丢弃（非贪心
+			// 装填，保密度序完整性），截断经 VisibleCount/TotalSuccess 披露。
+			break
 		}
 		used += c.size
 		ps.SessionBlocks = append(ps.SessionBlocks, c.text)

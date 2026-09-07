@@ -12,6 +12,10 @@ const (
 	ScoreStatusFailed       = "failed"       // LLM 段失败全维度占位，error_code 记因
 )
 
+// ErrorCodeSkipNoLLM 零 LLM 跳过路径（零档案/签名命中）success 行的 error_code
+// 落库标记：区分 LLM 产出行，评估重跑时按先删后评处置（评估先于抽取落库的自愈通道）。
+const ErrorCodeSkipNoLLM = "skip_no_llm"
+
 // DimensionScore 是维度评分记录，一人一周期一维度一行。
 // 唯一索引 (token_name, period_start_at, dimension_code) 不含 source：维度数据来源
 // 为 DIM 配置单选，conversation 与 active_test 的 dimension_code 集合恒不相交，天然防撞。

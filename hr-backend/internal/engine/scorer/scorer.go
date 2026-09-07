@@ -130,8 +130,8 @@ func (s *Scorer) Aggregate(ctx context.Context, tokenName string, period activit
 	storeRows = append(storeRows, domain.AggregateScore{
 		Module:        domain.ModuleOverview,
 		OverviewScore: result.Overview,
-		IncludedJSON:  marshalIncludedMap(result.Included),
-		ExcludedJSON:  marshalExcludedMap(result.Excluded),
+		IncludedJSON:  marshalMap(result.Included),
+		ExcludedJSON:  marshalMap(result.Excluded),
 	})
 
 	if err := s.aggRepo.UpsertAll(ctx, tokenName, period.Start, period.End, storeRows); err != nil {
@@ -140,11 +140,9 @@ func (s *Scorer) Aggregate(ctx context.Context, tokenName string, period activit
 	return result, nil
 }
 
-// classifyRow 行分类：failed、insufficient、evidence 解析失败或口径摘要缺条目的
-// 行返回 false（剔除进 Excluded）；in_overview=false 参考维返回 true 但不累计
-// （不进聚合也不进 Excluded）；正常参与维返回 true 并累计入模块聚合器。
-// parseErr 非空时回写解析失败标记，供调用侧记 WARN（F7 行 evidence 形状漂移的
-// 显形通道）。
+// classifyRow 行分类（specs 能力5 规则1）：failed、insufficient、evidence 坏行
+// 与口径缺条目返回 false（剔除进 Excluded）；in_overview=false 参考维返回 true
+// 不累计；正常参与维返回 true 并累计。parseErr 回写解析失败标记供 WARN。
 func classifyRow(r *domain.DimensionScore, g *moduleAgg, parseErr *bool) bool {
 	if r.Status != domain.ScoreStatusSuccess || r.Insufficient {
 		return false // failed 与 insufficient 一律剔除（specs 能力5 规则1）
@@ -195,17 +193,8 @@ func marshalList[T any](list []T) string {
 	return string(raw)
 }
 
-// marshalIncludedMap 序列化模块→参与清单快照，空 map 落 "{}"。
-func marshalIncludedMap(m map[string][]IncludedWeight) string {
-	raw, err := json.Marshal(m)
-	if err != nil {
-		return "{}"
-	}
-	return string(raw)
-}
-
-// marshalExcludedMap 序列化模块→剔除清单快照，空 map 落 "{}"。
-func marshalExcludedMap(m map[string][]string) string {
+// marshalMap 序列化模块→清单快照（参与与剔除两种值形态共用），空集兜底 "{}"。
+func marshalMap[T any](m map[string]T) string {
 	raw, err := json.Marshal(m)
 	if err != nil {
 		return "{}"

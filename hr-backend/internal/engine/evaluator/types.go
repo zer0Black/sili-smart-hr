@@ -75,7 +75,7 @@ type Evaluator struct {
 }
 
 // New 构造 Evaluator，九个依赖集中注入（七参基础上追加 act/sc 组合件，03 §2.1）。
-// sc 传 *scorer.Scorer；act 组合件经 NewActivityStatComponent 适配 *activity.Activity。
+// sc 传 *scorer.Scorer；act 传 *activity.Activity（方法集结构化满足窄面）。
 func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 	featureRepo repository.SessionFeatureRepository, specs DimensionSpecReader,
 	thresholds activity.ThresholdReader, scoreRepo repository.DimensionScoreRepository,
@@ -97,23 +97,11 @@ func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 // ActivityStatComponent EvaluatePerson 组合依赖窄面（合理实现形偏差：以接口
 // 窄化替代具体类型字段利测试探针注入）：ByKey 形态额外携带拉取到的窗口内列表
 // 与档案集（已归一过滤），供 EvaluatePerson 注入 Evaluate 免二次拉取与二次取数
-// （specs §2.2 sessions 参数说明）；*activity.Activity 经 NewActivityStatComponent
-// 适配满足。
+//（specs §2.2 sessions 参数说明）；方法名与 *activity.Activity 导出方法一致，
+// 结构化满足无需适配层。
 type ActivityStatComponent interface {
-	statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error)
-	statPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, error)
-}
-
-// activityStatAdapter 适配 *activity.Activity 到组合窄面：ByKey 路径消费
-// StatPersonByKeyWithSessions 列表透出形态，把拉取到的窗口内列表透出供
-// Evaluate 注入签名识别；统计本体复用 Activity 既有方法。
-type activityStatAdapter struct {
-	*activity.Activity
-}
-
-// NewActivityStatComponent 适配真实 Activity 为组合窄面。
-func NewActivityStatComponent(act *activity.Activity) ActivityStatComponent {
-	return &activityStatAdapter{Activity: act}
+	StatPersonByKeyWithSessions(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error)
+	StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, []activity.ProfileDigest, error)
 }
 
 // ScoreAggregator EvaluatePerson 组合依赖窄面（*scorer.Scorer 满足）。

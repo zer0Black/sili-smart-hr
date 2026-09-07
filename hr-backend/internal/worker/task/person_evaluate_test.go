@@ -74,7 +74,7 @@ func (f *evalFixture) evaluator() *evaluator.Evaluator {
 	act := activity.New(f.list, f.features, f.th, f.actRepo, secrets)
 	sc := scorer.New(f.scores, f.aggRepo)
 	return evaluator.New(f.llm, f.provider, f.features, f.specs, f.th, f.scores, f.params,
-		evaluator.NewActivityStatComponent(act), sc)
+		act, sc)
 }
 
 // probe 组装探针 handler：fetcher 记录 token/period（零档案走 Skipped 终态，

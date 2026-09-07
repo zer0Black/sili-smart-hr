@@ -3,6 +3,9 @@ package evaluator
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -26,9 +29,36 @@ type scoreOutput struct {
 // scoreDimension 单维度输出：score null 表示 insufficient。
 type scoreDimension struct {
 	Code         string `json:"code"`
-	Score        *int   `json:"score"`
+	Score        *scoreNumber `json:"score"`
 	Insufficient bool   `json:"insufficient"`
 	Rationale    string `json:"rationale"`
+}
+
+// scoreNumber 容忍模型输出的整数与浮点两种数值形态（78 与 78.0）：OpenAI 兼容
+// 通道在无严格 integer schema 约束时部分模型习惯性输出 .0 形态，*int 会直接
+// 解码失败。非整数值由 validateAndConverge 的 0-100 整数校验兜底拒绝。
+type scoreNumber struct {
+	n int
+}
+
+// UnmarshalJSON 按 json.Number 解码：整数值原样承载，浮点形态仅容忍无小数部分
+//（78.0 收敛 78，78.5 判解码失败）。
+func (s *scoreNumber) UnmarshalJSON(b []byte) error {
+	var num json.Number
+	if err := json.Unmarshal(b, &num); err != nil {
+		return err
+	}
+	i, err := strconv.ParseInt(num.String(), 10, 64)
+	if err == nil {
+		s.n = int(i)
+		return nil
+	}
+	f, ferr := strconv.ParseFloat(num.String(), 64)
+	if ferr != nil || f != math.Trunc(f) {
+		return fmt.Errorf("score 非整数形态: %s", num.String())
+	}
+	s.n = int(f)
+	return nil
 }
 
 // parseScoreOutput 宽容解析（specs §2.4 能力1，同 extractor schema.go 范式）：
@@ -90,10 +120,10 @@ func validateAndConverge(out *scoreOutput, specs []DimensionSpec) ([]domain.Dime
 		}
 		score := 0
 		if d.Score != nil {
-			if *d.Score < ScoreMin || *d.Score > ScoreMax {
+			if d.Score.n < ScoreMin || d.Score.n > ScoreMax {
 				return nil, ErrSchemaInvalid
 			}
-			score = *d.Score
+			score = d.Score.n
 		}
 		if utf8.RuneCountInString(d.Rationale) > MaxRationaleChars*2 {
 			return nil, ErrSchemaInvalid

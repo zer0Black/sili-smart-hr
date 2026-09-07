@@ -22,7 +22,7 @@ type DimensionScoreRepository interface {
 	DeleteConversationFailed(ctx context.Context, tokenName string, start, end int64) (int64, error)
 	// SaveAll 按唯一索引 (token_name, period_start_at, dimension_code) upsert 全列覆盖：
 	// token_name 与双界周期以入参为权威回填，存在同键行则 UPDATE 全业务列（map 形态，
-	// 空串与 false 须写入），并发双写撞唯一索引转查行后覆盖。
+	// 空串与 false 须写入）。
 	SaveAll(ctx context.Context, tokenName string, start, end int64, rows []domain.DimensionScore) error
 }
 
@@ -51,13 +51,14 @@ func (r *dimensionScoreRepository) ListByPersonPeriodExact(ctx context.Context, 
 	return list, nil
 }
 
-// DeleteConversationFailed 先删后评的删除侧：仅 source=conversation 且 status=failed，
-// 双界精确匹配圈定本周期（active_test 行与历史周期行不动，specs 能力6 规则2）。
+// DeleteConversationFailed 先删后评的删除侧：source=conversation 且 status=failed，
+// 或 error_code 带 skip_no_llm 标记的 success 跳过行（重跑自愈通道），双界精确
+// 匹配圈定本周期（active_test 行与历史周期行不动，specs 能力6 规则2）。
 func (r *dimensionScoreRepository) DeleteConversationFailed(ctx context.Context, tokenName string, start, end int64) (int64, error) {
 	res := r.db.WithContext(ctx).
-		Where("token_name = ? AND period_start_at = ? AND period_end_at = ? AND source = ? AND status = ?",
+		Where("token_name = ? AND period_start_at = ? AND period_end_at = ? AND source = ? AND (status = ? OR error_code = ?)",
 			tokenName, time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC(),
-			domain.ScoreSourceConversation, domain.ScoreStatusFailed).
+			domain.ScoreSourceConversation, domain.ScoreStatusFailed, domain.ErrorCodeSkipNoLLM).
 		Delete(&domain.DimensionScore{})
 	if res.Error != nil {
 		return 0, res.Error

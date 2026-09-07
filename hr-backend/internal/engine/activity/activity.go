@@ -83,9 +83,9 @@ func New(cl SessionListFetcher, featureRepo repository.SessionFeatureRepository,
 	}
 }
 
-// StatPersonByKey 拉列表并统计：全量串行翻页（中文 token_name 上游过滤不可用）
-// → 按 token_name 内存分组 → session_key 去重 → 走 StatPerson 共用逻辑。
-// 拉取失败按 ErrSessionListFetch 语义 error 上抛，不落任何行。
+// StatPersonByKey 拉列表并统计（specs §2.4 能力3）：全量串行翻页 → token_name
+// 内存分组 → DedupSessions → statPersonCore。生产评估链走 WithSessions 透出形态
+//（EvaluatePerson 消费），本形态保留给 specs 接口表的定向分析单人场景。
 func (a *Activity) StatPersonByKey(ctx context.Context, tokenName string, period Period) (*ActivityStat, error) {
 	stat, _, _, err := a.StatPersonByKeyWithSessions(ctx, tokenName, period)
 	return stat, err
@@ -104,17 +104,13 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 		return nil, nil, nil, err
 	}
 	mine := make([]conversationlog.SessionSummary, 0, len(all))
-	seen := make(map[string]struct{}, len(all))
 	for _, s := range all {
 		if s.TokenName != tokenName {
 			continue
 		}
-		if _, dup := seen[s.SessionKey]; dup { // 跨页重复，去重后透出（能力4 两处口径一致）
-			continue
-		}
-		seen[s.SessionKey] = struct{}{}
 		mine = append(mine, s)
 	}
+	mine = DedupSessions(mine) // 跨页重复去重后透出（能力4 两处口径一致）
 	digests, err := a.fetchProfiles(ctx, tokenName, period)
 	if err != nil {
 		return nil, nil, nil, err
@@ -153,12 +149,36 @@ func (a *Activity) fetchAllSessions(ctx context.Context, secret string, period P
 
 // StatPerson 对调用方传入的列表统计（sessions 须已按窗口过滤；档案侧数据由
 // 内部经 ListByPersonAndRange 读取）。落库经 repo.Upsert 幂等覆盖。
-func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period Period) (*ActivityStat, error) {
+// 透出取回的档案集，供 EvaluatePerson 注入 Evaluate 免二次取数（与
+// StatPersonByKeyWithSessions 对称）。
+func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period Period) (*ActivityStat, []ProfileDigest, error) {
 	profiles, err := a.fetchProfiles(ctx, tokenName, period)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return a.statPersonCore(ctx, tokenName, sessions, profiles, period)
+	stat, err := a.statPersonCore(ctx, tokenName, sessions, profiles, period)
+	if err != nil {
+		return nil, nil, err
+	}
+	return stat, profiles, nil
+}
+
+// DedupSessions 按 session_key 去重（跨页重复兜底），保序保留首见行。
+// 计数、签名识别与 Evaluate 侧签名入参三处共用的单一权威实现。
+func DedupSessions(sessions []conversationlog.SessionSummary) []conversationlog.SessionSummary {
+	if len(sessions) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(sessions))
+	out := make([]conversationlog.SessionSummary, 0, len(sessions))
+	for _, s := range sessions {
+		if _, dup := seen[s.SessionKey]; dup {
+			continue
+		}
+		seen[s.SessionKey] = struct{}{}
+		out = append(out, s)
+	}
+	return out
 }
 
 // statPersonCore 统计共核（specs §2.4 能力3 步骤2-5）：列表去重计数 + 档案
@@ -171,15 +191,9 @@ func (a *Activity) statPersonCore(ctx context.Context, tokenName string, session
 	}
 
 	// 列表口径：session_key 去重兜底（跨页重复），TotalTurns 含 skipped 会话。
-	seen := make(map[string]struct{}, len(sessions))
-	dedup := make([]conversationlog.SessionSummary, 0, len(sessions))
+	dedup := DedupSessions(sessions)
 	totalTurns := 0
-	for _, s := range sessions {
-		if _, dup := seen[s.SessionKey]; dup {
-			continue
-		}
-		seen[s.SessionKey] = struct{}{}
-		dedup = append(dedup, s)
+	for _, s := range dedup {
 		totalTurns += s.TurnCount
 	}
 
@@ -250,11 +264,9 @@ func (a *Activity) fetchProfiles(ctx context.Context, tokenName string, period P
 	return FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
 }
 
-// FetchWindowDigests 档案取数归一单点（specs §2.4 能力3 步骤3，能力1 流程段
-// 同口径）：ListByPersonAndRange start 前移 24h 缓冲取回三态行（上游按
-// first_turn_at 过滤的既定契约，容纳 first_turn 在前周期、last_turn 落本周期的
-// 跨边界行）→ ParseDigests → 内存过滤 LastTurn ∈ [Start, End) 归一到本周期。
-// 计数、签名判据与评分证据三侧共用本函数，24h 缓冲与末轮归属只此一处定义。
+// FetchWindowDigests 档案取数归一单点（specs §2.4 能力3 步骤3）：ListByPersonAndRange
+// start 前移 24h 缓冲取回三态行（容纳跨边界行）→ ParseDigests → 内存过滤
+// LastTurn ∈ [Start, End) 归一到本周期。计数、签名判据与评分证据三侧共用本函数。
 func FetchWindowDigests(ctx context.Context, repo repository.SessionFeatureRepository, tokenName string, period Period) ([]ProfileDigest, error) {
 	rows, err := repo.ListByPersonAndRange(ctx, tokenName, period.Start-24*3600, period.End)
 	if err != nil {
