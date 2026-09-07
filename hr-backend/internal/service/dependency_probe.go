@@ -61,7 +61,7 @@ func (p *realDependencyProbe) ProbeLLM(ctx context.Context) string {
 	defer cancel()
 
 	stream, err := p.llmClient.StreamChat(probeCtx, llm.ChatRequest{
-		Messages: []llm.ChatMessage{{Role: "user", Content: "ping"}},
+		Messages:  []llm.ChatMessage{{Role: "user", Content: "ping"}},
 		MaxTokens: 8,
 	})
 	if err != nil {

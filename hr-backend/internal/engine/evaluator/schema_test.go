@@ -7,6 +7,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"sili-smart-hr/backend/internal/domain"
 )
 
 // scoreSpecs 三维度口径（收敛白名单基准）。
@@ -190,7 +192,7 @@ func TestValidateConvergeUnknownCode(t *testing.T) {
 	if len(got) != 3 {
 		t.Fatalf("总行数 = %d, want 3（== len(specs)）", len(got))
 	}
-	codes := map[string]DimensionScore{}
+	codes := map[string]domain.DimensionScore{}
 	for _, row := range got {
 		codes[row.DimensionCode] = row
 	}

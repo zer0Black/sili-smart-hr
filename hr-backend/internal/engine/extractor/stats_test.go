@@ -239,7 +239,7 @@ func TestPasteDetection(t *testing.T) {
 
 // TestIDESelectionWithBodySingleCount 选中块带随附正文形态的粘贴单次口径：
 // 命中粘贴合取时 payload（选中+正文拼接）全额计一次，选中规模保底不叠加
-//（双计会让重度 IDE 人群 PasteCharCount 系统性虚增近 2 倍，specs 第三类第 5 条）。
+// （双计会让重度 IDE 人群 PasteCharCount 系统性虚增近 2 倍，specs 第三类第 5 条）。
 func TestIDESelectionWithBodySingleCount(t *testing.T) {
 	sel := "E:\\proj\\src\\main.go:32 panic\nat main.go:33"
 	after := "这段代码运行报错了，帮我看看"

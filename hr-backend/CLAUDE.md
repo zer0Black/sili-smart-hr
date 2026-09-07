@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本文件给在后端目录（hr-backend/）下工作的 Claude Code 提供操作规约。项目整体定位、跨前后端约定、本地启动见上一层 [../CLAUDE.md](../CLAUDE.md)，本文件只承载后端独有约定。Go module 名是 `sili-smart-hr/backend`，与目录名 hr-backend 解耦，import 路径一律写 `sili-smart-hr/backend/internal/...`，根 package 是 `app`（装配层），不是 `main`。当前处于 B 档可运行脚手架阶段，account 登录链路（domain → repository → service → handler → router → wire）是首个可运行样板，用户管理、维度、系统参数、大模型配置、集成密钥等域已按同构四层贯通，engine 的 extractor（会话特征抽取全链路）与 activity（活跃度统计）子域已实现，其余 4 个子域仍是 doc.go 占位，integration 的 3 个客户端已全量实现，worker 已实现并注册健康任务与会话抽取任务。answer / questionbank / profile / dashboard / workspace 等业务域尚未开工。规格权威源是 [../context/03_architecture/architecture.md](../context/03_architecture/architecture.md)，第 4 章承载运行时约定，代码注释反复引用它。
+本文件给在后端目录（hr-backend/）下工作的 Claude Code 提供操作规约。项目整体定位、跨前后端约定、本地启动见上一层 [../CLAUDE.md](../CLAUDE.md)，本文件只承载后端独有约定。Go module 名是 `sili-smart-hr/backend`，与目录名 hr-backend 解耦，import 路径一律写 `sili-smart-hr/backend/internal/...`，根 package 是 `app`（装配层），不是 `main`。当前处于 B 档可运行脚手架阶段，account 登录链路（domain → repository → service → handler → router → wire）是首个可运行样板，用户管理、维度、系统参数、大模型配置、集成密钥等域已按同构四层贯通，engine 的 extractor（会话特征抽取全链路）、activity（活跃度统计）、evaluator（跨会话综合评估）、scorer（多维聚合）四个子域已实现，其余 2 个子域（pipeline/fallback）仍是 doc.go 占位，integration 的 3 个客户端已全量实现，worker 已实现并注册健康任务、会话抽取任务与单人评估任务（engine:person-evaluate）。answer / questionbank / profile / dashboard / workspace 等业务域尚未开工。规格权威源是 [../context/03_architecture/architecture.md](../context/03_architecture/architecture.md)，第 4 章承载运行时约定，代码注释反复引用它。
 
 ## 常用命令
 

@@ -120,7 +120,7 @@ func TestParseProfileTrailingFenceSameLine(t *testing.T) {
 }
 
 // TestParseProfileLeadingExampleObject 回归：前导说明文字内嵌平衡示例对象
-//（{"ok":true} 形态）不得劫持平衡对象截取。无 summary 键约束的截取会采到示例
+// （{"ok":true} 形态）不得劫持平衡对象截取。无 summary 键约束的截取会采到示例
 // 对象，Unmarshal 成功但 summary 空，误判 schema 失效消耗重试并可能误落 failed。
 func TestParseProfileLeadingExampleObject(t *testing.T) {
 	body := mkProfileJSON("真实档案摘要内容。", []string{"真实指令"}, validBeh)

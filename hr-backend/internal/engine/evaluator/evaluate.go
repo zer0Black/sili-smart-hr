@@ -31,10 +31,10 @@ const schemaErrCode = "ErrSchemaInvalid"
 // evidenceJSON 评分行证据快照（specs §2.3 evidence_json 注释）：周期 success 档案
 // session_key 清单 + 统计摘要快照 + 维度口径摘要，规则产出非 LLM 引用。
 type evidenceJSON struct {
-	SessionKeys   []string                 `json:"session_keys"`
-	Summary       map[string]int           `json:"summary"`
-	DimensionSpecs []evidenceSpecSnapshot  `json:"dimension_specs"`
-	SignatureKind string                   `json:"signature_kind,omitempty"`
+	SessionKeys    []string               `json:"session_keys"`
+	Summary        map[string]int         `json:"summary"`
+	DimensionSpecs []evidenceSpecSnapshot `json:"dimension_specs"`
+	SignatureKind  string                 `json:"signature_kind,omitempty"`
 }
 
 // evidenceSpecSnapshot 单维度口径摘要：weight 与 in_overview 是聚合唯一权重来源。
@@ -46,9 +46,11 @@ type evidenceSpecSnapshot struct {
 }
 
 // Evaluate 对单人周期执行综合评估（specs §2.4 能力1，不含活跃度与聚合）。
-// sessions 可空：非空时直传签名识别；空时签名识别退化为仅档案侧判据，不做单人
-// 列表拉取兜底。TokenName 组装前剥离（人名不进 LLM 上下文），落库时经 SaveAll 回填。
-func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activity.Period, sessions []conversationlog.SessionSummary) (*EvaluateResult, error) {
+// sessions 可空：非空时直传签名识别（先按 session_key 去重，与 StatPersonByKey
+// 路径同口径）；空时签名识别退化为仅档案侧判据，不做单人列表拉取兜底。
+// digests 可空：EvaluatePerson 已取档案时透传免二次读，空时内部取数。
+// TokenName 组装前剥离（人名不进 LLM 上下文），落库时经 SaveAll 回填。
+func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activity.Period, sessions []conversationlog.SessionSummary, digests []activity.ProfileDigest) (*EvaluateResult, error) {
 	specs, err := loadSpecs(ctx, e.specs)
 	if err != nil {
 		return nil, err
@@ -64,18 +66,21 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		return &EvaluateResult{Reused: true}, nil
 	}
 
-	// 活跃度阈值（签名判据入参）：读取失败 wrap ErrDimensionConfigRead。
+	// 活跃度阈值（签名判据入参）：适配层已 wrap ErrDimensionConfigRead，透传即可。
 	_, lowFreq, err := e.thresholds.ActivityThresholds(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrDimensionConfigRead, err)
-	}
-
-	digests, err := fetchDigests(ctx, e.featureRepo, tokenName, period)
 	if err != nil {
 		return nil, err
 	}
 
-	sig := activity.IdentifyPopulation(sessions, digests, lowFreq)
+	if digests == nil {
+		digests, err = fetchDigests(ctx, e.featureRepo, tokenName, period)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// 签名识别入参去重（跨页重复兜底，与 StatPersonByKey 路径同口径）。
+	sig := activity.IdentifyPopulation(dedupSessions(sessions), digests, lowFreq)
 	successCount := 0
 	for _, d := range digests {
 		if d.Status == domain.FeatureStatusSuccess {
@@ -93,8 +98,12 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		if err := e.saveRows(ctx, tokenName, period, rows); err != nil {
 			return nil, err
 		}
-		return &EvaluateResult{Scores: viewRows(rows), Skipped: true}, nil
+		return &EvaluateResult{Scores: rows, Skipped: true}, nil
 	}
+
+	// 空提示词维度不进 LLM 上下文（specs §3.2 维度配置缺失：不阻断其余维度）：
+	// 其 insufficient 行由 skipMissingPromptRows 确定性生成。
+	scored := scoredPromptSpecs(specs)
 
 	set := buildProfileSet(digests)
 	slog.Debug("profile set assembled", "token_name", tokenName, "period_start", period.Start,
@@ -104,24 +113,89 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		slog.Warn("profile set truncated", "token_name", tokenName, "period_start", period.Start,
 			"visible", set.VisibleCount, "total_success", set.TotalSuccess)
 	}
-	prompt := buildPrompt(specs, set)
 
 	// 模型解析失败落空串不阻断（评分行 model_name 记空串，调用失败另走降级）。
+	// 与 StreamChat 内部是两次独立读取，落库值可能偏离实际调用模型，记 WARN 供观测。
 	modelID := ""
 	if mc, err := e.modelProvider.GetEnabledModel(ctx); err == nil {
 		modelID = mc.ModelID
+	} else {
+		slog.Warn("eval model resolve failed, model_name will be empty", "err", err)
 	}
 
-	rows, err := e.llmEvaluate(ctx, tokenName, period, prompt, specs, digests, modelID)
+	rows, err := e.llmEvaluate(ctx, tokenName, period, set, specs, scored, digests, modelID)
 	if err != nil {
 		return nil, err // ctx 取消类基础设施错误：不落行交任务重试
 	}
+	rows = append(rows, skipMissingPromptRows(specs, digests)...)
 	if err := e.saveRows(ctx, tokenName, period, rows); err != nil {
 		return nil, err
 	}
 	slog.Debug("eval completed", "token_name", tokenName, "period_start", period.Start,
 		"dimensions", len(specs))
-	return &EvaluateResult{Scores: viewRows(rows)}, nil
+	return &EvaluateResult{Scores: rows}, nil
+}
+
+// dedupSessions 按 session_key 去重（跨页重复兜底），保序保留首见行。
+func dedupSessions(sessions []conversationlog.SessionSummary) []conversationlog.SessionSummary {
+	if len(sessions) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(sessions))
+	out := make([]conversationlog.SessionSummary, 0, len(sessions))
+	for _, s := range sessions {
+		if _, dup := seen[s.SessionKey]; dup {
+			continue
+		}
+		seen[s.SessionKey] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+// scoredPromptSpecs 有评分提示词的维度（进 LLM 上下文）。
+func scoredPromptSpecs(specs []DimensionSpec) []DimensionSpec {
+	out := make([]DimensionSpec, 0, len(specs))
+	for _, s := range specs {
+		if s.PromptText != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// skipMissingPromptRows 空提示词维度的确定性 insufficient 行（Score=0、缺省文案、
+// EvidenceJSON 含 config_missing 标记，specs §3.2 维度配置缺失处置）。
+// evidence 快照用全量 specs（含 missing 标记），与 LLM 维度行同构。
+func skipMissingPromptRows(specs []DimensionSpec, digests []activity.ProfileDigest) []domain.DimensionScore {
+	hasMissing := false
+	for _, s := range specs {
+		if s.PromptText == "" {
+			hasMissing = true
+			break
+		}
+	}
+	if !hasMissing {
+		return nil
+	}
+	ev := buildEvidence(specs, digests, "")
+	rows := make([]domain.DimensionScore, 0, len(specs))
+	for _, spec := range specs {
+		if spec.PromptText != "" {
+			continue
+		}
+		rows = append(rows, domain.DimensionScore{
+			DimensionCode: spec.Code,
+			Module:        spec.Module,
+			Rationale:     insufficientDefaultRationale,
+			Insufficient:  true,
+			EvidenceJSON:  ev,
+			Source:        domain.ScoreSourceConversation,
+			PromptVersion: PromptVersion,
+			Status:        domain.ScoreStatusSuccess,
+		})
+	}
+	return rows
 }
 
 // idempotencyCheck 幂等预检（specs §2.3 Evaluate 行 + 能力6 规则1/2）：
@@ -131,7 +205,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, period activity.Period, specs []DimensionSpec) (bool, error) {
 	existing, err := e.scoreRepo.ListByPersonPeriodExact(ctx, tokenName, period.Start, period.End)
 	if err != nil {
-		return false, fmt.Errorf("evaluator: ErrScoreRead: %w", err)
+		return false, fmt.Errorf("%w: %w", ErrScoreRead, err)
 	}
 	hasFailed := false
 	codes := make(map[string]bool, len(existing))
@@ -181,13 +255,16 @@ func (e *Evaluator) skipRows(specs []DimensionSpec, digests []activity.ProfileDi
 	return rows
 }
 
-// llmEvaluate LLM 段：StreamChat 流式读全 → parseScoreOutput → validateAndConverge；
-// ErrSchemaInvalid 且 ctx 未取消重试一次（extractor llmExtract 同构）；重试耗尽与
-// LLM 调用失败落全维度 failed 行（error_code 记因，err=nil）；ctx 取消上抛基础设施
-// error 不落行。
+// llmEvaluate LLM 段：buildPrompt（仅 scored 维度）→ StreamChat 流式读全 →
+// parseScoreOutput → validateAndConverge；ErrSchemaInvalid 且 ctx 未取消重试一次
+// （extractor llmExtract 同构）；重试耗尽与 LLM 调用失败落 scored 维度 failed 行
+// （error_code 记因；空提示词维度由调用侧 skipMissingPromptRows 落 insufficient 行，
+// 不受连带）；ctx 取消返回基础设施 error 不落行。allSpecs 只用于 evidence 口径。
 func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period activity.Period,
-	prompt string, specs []DimensionSpec, digests []activity.ProfileDigest, modelID string) ([]domain.DimensionScore, error) {
+	set *ProfileSet, allSpecs, scored []DimensionSpec, digests []activity.ProfileDigest, modelID string) ([]domain.DimensionScore, error) {
+	ev := buildEvidence(allSpecs, digests, "")
 	callOnce := func() ([]domain.DimensionScore, error) {
+		prompt := buildPrompt(scored, set)
 		stream, err := e.llm.StreamChat(ctx, llm.ChatRequest{
 			Messages:  []llm.ChatMessage{{Role: "user", Content: prompt}},
 			MaxTokens: evalMaxTokens,
@@ -211,25 +288,7 @@ func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period ac
 		if err != nil {
 			return nil, err
 		}
-		view, err := validateAndConverge(out, specs)
-		if err != nil {
-			return nil, err
-		}
-		// view 是包内视图，落库需 domain 行（ModelName/PromptVersion/ErrorCode 列
-		// 仅 domain 形态承载），此处即转。
-		rows := make([]domain.DimensionScore, 0, len(view))
-		for _, r := range view {
-			rows = append(rows, domain.DimensionScore{
-				DimensionCode: r.DimensionCode,
-				Module:        r.Module,
-				Score:         r.Score,
-				Rationale:     r.Rationale,
-				Insufficient:  r.Insufficient,
-				Source:        r.Source,
-				Status:        r.Status,
-			})
-		}
-		return rows, nil
+		return validateAndConverge(out, scored)
 	}
 
 	rows, err := callOnce()
@@ -238,16 +297,14 @@ func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period ac
 		rows, err = callOnce()
 	}
 	if err == nil {
-		convergeMissingPrompt(specs, rows)
 		e.redactRows(ctx, rows)
-		ev := buildEvidence(specs, digests, "")
 		applyRowMeta(rows, ev, modelID)
 		return rows, nil
 	}
 	if ctx.Err() != nil {
 		return nil, fmt.Errorf("evaluator: llm segment canceled: %w", ctx.Err())
 	}
-	// 业务降级：落全维度 failed 行（error_code 记因），当期聚合照常推进（BR9）。
+	// 业务降级：落 scored 维度 failed 行（error_code 记因），当期聚合照常推进（BR9）。
 	errCode := llmErrEvalUpstreamCode
 	if errors.Is(err, llm.ErrContextLengthExceeded) {
 		errCode = llm.ErrContextLengthExceeded.Code
@@ -255,9 +312,8 @@ func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period ac
 		errCode = schemaErrCode
 	}
 	slog.Error("eval failed", "token_name", tokenName, "period_start", period.Start, "code", errCode)
-	ev := buildEvidence(specs, digests, "")
-	failed := make([]domain.DimensionScore, 0, len(specs))
-	for _, spec := range specs {
+	failed := make([]domain.DimensionScore, 0, len(scored))
+	for _, spec := range scored {
 		failed = append(failed, domain.DimensionScore{
 			DimensionCode: spec.Code,
 			Module:        spec.Module,
@@ -270,28 +326,6 @@ func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period ac
 		})
 	}
 	return failed, nil
-}
-
-// convergeMissingPrompt 确定性收敛（specs §3.2 维度配置缺失行）：PromptText 为空的
-// 维度在校验收敛后代码直接强制置 Insufficient=true、Score=0、Rationale=缺省文案。
-// prompt 指令段标注仅披露层，LLM 对该维返回的分值一律覆盖。
-func convergeMissingPrompt(specs []DimensionSpec, rows []domain.DimensionScore) {
-	missing := make(map[string]bool, len(specs))
-	for _, s := range specs {
-		if s.PromptText == "" {
-			missing[s.Code] = true
-		}
-	}
-	if len(missing) == 0 {
-		return
-	}
-	for i := range rows {
-		if missing[rows[i].DimensionCode] {
-			rows[i].Insufficient = true
-			rows[i].Score = 0
-			rows[i].Rationale = insufficientDefaultRationale
-		}
-	}
 }
 
 // redactRows 落库前 Redact 兜底（specs §3.3 第二道防线）：读正则（nil 回退出厂集）
@@ -314,7 +348,7 @@ func (e *Evaluator) redactPatterns(ctx context.Context) []string {
 }
 
 // applyRowMeta 回填行内公共列：evidence_json、model_name、prompt_version
-//（token_name 与周期由 SaveAll 权威回填）。
+// （token_name 与周期由 SaveAll 权威回填）。
 func applyRowMeta(rows []domain.DimensionScore, ev, modelID string) {
 	for i := range rows {
 		rows[i].EvidenceJSON = ev
@@ -324,26 +358,14 @@ func applyRowMeta(rows []domain.DimensionScore, ev, modelID string) {
 }
 
 // buildEvidence 构造证据快照（specs §2.3 evidence_json 注释）：session_key 清单
-// 取周期 success 档案（与 prompt 证据段同集）、统计摘要快照取 SummaryBlock 关键
-// 计数结构化、维度口径摘要含 config_missing 标记。
+// 取周期 success 档案（与 prompt 证据段同集）、统计摘要取 aggregateWindow 单源
+// （与 prompt 统计段同口径）、维度口径摘要含 config_missing 标记。
 func buildEvidence(specs []DimensionSpec, digests []activity.ProfileDigest, sigKind string) string {
 	keys := make([]string, 0, len(digests))
-	summary := make(map[string]int)
 	for _, d := range digests {
-		summary["sessions_total"]++
-		switch d.Status {
-		case domain.FeatureStatusSuccess:
+		if d.Status == domain.FeatureStatusSuccess {
 			keys = append(keys, d.SessionKey)
-			summary["sessions_valid"]++
-		case domain.FeatureStatusFailed:
-			summary["sessions_valid"]++
-			summary["failed_profiles"]++
-		case domain.FeatureStatusSkipped:
-			summary["sessions_skipped"]++
 		}
-		summary["user_msg_count"] += d.Stats.UserMsgCount
-		summary["interrupt_count"] += d.Stats.InterruptCount
-		summary["paste_char_count"] += d.Stats.PasteCharCount
 	}
 	specSnaps := make([]evidenceSpecSnapshot, 0, len(specs))
 	for _, s := range specs {
@@ -356,7 +378,7 @@ func buildEvidence(specs []DimensionSpec, digests []activity.ProfileDigest, sigK
 	}
 	raw, err := json.Marshal(evidenceJSON{
 		SessionKeys:    keys,
-		Summary:        summary,
+		Summary:        aggregateWindow(digests).evidenceSummary(),
 		DimensionSpecs: specSnaps,
 		SignatureKind:  sigKind,
 	})
@@ -379,22 +401,4 @@ func (e *Evaluator) saveRows(ctx context.Context, tokenName string, period activ
 func wrapEvalStoreWrite(tokenName string, err error) error {
 	slog.Error("eval store write failed", "token_name", tokenName, "code", "ErrStoreWrite")
 	return fmt.Errorf("%w: %w", ErrStoreWrite, err)
-}
-
-// viewRows domain 行转 EvaluateResult.Scores 视图（types.go DimensionScore）。
-func viewRows(rows []domain.DimensionScore) []DimensionScore {
-	out := make([]DimensionScore, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, DimensionScore{
-			DimensionCode: r.DimensionCode,
-			Module:        r.Module,
-			Score:         r.Score,
-			Rationale:     r.Rationale,
-			Insufficient:  r.Insufficient,
-			EvidenceJSON:  r.EvidenceJSON,
-			Source:        r.Source,
-			Status:        r.Status,
-		})
-	}
-	return out
 }

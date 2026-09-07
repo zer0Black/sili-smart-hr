@@ -55,10 +55,10 @@ func TestLLMEnabledProvider_Success(t *testing.T) {
 		t.Fatalf("encrypt: %v", err)
 	}
 	repo := &fakeLLMRepo{byIDCfg: &domain.LLMConfig{
-		Provider:      "anthropic",
-		ModelID:       "claude-sonnet-4-5",
-		APIURL:        "",
-		APIKeyCipher:  cipher,
+		Provider:     "anthropic",
+		ModelID:      "claude-sonnet-4-5",
+		APIURL:       "",
+		APIKeyCipher: cipher,
 	}}
 	p := service.NewLLMEnabledProvider(repo, key)
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/activity"
 	"sili-smart-hr/backend/internal/repository"
 )
@@ -77,8 +78,8 @@ func TestConstants(t *testing.T) {
 	if ScoreMin != 0 || ScoreMax != 100 {
 		t.Errorf("ScoreMin/ScoreMax = %d/%d, want 0/100", ScoreMin, ScoreMax)
 	}
-	if PromptVersion != "v1" {
-		t.Errorf("PromptVersion = %q, want v1", PromptVersion)
+	if PromptVersion != "v2" {
+		t.Errorf("PromptVersion = %q, want v2", PromptVersion)
 	}
 }
 
@@ -99,7 +100,7 @@ func TestDimensionSpecFields(t *testing.T) {
 // TestEvaluateResultFields Skipped/Reused 标记位与 Scores 切片字段。
 func TestEvaluateResultFields(t *testing.T) {
 	r := EvaluateResult{
-		Scores:  []DimensionScore{{DimensionCode: "AI_XXX", Score: 72}},
+		Scores:  []domain.DimensionScore{{DimensionCode: "AI_XXX", Score: 72}},
 		Skipped: true,
 		Reused:  false,
 	}
@@ -148,15 +149,13 @@ func TestLoadSpecsNilSlice(t *testing.T) {
 	}
 }
 
-// TestLoadSpecsReadFailure 锚点：读取失败 wrap 为 ErrDimensionConfigRead。
+// TestLoadSpecsReadFailure 锚点：读取失败原样上抛（适配层负责 wrap
+// ErrDimensionConfigRead，消费侧不再二次包装）。
 func TestLoadSpecsReadFailure(t *testing.T) {
 	cause := errors.New("db down")
 	_, err := loadSpecs(context.Background(), &fakeSpecReader{err: cause})
-	if !errors.Is(err, ErrDimensionConfigRead) {
-		t.Fatalf("err = %v, want ErrDimensionConfigRead", err)
-	}
 	if !errors.Is(err, cause) {
-		t.Errorf("wrap 链应保留底层错误, got %v", err)
+		t.Fatalf("wrap 链应保留底层错误, got %v", err)
 	}
 }
 

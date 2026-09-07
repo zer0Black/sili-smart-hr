@@ -42,7 +42,7 @@ type llmProfileJSON struct {
 // （UserMsgCount==0）Instruction 非空判失败防编造；零叙述形态靠 LLM 遵守
 // prompt 指示 + narrative_absent 字段透传，校验放行。
 func parseProfile(raw string, stats ProfileStats) (string, []InstructionSeg, ProfileBehavior, error) {
-	body := stripFences(strings.TrimSpace(raw))
+	body := StripFences(strings.TrimSpace(raw))
 	var p llmProfileJSON
 	if err := json.Unmarshal([]byte(body), &p); err != nil {
 		// 无围栏输出 JSON 后跟解释文字的形态（stripFences 只覆盖围栏包裹）：
@@ -96,7 +96,7 @@ func validBehavior(b ProfileBehavior) bool {
 func firstProfileObject(s string) string {
 	from := 0
 	for from < len(s) {
-		cand := firstBalancedJSONObject(s[from:])
+		cand := FirstBalancedJSONObject(s[from:])
 		if cand == "" {
 			return ""
 		}
@@ -110,9 +110,10 @@ func firstProfileObject(s string) string {
 	return ""
 }
 
-// firstBalancedJSONObject 截取首个顶层平衡 JSON 对象：从首个 { 起按括号深度配对
+// FirstBalancedJSONObject 截取首个顶层平衡 JSON 对象：从首个 { 起按括号深度配对
 // （字符串字面量内的括号不计数，含转义），无平衡对象返回空串。
-func firstBalancedJSONObject(s string) string {
+// 导出供 evaluator 复用（宽容解析同源维护）。
+func FirstBalancedJSONObject(s string) string {
 	start := strings.IndexByte(s, '{')
 	if start < 0 {
 		return ""
@@ -147,11 +148,12 @@ func firstBalancedJSONObject(s string) string {
 	return ""
 }
 
-// stripFences 剥 markdown 代码围栏包裹（```json ... ``` 或裸 ``` 围栏）。
+// StripFences 剥 markdown 代码围栏包裹（```json ... ``` 或裸 ``` 围栏）。
 // 只剥一层完整包裹，无围栏时原样返回。闭围栏按首个独立行判定（防 instruction
 // 摘录内嵌 ``` 被误截断）；独立行缺失时兜底剥尾部紧跟的 ```，剥后以 { 起头
 // 才认定包裹形态（单行紧凑/尾同行），防误剥内容尾部本就有的 ```。
-func stripFences(s string) string {
+// 导出供 evaluator 复用（两子域对同一 LLM 输出形态的容忍度同源维护）。
+func StripFences(s string) string {
 	const tick = "```"
 	if !strings.HasPrefix(s, tick) {
 		return s

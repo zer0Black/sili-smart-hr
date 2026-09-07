@@ -44,7 +44,7 @@ type DetectFeature struct {
 
 // allRules 是注册表本体：init 期写入、执行期只读（03 §3 契约裁定 1：无反注册
 // 与运行时变更，规则集随二进制固定）。锁只防测试运行期 Register 与读并发
-//（无锁切片在 -race 下是数据竞态）。
+// （无锁切片在 -race 下是数据竞态）。
 var (
 	mu       sync.RWMutex
 	allRules []ClientRules

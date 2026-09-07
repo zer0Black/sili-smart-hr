@@ -31,11 +31,11 @@ var _ repository.SystemInitializationRepository = (*fakeSystemInitRepo)(nil)
 // stubProbe 是 service.DependencyProbe 的测试假实现，返回预设 llm/integ 状态值，
 // 驱动 HealthCheck 的自定义 probe 分支（区别于 NoopDependencyProbe 的固定 not_configured）。
 type stubProbe struct {
-	llm  string
+	llm   string
 	integ string
 }
 
-func (s stubProbe) ProbeLLM(_ context.Context) string        { return s.llm }
+func (s stubProbe) ProbeLLM(_ context.Context) string         { return s.llm }
 func (s stubProbe) ProbeIntegration(_ context.Context) string { return s.integ }
 
 var _ service.DependencyProbe = (*stubProbe)(nil)

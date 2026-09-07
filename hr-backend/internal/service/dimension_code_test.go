@@ -33,9 +33,9 @@ func TestGenerateDimensionCode_AIUsage(t *testing.T) {
 // TestGenerateDimensionCode_AllModules 验证四个模块前缀映射（specs 规则4）。
 func TestGenerateDimensionCode_AllModules(t *testing.T) {
 	cases := []struct {
-		module  string
-		name    string
-		prefix  string
+		module string
+		name   string
+		prefix string
 	}{
 		{domain.ModuleActivity, "会话频率", "ACT"},
 		{domain.ModuleAIUsage, "需求澄清能力", "AI"},

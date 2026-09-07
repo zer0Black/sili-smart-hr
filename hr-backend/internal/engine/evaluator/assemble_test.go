@@ -50,10 +50,10 @@ func behaviorZeroJSONLen(t *testing.T) int {
 // TestDensityRule 密度公式（BR1）：UserMsgCount×3 + 工具总量×1 + 指纹数×2 + PasteCharCount>0?2:0。
 func TestDensityRule(t *testing.T) {
 	base := extractor.ProfileStats{
-		UserMsgCount:      2,
-		PasteCharCount:    300,
-		ToolCounts:        map[string]int{"Edit": 3, "Read": 2},
-		SpecFingerprints:  []extractor.SpecFingerprint{{Kind: "claude_md"}, {Kind: "agents_md"}},
+		UserMsgCount:     2,
+		PasteCharCount:   300,
+		ToolCounts:       map[string]int{"Edit": 3, "Read": 2},
+		SpecFingerprints: []extractor.SpecFingerprint{{Kind: "claude_md"}, {Kind: "agents_md"}},
 	}
 	if got := density(digestOf("k", domain.FeatureStatusSuccess, base, "")); got != 2*3+5+2*2+2 {
 		t.Errorf("density(粘贴>0) = %d, want %d", got, 2*3+5+2*2+2)
@@ -69,11 +69,11 @@ func TestDensityRule(t *testing.T) {
 // failed、CmdReuse 同首命中）→ 汇总块各字段具体值。
 func TestSummaryBlockAggregation(t *testing.T) {
 	ok1Stats := extractor.ProfileStats{
-		UserMsgCount:     5,
-		InterruptCount:   2,
-		PasteCharCount:   300,
-		ToolCounts:       map[string]int{"Edit": 3, "Read": 1},
-		TurnKindCounts:   map[string]int{"user": 5, "assistant": 4},
+		UserMsgCount:   5,
+		InterruptCount: 2,
+		PasteCharCount: 300,
+		ToolCounts:     map[string]int{"Edit": 3, "Read": 1},
+		TurnKindCounts: map[string]int{"user": 5, "assistant": 4},
 		SpecFingerprints: []extractor.SpecFingerprint{
 			{Kind: "claude_md", Hash: "aaa", SectionList: []string{"A", "B"}},
 			{Kind: "agents_md", Hash: "bbb", SectionList: []string{"C"}},
@@ -264,13 +264,13 @@ func TestAssembleProfileSetEndToEnd(t *testing.T) {
 	}
 }
 
-// TestAssembleProfileSetRepoError 仓储错误 wrap ErrProfileRead 上抛。
+// TestAssembleProfileSetRepoError 仓储错误 wrap activity.ErrProfileRead 上抛。
 func TestAssembleProfileSetRepoError(t *testing.T) {
 	repo := &fakeFeatureRepo{err: errors.New("db down")}
 	ev := New(nil, nil, repo, nil, nil, nil, nil, nil, nil)
 	_, err := ev.AssembleProfileSet(context.Background(), "张三", testPeriod())
-	if !errors.Is(err, ErrProfileRead) {
-		t.Fatalf("err = %v, want ErrProfileRead", err)
+	if !errors.Is(err, activity.ErrProfileRead) {
+		t.Fatalf("err = %v, want activity.ErrProfileRead", err)
 	}
 }
 

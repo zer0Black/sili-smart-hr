@@ -397,12 +397,19 @@ func TestActivityStatPerf(t *testing.T) {
 
 // ---- 自行补充边界与异常 ----
 
-// TestStatPersonByKeyPagination：多页串行翻页、内存分组、去重；total 驱动翻页。
+// TestStatPersonByKeyPagination：多页串行翻页、内存分组、去重。page1 为满页
+// （100 条，上游按 PageSize 填页契约），短页即尾页的终止判据下须由 page2 收尾。
 func TestStatPersonByKeyPagination(t *testing.T) {
 	p := weekPeriod()
-	page1 := []conversationlog.SessionSummary{
-		{SessionKey: "p1-a", TurnCount: 2, TokenName: "张三"},
-		{SessionKey: "p1-b", TurnCount: 3, TokenName: "李四"},
+	page1 := make([]conversationlog.SessionSummary, 0, 100)
+	page1 = append(page1,
+		conversationlog.SessionSummary{SessionKey: "p1-a", TurnCount: 2, TokenName: "张三"},
+		conversationlog.SessionSummary{SessionKey: "p1-b", TurnCount: 3, TokenName: "李四"},
+	)
+	for i := len(page1); i < 100; i++ {
+		page1 = append(page1, conversationlog.SessionSummary{
+			SessionKey: fmt.Sprintf("fill-%03d", i), TurnCount: 1, TokenName: "填充人",
+		})
 	}
 	page2 := []conversationlog.SessionSummary{
 		{SessionKey: "p2-a", TurnCount: 4, TokenName: "张三"},
@@ -410,7 +417,7 @@ func TestStatPersonByKeyPagination(t *testing.T) {
 	}
 	cl := &fakeListFetcher{
 		pages: [][]conversationlog.SessionSummary{page1, page2},
-		total: 4, // 4 条记录分两页（每页 2 条），total 驱动串行翻页
+		total: 102, // 102 条记录两页（100 + 2），total 驱动串行翻页
 	}
 	feats := &fakeFeatureRepo{}
 	act := newAct(cl, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
@@ -426,7 +433,7 @@ func TestStatPersonByKeyPagination(t *testing.T) {
 		t.Errorf("TotalTurns = %d, want 6", stat.TotalTurns)
 	}
 	if cl.calls != 2 {
-		t.Errorf("list calls = %d, want 2（total 驱动翻页）", cl.calls)
+		t.Errorf("list calls = %d, want 2（满页翻到下一页）", cl.calls)
 	}
 	if cl.lastReq.PageSize != 100 || cl.lastReq.Username != "" {
 		t.Errorf("lastReq = %+v, want PageSize=100 Username 空（全量拉取）", cl.lastReq)

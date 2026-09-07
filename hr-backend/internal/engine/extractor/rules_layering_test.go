@@ -191,13 +191,13 @@ func TestUnionExecutionEquivalence(t *testing.T) {
 }
 
 // TestAppendSemanticsRuntimeEffectiveSet 验证追加语义生效集公式
-//（03 §5.1：effective = 出厂并集 ∪ paramAppend，去重）：
+// （03 §5.1：effective = 出厂并集 ∪ paramAppend，去重）：
 // 追加集非空时出厂前缀仍在生效集内（替换语义下传入集会全量顶掉出厂前缀）。
 func TestAppendSemanticsRuntimeEffectiveSet(t *testing.T) {
 	msgs := []conversationlog.Message{
-		mkMsg("TodoWrite 4 items"),       // 出厂 OMO 转写前缀
-		mkMsg("自定义噪音内容"),              // 追加前缀命中
-		mkMsg("正常用户指令"),               // 均不命中，保留
+		mkMsg("TodoWrite 4 items"), // 出厂 OMO 转写前缀
+		mkMsg("自定义噪音内容"),           // 追加前缀命中
+		mkMsg("正常用户指令"),            // 均不命中，保留
 	}
 	got := classifySequenceSeq(msgs, []string{"自定义噪音"}, nil)
 	if got[0].Class != classDrop {
@@ -222,7 +222,7 @@ func TestAppendSemanticsDedup(t *testing.T) {
 }
 
 // TestAppendSemanticsNonUserNarrowedWithAppend 验证非 user 侧收窄交集语义
-//（03 §5.1：narrowed = 收窄出厂并集 ∩ effective；追加条目通常不在收窄集，
+// （03 §5.1：narrowed = 收窄出厂并集 ∩ effective；追加条目通常不在收窄集，
 // 天然只作用 user 侧）：追加集命中 assistant 叙述前缀时该叙述保留（追加前缀
 // 不进收窄集），收窄子集内条目（如 User:）对 assistant 仍生效。
 func TestAppendSemanticsNonUserNarrowedWithAppend(t *testing.T) {
@@ -244,7 +244,7 @@ func TestAppendSemanticsNonUserNarrowedWithAppend(t *testing.T) {
 }
 
 // TestAppendSemanticsBlankEntryPassthrough 空串条目过滤属读参层职责
-//（extract.go blankEntriesRemoved），classifySequence 按契约原样并入生效集：
+// （extract.go blankEntriesRemoved），classifySequence 按契约原样并入生效集：
 // 此处锁定直传空串的行为面（HasPrefix 恒真全量拦截），防调用方绕过读参层
 // 时行为不确定。
 func TestAppendSemanticsBlankEntryPassthrough(t *testing.T) {
@@ -339,7 +339,7 @@ func (f *newClientFake) UserPrefixes() []string {
 	}
 	return []string{newClientFramePrefix}
 }
-func (f *newClientFake) NonUserPrefixes() []string           { return nil }
+func (f *newClientFake) NonUserPrefixes() []string             { return nil }
 func (f *newClientFake) DetectFeatures() []rules.DetectFeature { return nil }
 
 // registerNewClientFake 注册 fake 并返回复原函数：defer 调用后把注册表内该实例
@@ -359,7 +359,7 @@ func TestNewClientZeroIntrusion(t *testing.T) {
 
 	msgs := []conversationlog.Message{
 		mkMsg("<newclient-frame> 新客户端框架注入载荷"), // fake 专属前缀
-		mkMsg("Note: 既有客户端前缀的文件回显"),        // generic 层 Note:
+		mkMsg("Note: 既有客户端前缀的文件回显"),           // generic 层 Note:
 		mkMsg("正常用户指令"),                       // 对照：不误杀
 	}
 	view, stats := newTrimExtractor(&fakeSysParams{}).Trim(mkDetail(msgs))
@@ -388,9 +388,9 @@ func TestNewClientZeroIntrusion(t *testing.T) {
 // 测试零污染，无需贡献窗口复原。
 type dedupFakeClient struct{}
 
-func (dedupFakeClient) Client() string                   { return "dedup_fake" }
-func (dedupFakeClient) UserPrefixes() []string           { return []string{"Note:"} }
-func (dedupFakeClient) NonUserPrefixes() []string        { return nil }
+func (dedupFakeClient) Client() string                        { return "dedup_fake" }
+func (dedupFakeClient) UserPrefixes() []string                { return []string{"Note:"} }
+func (dedupFakeClient) NonUserPrefixes() []string             { return nil }
 func (dedupFakeClient) DetectFeatures() []rules.DetectFeature { return nil }
 
 // TestPrefixDedupJudgement 构造 generic 与 fake 客户端贡献相同前缀字面（"Note:"），

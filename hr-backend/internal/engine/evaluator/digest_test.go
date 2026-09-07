@@ -143,13 +143,13 @@ func TestFetchDigestsDigestFieldsParsed(t *testing.T) {
 	}
 }
 
-// TestFetchDigestsRepoError 锚点：仓储错误 wrap 为 ErrProfileRead。
+// TestFetchDigestsRepoError 锚点：仓储错误 wrap 为 activity.ErrProfileRead（取数单点哨兵）。
 func TestFetchDigestsRepoError(t *testing.T) {
 	cause := errors.New("db down")
 	repo := &fakeFeatureRepo{err: cause}
 	_, err := fetchDigests(context.Background(), repo, "张三", testPeriod())
-	if !errors.Is(err, ErrProfileRead) {
-		t.Fatalf("err = %v, want ErrProfileRead", err)
+	if !errors.Is(err, activity.ErrProfileRead) {
+		t.Fatalf("err = %v, want activity.ErrProfileRead", err)
 	}
 	if !errors.Is(err, cause) {
 		t.Errorf("wrap 链应保留底层错误, got %v", err)

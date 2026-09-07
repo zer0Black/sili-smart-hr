@@ -82,7 +82,7 @@ func loadActivityRow(t *testing.T, db *gorm.DB, token string, start int64) domai
 }
 
 // TestActivityStatUpsertIdempotent 核心断言：二次 Upsert 行数不增、字段更新
-//（specs §2.4 能力3 幂等覆盖）。
+// （specs §2.4 能力3 幂等覆盖）。
 func TestActivityStatUpsertIdempotent(t *testing.T) {
 	db := newActivityTestDB(t)
 	repo := repository.NewActivityStatRepository(db)

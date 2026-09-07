@@ -13,7 +13,7 @@ import (
 )
 
 // detailRespJSON 是兄弟仓库 P1_TECH_001 03_api_interface.md 会话详情响应示例原文
-//（3 turns、6 messages，含 user/assistant/tool 角色与 text/tool_use/tool_result kind）。
+// （3 turns、6 messages，含 user/assistant/tool 角色与 text/tool_use/tool_result kind）。
 const detailRespJSON = `{
   "success": true,
   "message": "",
@@ -439,7 +439,7 @@ func TestGetSessionDetailRequestBuildError(t *testing.T) {
 }
 
 // TestGetSessionDetailBodyReadError 落地 BR6 补充路径：2xx 后响应体读取中断
-//（声明 Content-Length 超过实际写入）归 ErrDecode。
+// （声明 Content-Length 超过实际写入）归 ErrDecode。
 func TestGetSessionDetailBodyReadError(t *testing.T) {
 	baseURL := startTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

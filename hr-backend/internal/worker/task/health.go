@@ -13,7 +13,7 @@ import (
 const TypeHealthCheck = "health:check"
 
 // NewMux 构造 worker 任务路由：健康任务原地注册，抽取与评估任务经参数注入
-//（保持单一注册入口）。session-extract / person-evaluate 均以 context.WithTimeout
+// （保持单一注册入口）。session-extract / person-evaluate 均以 context.WithTimeout
 // 挂任务级超时（asynq v0.26.0 ServeMux 无 options 注册 API），预算声明见各自
 // 任务文件的 timeout 常量。
 func NewMux(sessionExtract, personEvaluate asynq.HandlerFunc) *asynq.ServeMux {

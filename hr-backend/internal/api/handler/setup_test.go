@@ -71,7 +71,7 @@ func TestSetupHandler_Status(t *testing.T) {
 		Data struct {
 			Initialized bool   `json:"initialized"`
 			DBType      string `json:"db_type"`
-			Checks struct {
+			Checks      struct {
 				Database struct{ Connected bool } `json:"database"`
 				Redis    struct{ Connected bool } `json:"redis"`
 			} `json:"checks"`

@@ -40,11 +40,11 @@ type dimFakeRepo struct {
 	// FindByCodeExcludingDeleted：返回值队列，每次调用消费一个；空则返回 NotFound。
 	// 用于模拟「第一次查重冲突、第二次查重通过」等场景。
 	// alwaysCodeConflict=true 时无视队列恒返回一个存在行，模拟编码永久冲突。
-	findByCodeResults   []findByCodeResult
-	alwaysCodeConflict  bool
+	findByCodeResults  []findByCodeResult
+	alwaysCodeConflict bool
 
 	// Create 探针
-	createDim   *domain.Dimension
+	createDim  *domain.Dimension
 	createErr  error
 	createCall bool
 

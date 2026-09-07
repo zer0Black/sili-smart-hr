@@ -116,7 +116,7 @@ func TestListAccounts_Order(t *testing.T) {
 	db := newTestDB(t)
 	base := time.Now()
 	seedAccountAt(t, db, "admin", "管理员", true, base.Add(-time.Hour)) // 更早
-	seedAccountAt(t, db, "zhangsan", "张三", true, base)                // 更晚
+	seedAccountAt(t, db, "zhangsan", "张三", true, base)               // 更晚
 
 	repo := repository.NewAccountRepository(db)
 	list, _, err := repo.ListAccounts(context.Background(), "", 1, 10)

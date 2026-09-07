@@ -34,8 +34,8 @@ type apiEnvelope[T any] struct {
 
 // apiListData 是列表响应 data。
 type apiListData struct {
-	Total    int64           `json:"total"`
-	Items    []apiSessionRaw `json:"items"`
+	Total int64           `json:"total"`
+	Items []apiSessionRaw `json:"items"`
 }
 
 // apiSessionRaw 是上游 items 元素，字段名同兄弟仓库接口定义。
@@ -68,8 +68,8 @@ func toSessionSummary(r apiSessionRaw) SessionSummary {
 // 禁止写入数据库、日志、缓存（specs §3.3）。
 type SessionDetail struct {
 	Session  SessionSummary // 会话聚合元数据，字段同列表
-	Turns    []TurnMeta    // 逐轮元数据，全量不分页
-	Messages []Message     // 完整对话序列，按时间升序，全量不分页
+	Turns    []TurnMeta     // 逐轮元数据，全量不分页
+	Messages []Message      // 完整对话序列，按时间升序，全量不分页
 }
 
 // TurnMeta 是逐轮元数据。ID 为上游回填的会话内序号，非全局唯一，

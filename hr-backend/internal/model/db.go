@@ -39,7 +39,7 @@ const (
 // current 是启动时锁定的主库类型，进程级不可变。
 var current DatabaseType
 
-func Current() DatabaseType    { return current }
+func Current() DatabaseType     { return current }
 func Using(t DatabaseType) bool { return current == t }
 
 // 进程级运行时常量，供系统状态摘要（GET /api/system/status）消费。

@@ -103,13 +103,13 @@ func (r *llmConfigRepository) Update(ctx context.Context, cfg *domain.LLMConfig)
 	res := r.db.WithContext(ctx).Model(&domain.LLMConfig{}).
 		Where("id = ? AND version = ?", cfg.ID, cfg.Version).
 		Updates(map[string]any{
-			"name":             cfg.Name,
-			"provider":         cfg.Provider,
-			"model_id":         cfg.ModelID,
-			"api_url":          cfg.APIURL,
-			"api_key_cipher":   cfg.APIKeyCipher,
-			"api_key_masked":   cfg.APIKeyMasked,
-			"version":          gorm.Expr("version + 1"),
+			"name":           cfg.Name,
+			"provider":       cfg.Provider,
+			"model_id":       cfg.ModelID,
+			"api_url":        cfg.APIURL,
+			"api_key_cipher": cfg.APIKeyCipher,
+			"api_key_masked": cfg.APIKeyMasked,
+			"version":        gorm.Expr("version + 1"),
 		})
 	if res.Error != nil {
 		return 0, res.Error

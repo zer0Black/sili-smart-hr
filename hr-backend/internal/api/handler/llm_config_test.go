@@ -41,11 +41,11 @@ type fakeLLMConfigService struct {
 
 	// Update
 	updateLast struct {
-		ID                            int64
-		Version                       int
-		Name, Provider, ModelID       string
-		APIURL, APIKey, KeyID         string
-		HasAPIKey                     bool
+		ID                      int64
+		Version                 int
+		Name, Provider, ModelID string
+		APIURL, APIKey, KeyID   string
+		HasAPIKey               bool
 	}
 	updateRes *service.CreateLLMResult
 	updateErr error

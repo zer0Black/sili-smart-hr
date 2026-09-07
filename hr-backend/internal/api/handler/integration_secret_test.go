@@ -90,8 +90,8 @@ func TestIntegrationSecret_Get(t *testing.T) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			Configured    bool   `json:"configured"`
-			SecretMasked  string `json:"secret_masked"`
+			Configured   bool   `json:"configured"`
+			SecretMasked string `json:"secret_masked"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {

@@ -114,7 +114,7 @@ type probeActivity struct {
 	recorder *callRecorder
 }
 
-func (p *probeActivity) statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, error) {
+func (p *probeActivity) statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error) {
 	p.recorder.record("StatPersonByKey")
 	return p.act.statPersonByKey(ctx, tokenName, period)
 }
@@ -269,7 +269,7 @@ func TestEvaluatePersonSequence(t *testing.T) {
 }
 
 // TestEvaluatePersonSessionsInjected 锚点：传入 sessions → act.StatPerson 被调
-//（StatPersonByKey 零调用）、fake 列表 fetcher 零调用。
+// （StatPersonByKey 零调用）、fake 列表 fetcher 零调用。
 func TestEvaluatePersonSessionsInjected(t *testing.T) {
 	f := newPersonFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
@@ -638,7 +638,7 @@ func TestEvaluatePersonAggregateError(t *testing.T) {
 }
 
 // TestEvaluatePersonActivityStatFailZeroWrite 补充：活跃度段失败时后续零写入
-//（执行序列①失败即止）。
+// （执行序列①失败即止）。
 func TestEvaluatePersonActivityStatFailZeroWrite(t *testing.T) {
 	f := newPersonFixture(t)
 	f.actRepo.err = errors.New("db down")

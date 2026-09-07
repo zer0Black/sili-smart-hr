@@ -34,10 +34,10 @@ const (
 
 // modulePreset 模块联动派生属性，模块不入库，service 据此派生默认值与校验。
 type modulePreset struct {
-	Name         string
-	DataSource   string
-	Weight       int
-	Include      bool
+	Name        string
+	DataSource  string
+	Weight      int
+	Include     bool
 	IsReference bool
 }
 
@@ -77,32 +77,32 @@ var codePrefix = map[string]string{
 
 // ModuleNode 树响应模块节点。
 type ModuleNode struct {
-	ModuleCode  string             `json:"module_code"`
-	Name        string             `json:"name"`
-	DataSource  string             `json:"data_source"`
-	IsReference bool               `json:"is_reference"`
-	Groups      []*GroupNode       `json:"groups"`
+	ModuleCode  string                `json:"module_code"`
+	Name        string                `json:"name"`
+	DataSource  string                `json:"data_source"`
+	IsReference bool                  `json:"is_reference"`
+	Groups      []*GroupNode          `json:"groups"`
 	Dimensions  []*DimensionBriefItem `json:"dimensions"`
 }
 
 // GroupNode 分组节点，仅 AI_USAGE 出现。
 type GroupNode struct {
-	GroupCode  string                 `json:"group_code"`
-	Name       string                 `json:"name"`
+	GroupCode  string                `json:"group_code"`
+	Name       string                `json:"name"`
 	Dimensions []*DimensionBriefItem `json:"dimensions"`
 }
 
 // DimensionBriefItem 树叶子轻量字段（specs §3.1 长文本字段不在树）。
 type DimensionBriefItem struct {
-	ID             int64  `json:"id,string"`
-	Code           string `json:"code"`
-	Name           string `json:"name"`
-	ModuleCode     string `json:"module_code"`
-	GroupCode      *string `json:"group_code"`
-	DataSource     string `json:"data_source"`
-	Weight         int    `json:"weight"`
-	IncludeOverview bool  `json:"include_overview"`
-	Enabled        bool   `json:"enabled"`
+	ID              int64   `json:"id,string"`
+	Code            string  `json:"code"`
+	Name            string  `json:"name"`
+	ModuleCode      string  `json:"module_code"`
+	GroupCode       *string `json:"group_code"`
+	DataSource      string  `json:"data_source"`
+	Weight          int     `json:"weight"`
+	IncludeOverview bool    `json:"include_overview"`
+	Enabled         bool    `json:"enabled"`
 }
 
 // DimensionTreeNode 树响应根。
@@ -112,48 +112,48 @@ type DimensionTreeNode struct {
 
 // DimensionDetail 详情全字段（specs §3.2）。
 type DimensionDetail struct {
-	ID             int64  `json:"id,string"`
-	Code           string `json:"code"`
-	Name           string `json:"name"`
-	ModuleCode     string `json:"module_code"`
-	GroupCode      *string `json:"group_code"`
-	DataSource     string `json:"data_source"`
-	Prompt         string `json:"prompt"`
-	Anchor         string `json:"anchor"`
-	Weight         int    `json:"weight"`
-	IncludeOverview bool   `json:"include_overview"`
-	Enabled        bool   `json:"enabled"`
-	IsReference    bool   `json:"is_reference"`
-	Description    string `json:"description"`
-	Version        int    `json:"version"`
-	CreatedAt      string `json:"created_at"`
-	UpdatedAt      string `json:"updated_at"`
+	ID              int64   `json:"id,string"`
+	Code            string  `json:"code"`
+	Name            string  `json:"name"`
+	ModuleCode      string  `json:"module_code"`
+	GroupCode       *string `json:"group_code"`
+	DataSource      string  `json:"data_source"`
+	Prompt          string  `json:"prompt"`
+	Anchor          string  `json:"anchor"`
+	Weight          int     `json:"weight"`
+	IncludeOverview bool    `json:"include_overview"`
+	Enabled         bool    `json:"enabled"`
+	IsReference     bool    `json:"is_reference"`
+	Description     string  `json:"description"`
+	Version         int     `json:"version"`
+	CreatedAt       string  `json:"created_at"`
+	UpdatedAt       string  `json:"updated_at"`
 }
 
 // CreateDimensionInput 新增请求体。
 type CreateDimensionInput struct {
-	Name           string  `json:"name"`
-	ModuleCode     string  `json:"module_code"`
-	GroupCode      *string `json:"group_code"`
-	DataSource     string  `json:"data_source"`
-	Prompt         string  `json:"prompt"`
-	Anchor         string  `json:"anchor"`
-	Weight         *int    `json:"weight"`
-	IncludeOverview *bool  `json:"include_overview"`
-	Description    string  `json:"description"`
+	Name            string  `json:"name"`
+	ModuleCode      string  `json:"module_code"`
+	GroupCode       *string `json:"group_code"`
+	DataSource      string  `json:"data_source"`
+	Prompt          string  `json:"prompt"`
+	Anchor          string  `json:"anchor"`
+	Weight          *int    `json:"weight"`
+	IncludeOverview *bool   `json:"include_overview"`
+	Description     string  `json:"description"`
 }
 
 // UpdateDimensionInput 编辑请求体，不可变字段（code/module_code/group_code/data_source）不接收。
 type UpdateDimensionInput struct {
-	ID             int64  `json:"id,string"`
-	Name           string `json:"name"`
-	Prompt         string `json:"prompt"`
-	Anchor         string `json:"anchor"`
-	Weight         int    `json:"weight"`
-	IncludeOverview bool  `json:"include_overview"`
-	Enabled        bool   `json:"enabled"`
-	Description    string `json:"description"`
-	Version        int    `json:"version"`
+	ID              int64  `json:"id,string"`
+	Name            string `json:"name"`
+	Prompt          string `json:"prompt"`
+	Anchor          string `json:"anchor"`
+	Weight          int    `json:"weight"`
+	IncludeOverview bool   `json:"include_overview"`
+	Enabled         bool   `json:"enabled"`
+	Description     string `json:"description"`
+	Version         int    `json:"version"`
 }
 
 // DeleteDimensionInput 删除请求体。
@@ -164,17 +164,17 @@ type DeleteDimensionInput struct {
 
 // DimensionMutationResult 新增/编辑响应（specs §3.3/§3.4）。
 type DimensionMutationResult struct {
-	ID             int64  `json:"id,string"`
-	Code           string `json:"code"`
-	Name           string `json:"name"`
-	ModuleCode     string `json:"module_code"`
-	GroupCode      *string `json:"group_code"`
-	DataSource     string `json:"data_source"`
-	Weight         int    `json:"weight"`
-	IncludeOverview bool   `json:"include_overview"`
-	Enabled        bool   `json:"enabled"`
-	Version        int    `json:"version"`
-	UpdatedAt      string `json:"updated_at,omitempty"` // 仅编辑响应
+	ID              int64   `json:"id,string"`
+	Code            string  `json:"code"`
+	Name            string  `json:"name"`
+	ModuleCode      string  `json:"module_code"`
+	GroupCode       *string `json:"group_code"`
+	DataSource      string  `json:"data_source"`
+	Weight          int     `json:"weight"`
+	IncludeOverview bool    `json:"include_overview"`
+	Enabled         bool    `json:"enabled"`
+	Version         int     `json:"version"`
+	UpdatedAt       string  `json:"updated_at,omitempty"` // 仅编辑响应
 }
 
 // ActivityRuleDTO 活跃度规则响应。
@@ -539,13 +539,13 @@ func (s *dimensionService) UpdateDimension(ctx context.Context, in UpdateDimensi
 	}
 
 	updates := map[string]any{
-		"name":            name,
-		"prompt":          in.Prompt,
-		"anchor":          anchor,
-		"weight":          in.Weight,
+		"name":             name,
+		"prompt":           in.Prompt,
+		"anchor":           anchor,
+		"weight":           in.Weight,
 		"include_overview": in.IncludeOverview,
-		"enabled":         in.Enabled,
-		"description":     description,
+		"enabled":          in.Enabled,
+		"description":      description,
 	}
 	rows, err := s.repo.UpdateWithVersion(ctx, in.ID, in.Version, updates)
 	if err != nil {

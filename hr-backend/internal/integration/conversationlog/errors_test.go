@@ -21,9 +21,9 @@ func TestUpstreamErrorIsNotFound(t *testing.T) {
 		{" upstream internal error ", false},
 		{"", false},
 		{"   ", false},
-		{"  会话不存在  ", true},   // trim 后命中
-		{"会话不存", false},       // 前缀截断不命中
-		{"会话不存在。", false},    // 多标点不命中
+		{"  会话不存在  ", true},                   // trim 后命中
+		{"会话不存", false},                       // 前缀截断不命中
+		{"会话不存在。", false},                     // 多标点不命中
 		{"the conversation not found", false}, // 子串不等于白名单条目
 	}
 	for _, tc := range cases {

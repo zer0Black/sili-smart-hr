@@ -131,7 +131,7 @@ func (r *sessionFeatureRepository) updateRow(tx *gorm.DB, rec *domain.SessionFea
 
 // updateColumns 手写翻转列清单（与 domain.SessionFeature 业务列集对应，守护测试
 // TestUpdateColumnsCoverBusinessFields 锁定同步）。updated_at 显式 UTC 与首写同口径
-//（SQLite 文本列字典序比较，混存偏移串会错序）；map 形态避免 struct Updates 跳过
+// （SQLite 文本列字典序比较，混存偏移串会错序）；map 形态避免 struct Updates 跳过
 // 空串零值（success 翻转时空串语义须写入）。
 func updateColumns(rec *domain.SessionFeature) map[string]interface{} {
 	return map[string]interface{}{

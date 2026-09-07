@@ -288,7 +288,7 @@ func TestIntegrationSecret_Test_Failed(t *testing.T) {
 }
 
 // TestIntegrationSecret_Test_CtxCanceled 验证父 ctx 取消时 Msg 映射为通用文案而非错误原文
-//（错误链含完整上游 URL，specs 330 白名单外，不得透传前端）。
+// （错误链含完整上游 URL，specs 330 白名单外，不得透传前端）。
 func TestIntegrationSecret_Test_CtxCanceled(t *testing.T) {
 	encKey := crypto.DeriveKey("test-integration-secret")
 	cipher, _ := crypto.Encrypt(encKey, "valid-bearer-secret")

@@ -153,7 +153,7 @@ func TestListSessionsQueryContract(t *testing.T) {
 }
 
 // TestListSessionsPageSizeClamp 落地 BR1：传 PageSize=500 被钳到上游上限 100
-//（与 QueryContract 中的钳制断言互为独立复核）。
+// （与 QueryContract 中的钳制断言互为独立复核）。
 func TestListSessionsPageSizeClamp(t *testing.T) {
 	var gotPageSize string
 	baseURL := startTestServer(t, func(w http.ResponseWriter, r *http.Request) {
@@ -408,7 +408,7 @@ func TestListSessionsRequestBuildError(t *testing.T) {
 }
 
 // TestListSessionsBodyReadError 落地 BR6 补充路径：2xx 后响应体读取中断
-//（声明 Content-Length 超过实际写入，服务端截断连接）归 ErrDecode。
+// （声明 Content-Length 超过实际写入，服务端截断连接）归 ErrDecode。
 func TestListSessionsBodyReadError(t *testing.T) {
 	baseURL := startTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

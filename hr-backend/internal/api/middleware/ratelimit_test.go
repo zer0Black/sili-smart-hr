@@ -50,7 +50,7 @@ func TestRateLimit_AllowsThenBlocks(t *testing.T) {
 
 	var hits int32
 	r := gin.New()
-	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey,2, time.Minute))
+	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey, 2, time.Minute))
 	r.GET("/", func(c *gin.Context) {
 		atomic.AddInt32(&hits, 1)
 		c.Status(http.StatusOK)
@@ -80,7 +80,7 @@ func TestRateLimit_DifferentIPsIndependent(t *testing.T) {
 	rdb, _ := newTestRedis(t)
 
 	r := gin.New()
-	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey,1, time.Minute))
+	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey, 1, time.Minute))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	if code := doRequest(r, "10.0.0.1:1111"); code != http.StatusOK {
@@ -104,7 +104,7 @@ func TestRateLimit_WindowExpiry(t *testing.T) {
 	rdb, mr := newTestRedis(t)
 
 	r := gin.New()
-	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey,1, time.Minute))
+	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey, 1, time.Minute))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	if code := doRequest(r, ""); code != http.StatusOK {
@@ -130,7 +130,7 @@ func TestRateLimit_RedisErrorFailsOpen(t *testing.T) {
 	mr.SetError("redis down")
 
 	r := gin.New()
-	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey,1, time.Minute))
+	r.Use(middleware.RateLimit(rdb, "t:", middleware.ClientIPKey, 1, time.Minute))
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	if code := doRequest(r, ""); code != http.StatusOK {

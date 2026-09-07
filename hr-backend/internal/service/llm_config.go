@@ -77,16 +77,16 @@ type LLMConfigService interface {
 
 // validProviders 是服务商枚举（specs §4.3.2、§4.2.4 规则7）。
 var validProviders = map[string]bool{
-	"deepseek": true,
-	"openai":   true,
-	"zhipu":    true,
+	"deepseek":  true,
+	"openai":    true,
+	"zhipu":     true,
 	"anthropic": true,
 }
 
 type llmConfigService struct {
-	repo    repository.LLMConfigRepository
-	dec     PasswordDecryptor
-	encKey  []byte
+	repo   repository.LLMConfigRepository
+	dec    PasswordDecryptor
+	encKey []byte
 }
 
 // NewLLMConfigService 注入 repo、RSA 解密器与 AES 对称密钥。

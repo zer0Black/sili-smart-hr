@@ -59,12 +59,94 @@ func density(d activity.ProfileDigest) int {
 	return n
 }
 
+// windowStats 周期统计单趟聚合产物（specs §2.4 能力2 第一层字段）：prompt
+// 统计段渲染与 evidence_json 摘要的单源，键名一处定义防两侧口径漂移。
+type windowStats struct {
+	total, valid, skipped, failed   int
+	userMsg, zeroInput, interrupts  int
+	pasteChars, pasteMsgs           int
+	continuations                   int
+	tools, kinds, turns             map[string]int
+	specHashes, sections, cmdHashes map[string]bool
+}
+
+// aggregateWindow 单趟聚合全部三态行 Stats（specs §2.4 能力2 第一层）：纯计数
+// 零 ProfileJSON 解析（absent 需解析 LLM 块，由 buildProfileSet 候选循环在唯一
+// 解析点顺带统计）。
+func aggregateWindow(digests []activity.ProfileDigest) *windowStats {
+	ws := &windowStats{
+		tools:      map[string]int{},
+		kinds:      map[string]int{},
+		turns:      map[string]int{},
+		specHashes: map[string]bool{},
+		sections:   map[string]bool{},
+		cmdHashes:  map[string]bool{},
+	}
+	for _, d := range digests {
+		ws.total++
+		switch d.Status {
+		case domain.FeatureStatusSuccess:
+			ws.valid++
+		case domain.FeatureStatusFailed:
+			ws.valid++
+			ws.failed++
+		case domain.FeatureStatusSkipped:
+			ws.skipped++
+		}
+		st := d.Stats
+		ws.userMsg += st.UserMsgCount
+		if st.UserMsgCount == 0 {
+			ws.zeroInput++
+		}
+		ws.interrupts += st.InterruptCount
+		ws.pasteChars += st.PasteCharCount
+		if st.PasteCharCount > 0 {
+			ws.pasteMsgs++
+		}
+		if st.ContinuationHit {
+			ws.continuations++
+		}
+		for k, v := range st.ToolCounts {
+			ws.tools[k] += v
+		}
+		for k, v := range st.TurnKindCounts {
+			ws.turns[k] += v
+		}
+		for _, fp := range st.SpecFingerprints {
+			ws.kinds[fp.Kind]++
+			ws.specHashes[fp.Hash] = true
+			for _, s := range fp.SectionList {
+				ws.sections[s] = true
+			}
+		}
+		for _, h := range st.CmdReuseHashes {
+			ws.cmdHashes[h] = true
+		}
+	}
+	return ws
+}
+
+// evidenceSummary evidence_json 统计摘要子集（specs §2.3 evidence_json 注释）：
+// 键名与 renderSummaryBlock 同源。
+func (ws *windowStats) evidenceSummary() map[string]int {
+	return map[string]int{
+		"sessions_total":   ws.total,
+		"sessions_valid":   ws.valid,
+		"sessions_skipped": ws.skipped,
+		"failed_profiles":  ws.failed,
+		"user_msg_count":   ws.userMsg,
+		"interrupt_count":  ws.interrupts,
+		"paste_char_count": ws.pasteChars,
+	}
+}
+
 // buildProfileSet 纯函数核心（测试锚点）：digests 输入直接组装两层结构。
 // 第二层按密度降序（同密度按 SessionKey 字典序），累计三块文本字符数
 // （session_key 标签与分隔符不计）超 MaxProfileSetChars 时截取预算内前 N 个。
+// absent 计数在候选循环的解析点顺带统计（每 success 行只解析一次）。
 func buildProfileSet(digests []activity.ProfileDigest) *ProfileSet {
 	ps := &ProfileSet{SessionBlocks: []string{}}
-	ps.SummaryBlock = buildSummaryBlock(digests)
+	ws := aggregateWindow(digests)
 
 	type cand struct {
 		d    activity.ProfileDigest
@@ -73,12 +155,16 @@ func buildProfileSet(digests []activity.ProfileDigest) *ProfileSet {
 		dens int // 预计算密度，排序比较器复用
 	}
 	cands := make([]cand, 0, len(digests))
+	absent := 0
 	for _, d := range digests {
 		if d.Status != domain.FeatureStatusSuccess {
 			continue // skipped 不进任何层、failed 只进汇总块统计（BR5）
 		}
 		ps.TotalSuccess++
 		p, _ := parseSuccessProfile(d) // 坏 JSON 零值兜底
+		if p.Behavior.NarrativeAbsent {
+			absent++
+		}
 		behavior, _ := json.Marshal(p.Behavior)
 		var b strings.Builder
 		size := utf8.RuneCountInString(p.Summary)
@@ -92,6 +178,7 @@ func buildProfileSet(digests []activity.ProfileDigest) *ProfileSet {
 		b.Write(behavior)
 		cands = append(cands, cand{d: d, text: b.String(), size: size, dens: density(d)})
 	}
+	ps.SummaryBlock = renderSummaryBlock(ws, absent)
 	slices.SortStableFunc(cands, func(a, b cand) int {
 		if a.dens != b.dens {
 			return b.dens - a.dens // 密度降序
@@ -110,83 +197,28 @@ func buildProfileSet(digests []activity.ProfileDigest) *ProfileSet {
 	return ps
 }
 
-// buildSummaryBlock 汇总块（specs §2.4 能力2 第一层）：对全部三态行 Stats 规则聚合，
-// 紧凑 key: value 数字块，无条件全量进 prompt 不参与预算判定。narrative_absent 取
-// success 行 Behavior 块二次解析的 absent 标记计数（failed 行天然缺席）。
-func buildSummaryBlock(digests []activity.ProfileDigest) string {
-	var total, valid, skipped, failed int
-	var userMsg, zeroInput, interrupts int
-	var pasteChars, pasteMsgs, continuations, absent int
-	tools := map[string]int{}
-	kinds := map[string]int{}
-	turns := map[string]int{}
-	specHashes := map[string]bool{}
-	sections := map[string]bool{}
-	cmdHashes := map[string]bool{}
-
-	for _, d := range digests {
-		total++
-		switch d.Status {
-		case domain.FeatureStatusSuccess:
-			valid++
-			if p, ok := parseSuccessProfile(d); ok && p.Behavior.NarrativeAbsent {
-				absent++
-			}
-		case domain.FeatureStatusFailed:
-			valid++
-			failed++
-		case domain.FeatureStatusSkipped:
-			skipped++
-		}
-		st := d.Stats
-		userMsg += st.UserMsgCount
-		if st.UserMsgCount == 0 {
-			zeroInput++
-		}
-		interrupts += st.InterruptCount
-		pasteChars += st.PasteCharCount
-		if st.PasteCharCount > 0 {
-			pasteMsgs++
-		}
-		if st.ContinuationHit {
-			continuations++
-		}
-		for k, v := range st.ToolCounts {
-			tools[k] += v
-		}
-		for k, v := range st.TurnKindCounts {
-			turns[k] += v
-		}
-		for _, fp := range st.SpecFingerprints {
-			kinds[fp.Kind]++
-			specHashes[fp.Hash] = true
-			for _, s := range fp.SectionList {
-				sections[s] = true
-			}
-		}
-		for _, h := range st.CmdReuseHashes {
-			cmdHashes[h] = true
-		}
-	}
-
+// renderSummaryBlock 汇总块渲染（specs §2.4 能力2 第一层）：windowStats 单源
+// 计数渲染为紧凑 key: value 数字块，无条件全量进 prompt 不参与预算判定。
+// narrative_absent 由调用侧解析点传入（failed 行天然缺席）。
+func renderSummaryBlock(ws *windowStats, absent int) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "sessions_total: %d\n", total)
-	fmt.Fprintf(&b, "sessions_valid: %d\n", valid)
-	fmt.Fprintf(&b, "sessions_skipped: %d\n", skipped)
-	fmt.Fprintf(&b, "user_msg_count: %d\n", userMsg)
-	fmt.Fprintf(&b, "zero_input_sessions: %d\n", zeroInput)
-	fmt.Fprintf(&b, "interrupt_count: %d\n", interrupts)
-	fmt.Fprintf(&b, "paste_char_count: %d\n", pasteChars)
-	fmt.Fprintf(&b, "paste_msg_sessions: %d\n", pasteMsgs)
-	fmt.Fprintf(&b, "tool_top10: %s\n", formatCounts(tools, 10))
-	fmt.Fprintf(&b, "turn_kind_counts: %s\n", formatCounts(turns, 0))
-	fmt.Fprintf(&b, "spec_fingerprint_kinds: %s\n", formatCounts(kinds, 0))
-	fmt.Fprintf(&b, "spec_unique_hashes: %d\n", len(specHashes))
-	fmt.Fprintf(&b, "spec_section_titles: %d\n", len(sections))
-	fmt.Fprintf(&b, "cmd_reuse_groups: %d\n", len(cmdHashes))
-	fmt.Fprintf(&b, "continuation_sessions: %d\n", continuations)
+	fmt.Fprintf(&b, "sessions_total: %d\n", ws.total)
+	fmt.Fprintf(&b, "sessions_valid: %d\n", ws.valid)
+	fmt.Fprintf(&b, "sessions_skipped: %d\n", ws.skipped)
+	fmt.Fprintf(&b, "user_msg_count: %d\n", ws.userMsg)
+	fmt.Fprintf(&b, "zero_input_sessions: %d\n", ws.zeroInput)
+	fmt.Fprintf(&b, "interrupt_count: %d\n", ws.interrupts)
+	fmt.Fprintf(&b, "paste_char_count: %d\n", ws.pasteChars)
+	fmt.Fprintf(&b, "paste_msg_sessions: %d\n", ws.pasteMsgs)
+	fmt.Fprintf(&b, "tool_top10: %s\n", formatCounts(ws.tools, 10))
+	fmt.Fprintf(&b, "turn_kind_counts: %s\n", formatCounts(ws.turns, 0))
+	fmt.Fprintf(&b, "spec_fingerprint_kinds: %s\n", formatCounts(ws.kinds, 0))
+	fmt.Fprintf(&b, "spec_unique_hashes: %d\n", len(ws.specHashes))
+	fmt.Fprintf(&b, "spec_section_titles: %d\n", len(ws.sections))
+	fmt.Fprintf(&b, "cmd_reuse_groups: %d\n", len(ws.cmdHashes))
+	fmt.Fprintf(&b, "continuation_sessions: %d\n", ws.continuations)
 	fmt.Fprintf(&b, "narrative_absent_sessions: %d\n", absent)
-	fmt.Fprintf(&b, "failed_profiles: %d\n", failed)
+	fmt.Fprintf(&b, "failed_profiles: %d\n", ws.failed)
 	return b.String()
 }
 

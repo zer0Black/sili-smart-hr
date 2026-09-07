@@ -25,18 +25,18 @@ type fakeRepo struct {
 	lastLoginCalled bool
 
 	// 新增方法配置/探针
-	created             bool                   // Create 探针
-	createdAcc          *domain.Account        // Create 接收的账号（断言字段）
-	updated             bool                   // Update 探针
-	updatedAcc          *domain.Account        // Update 接收的账号（断言字段）
-	deleted             bool                   // Delete 探针
-	deletedID           int64                  // Delete 接收的 id
-	updateEnabledCalled bool                   // UpdateEnabled 探针
-	updateEnabledID     int64                  // UpdateEnabled 接收的 id
-	updateEnabledVal    bool                   // UpdateEnabled 接收的 enabled
-	listAccounts        []domain.Account       // ListAccounts 返回的 list
-	listTotal           int64                  // ListAccounts 返回的 total
-	listErr             error                  // ListAccounts 返回的 err
+	created             bool             // Create 探针
+	createdAcc          *domain.Account  // Create 接收的账号（断言字段）
+	updated             bool             // Update 探针
+	updatedAcc          *domain.Account  // Update 接收的账号（断言字段）
+	deleted             bool             // Delete 探针
+	deletedID           int64            // Delete 接收的 id
+	updateEnabledCalled bool             // UpdateEnabled 探针
+	updateEnabledID     int64            // UpdateEnabled 接收的 id
+	updateEnabledVal    bool             // UpdateEnabled 接收的 enabled
+	listAccounts        []domain.Account // ListAccounts 返回的 list
+	listTotal           int64            // ListAccounts 返回的 total
+	listErr             error            // ListAccounts 返回的 err
 	// 原子方法配置/探针（service 唯一性守卫与启停守卫走这两个）
 	demoteRows            int64 // DemoteEnabledIfNotLast 返回的 RowsAffected（1=放行，0=最后一个启用账号或已禁用）
 	demoteCalled          bool  // DemoteEnabledIfNotLast 探针
@@ -399,7 +399,7 @@ func TestDeleteAccount_NotFound(t *testing.T) {
 // TestDeleteAccount_LastEnabled 验证删除最后一个启用账号：原子方法返回 rows==0，返 1006（specs §4.2.4 规则2、§6.2）。
 func TestDeleteAccount_LastEnabled(t *testing.T) {
 	repo := &fakeRepo{
-		acc:                &domain.Account{ID: 1, Username: "admin", Enabled: true},
+		acc:                 &domain.Account{ID: 1, Username: "admin", Enabled: true},
 		deleteIfNotLastRows: 0, // DeleteIfNotLastEnabled 判定为最后一个启用账号
 	}
 	dec := &fakeDecryptor{}
@@ -413,7 +413,7 @@ func TestDeleteAccount_LastEnabled(t *testing.T) {
 // TestDeleteAccount_DisabledOK 验证删除已禁用账号（不占启用名额）放行，走 DeleteIfNotLastEnabled 原子方法。
 func TestDeleteAccount_DisabledOK(t *testing.T) {
 	repo := &fakeRepo{
-		acc:                &domain.Account{ID: 1, Username: "old", Enabled: false},
+		acc:                 &domain.Account{ID: 1, Username: "old", Enabled: false},
 		deleteIfNotLastRows: 1, // 原子方法放行
 	}
 	dec := &fakeDecryptor{}

@@ -270,7 +270,7 @@ func (r *ActivityThresholdReader) ActivityThresholds(ctx context.Context) (int, 
 var _ activity.ThresholdReader = (*ActivityThresholdReader)(nil)
 
 // DimensionSpecReaderAdapter 维度口径适配器：把 DimensionRepository
-//（ListEnabledFullByDataSource）适配为 evaluator.DimensionSpecReader（03 §5.2）。
+// （ListEnabledFullByDataSource）适配为 evaluator.DimensionSpecReader（03 §5.2）。
 type DimensionSpecReaderAdapter struct {
 	dimRepo repository.DimensionRepository
 }
@@ -321,7 +321,7 @@ func NewActivityProvider(cl *conversationlog.Client,
 // SessionExtractHandler / PersonEvaluateHandler 是 Wire 装配用命名类型：NewMux
 // 双形参同为 asynq.HandlerFunc，wire 无法按类型区分（别名也视为同型），故用
 // 独立定义的 func 命名类型各占类型表一格，再由 NewMuxAdapter 收参适配
-//（DBProbe/RedisProbe 命名类型同款）。
+// （DBProbe/RedisProbe 命名类型同款）。
 type SessionExtractHandler func(context.Context, *asynq.Task) error
 
 // PersonEvaluateHandler person-evaluate handler 命名类型（同上）。
@@ -339,7 +339,7 @@ func NewPersonEvaluateHandlerTyped(ev *evaluator.Evaluator) PersonEvaluateHandle
 }
 
 // NewMuxAdapter Wire 装配适配器：接收两个命名类型 handler，转调 task.NewMux
-//（单一注册入口不变，签名不受 wire 同型参数限制）。
+// （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate))
 }

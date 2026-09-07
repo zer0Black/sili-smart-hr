@@ -11,8 +11,8 @@ import (
 )
 
 // TestUniqueViolation 按错误形态表驱动断言：主路径 errors.Is(gorm.ErrDuplicatedKey)
-//（生产已开 TranslateError，三库统一翻译），防御兜底覆盖结构化驱动错误
-//（SQLite 2067 / MySQL 1062 / PG 23505，TranslateError 关闭的测试直连路径），其余不命中。
+// （生产已开 TranslateError，三库统一翻译），防御兜底覆盖结构化驱动错误
+// （SQLite 2067 / MySQL 1062 / PG 23505，TranslateError 关闭的测试直连路径），其余不命中。
 func TestUniqueViolation(t *testing.T) {
 	cases := []struct {
 		name string

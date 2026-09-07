@@ -71,11 +71,11 @@ type fakeUserapiClient struct {
 	total  int64
 	err    error
 
-	called      bool
-	lastSecret  string
-	lastKW      string
-	lastPage    int
-	lastPSize   int
+	called     bool
+	lastSecret string
+	lastKW     string
+	lastPage   int
+	lastPSize  int
 }
 
 func (f *fakeUserapiClient) ListStaffs(_ context.Context, secret, keyword string, page, pageSize int) ([]userapi.Staff, int64, error) {

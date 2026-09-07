@@ -52,7 +52,7 @@ func TestPublicKey_Handler(t *testing.T) {
 	}
 
 	var resp struct {
-		Code int    `json:"code"`
+		Code int `json:"code"`
 		Data struct {
 			PublicKey string `json:"publicKey"`
 			KeyID     string `json:"keyId"`
@@ -95,9 +95,9 @@ type fakeAccountService struct {
 
 	// UpdateAccount
 	updateLast struct {
-		ID                                     int64
-		Name, PasswordCipher, KeyID            string
-		HasPassword, Enabled                   bool
+		ID                          int64
+		Name, PasswordCipher, KeyID string
+		HasPassword, Enabled        bool
 	}
 	updateRes *service.AccountDTO
 	updateErr error
@@ -113,14 +113,14 @@ type fakeAccountService struct {
 
 	// ResetPassword
 	resetLast struct {
-		ID                            int64
-		PasswordCipher, KeyID         string
+		ID                    int64
+		PasswordCipher, KeyID string
 	}
 	resetErr error
 
 	// ListAccounts
 	listLast struct {
-		Keyword       string
+		Keyword        string
 		Page, PageSize int
 	}
 	listRes   []service.AccountListItemDTO

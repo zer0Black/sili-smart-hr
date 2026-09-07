@@ -142,7 +142,7 @@ func TestFeatureKindConstants(t *testing.T) {
 }
 
 // baselineUserPrefixes/baselineNonUserPrefixes 快照已收敛 rules/baseline 包单源
-//（两包等集断言共用，防各自抄写 59 条清单漏改一份）。
+// （两包等集断言共用，防各自抄写 59 条清单漏改一份）。
 var (
 	baselineUserPrefixes    = baseline.UserPrefixes
 	baselineNonUserPrefixes = baseline.NonUserPrefixes

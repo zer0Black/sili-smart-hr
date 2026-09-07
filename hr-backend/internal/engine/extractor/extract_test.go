@@ -1323,7 +1323,7 @@ func TestExtractByKeyFetchErrKeepsRowMeta(t *testing.T) {
 	fl := &fakeLLMClient{}
 	fr := &fakeFeatureRepo{rows: []*domain.SessionFeature{{
 		ID: 1, SessionKey: "s-meta-keep", TokenName: "张三", Client: "omo",
-		Status: domain.FeatureStatusFailed,
+		Status:      domain.FeatureStatusFailed,
 		ProfileJSON: `{"Stats":{"TurnCount":19}}`, ErrorCode: "ErrLLMUpstream",
 		TurnCount: 19, FirstTurnAt: time.Unix(1700000000, 0).UTC(), LastTurnAt: time.Unix(1700003600, 0).UTC(),
 	}}}
@@ -1347,13 +1347,13 @@ func TestExtractByKeyFetchErrKeepsRowMeta(t *testing.T) {
 }
 
 // TestExtractByKeyFetchErrLegacyEmptyClient 守护观测桶分离：legacy 失败行
-//（client 列加列迁移兜底 ''）重抽再失败时落 unknown 而非 ''，'' 是 detail_invalid
+// （client 列加列迁移兜底 ”）重抽再失败时落 unknown 而非 ”，” 是 detail_invalid
 // 专属空串口径。
 func TestExtractByKeyFetchErrLegacyEmptyClient(t *testing.T) {
 	fl := &fakeLLMClient{}
 	fr := &fakeFeatureRepo{rows: []*domain.SessionFeature{{
 		ID: 1, SessionKey: "s-legacy-empty", TokenName: "张三", Client: "",
-		Status: domain.FeatureStatusFailed,
+		Status:    domain.FeatureStatusFailed,
 		TurnCount: 5, FirstTurnAt: time.Unix(1700000000, 0).UTC(), LastTurnAt: time.Unix(1700003600, 0).UTC(),
 	}}}
 	fdf := &fakeDetailFetcher{err: fmt.Errorf("conversationlog: %w", conversationlog.ErrUnauthorized)}
@@ -1555,8 +1555,8 @@ func TestPrepareCarriesClient(t *testing.T) {
 
 // logRecord 捕获 slog 输出单条记录（msg + attrs 展开为 kv 序列）。
 type logRecord struct {
-	msg  string
-	kvs  []string // 顺序展平：k1,v1,k2,v2...
+	msg string
+	kvs []string // 顺序展平：k1,v1,k2,v2...
 }
 
 // captureLogs 把 slog.Default 指向 buffer handler 收集记录，返回采集切片与复原函数。
@@ -1614,7 +1614,7 @@ func logKV(r *logRecord, key, val string) error {
 
 // TestExtractLogsCarryClient 核心锚点（specs §6.1 日志规范）：trim done /
 // session skipped / extract completed / extract failed 四场景日志追加 client 字段
-//（枚举值非消息内容，BR2）；复用路径（extract reused）无 detail 不经探测，
+// （枚举值非消息内容，BR2）；复用路径（extract reused）无 detail 不经探测，
 // 不得伪造 client 字段。
 func TestExtractLogsCarryClient(t *testing.T) {
 	t.Run("trim done 与 extract completed 带 workbuddy", func(t *testing.T) {
@@ -1885,7 +1885,7 @@ func mkAppendOMODetail(key string) *conversationlog.SessionDetail {
 // 客户端形态会话（claude_code 形态 + omo 形态，各一条命中消息）跑 Extract 端到端：
 // 追加前缀经通用层并集对两类会话同时生效（命中消息 drop 且计入 InjectedDropped），
 // 判定与基线参数联动行为一致（BR1）；对照组预置删除出厂前缀的配置形态
-//（追加语义下配置集不承载出厂前缀，显式配置不含出厂前缀时出厂前缀仍拦截，
+// （追加语义下配置集不承载出厂前缀，显式配置不含出厂前缀时出厂前缀仍拦截，
 // 配置删除不收回代码前缀，BR2 specs 裁定）。
 func TestAppendPrefixIntegration(t *testing.T) {
 	appendParams := &fakeSysParams{values: map[string][]string{
@@ -1957,10 +1957,10 @@ func TestAppendPrefixIntegration(t *testing.T) {
 		// 出厂过滤，追加语义按 specs 裁定不收回。
 		ext := New(&fakeLLMClient{}, nil, &fakeFeatureRepo{}, appendParams, nil)
 		msgs := []conversationlog.Message{
-			mkMsg("TodoWrite 4 items"),                    // 出厂 OMO 前缀
+			mkMsg("TodoWrite 4 items"),                     // 出厂 OMO 前缀
 			mkMsg("The following skills are available: x"), // 出厂 claude_code 前缀
-			mkMsg(appendPrefixAppendParam + " 追加前缀命中"),  // 配置追加前缀
-			mkMsg("正常用户指令"),                             // 对照：不误杀
+			mkMsg(appendPrefixAppendParam + " 追加前缀命中"),     // 配置追加前缀
+			mkMsg("正常用户指令"),                                // 对照：不误杀
 		}
 		p := ext.prepare("", mkDetail(msgs))
 		if p.trimStats.InjectedDropped != 3 {

@@ -15,7 +15,7 @@ const (
 )
 
 // ContinuationPrefix 是 continuation 续接摘要前缀，收敛 rules 包单源引用
-//（compaction 续接跨客户端，归通用层）。黑名单条目与 stats 的 ContinuationHit
+// （compaction 续接跨客户端，归通用层）。黑名单条目与 stats 的 ContinuationHit
 // 观测共用同一常量：双处字面量单边漂移会让黑名单漏拦（压缩转储进视图）
 // 或观测恒假（specs §2.4 能力1 形态与第三类第 4 条同源）。
 const ContinuationPrefix = rules.ContinuationPrefix

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 
@@ -74,6 +75,7 @@ func (s *Scorer) Aggregate(ctx context.Context, tokenName string, period activit
 	}
 
 	groups := make(map[string]*moduleAgg)
+	badEvidence := false // evidence 解析失败或缺口径条目的行数标记（记 WARN 用）
 	for i := range rows {
 		r := &rows[i]
 		g := groups[r.Module]
@@ -81,9 +83,13 @@ func (s *Scorer) Aggregate(ctx context.Context, tokenName string, period activit
 			g = &moduleAgg{included: make([]IncludedWeight, 0), excluded: make([]string, 0)}
 			groups[r.Module] = g
 		}
-		if !classifyRow(r, g) {
+		if !classifyRow(r, g, &badEvidence) {
 			g.excluded = append(g.excluded, r.DimensionCode)
 		}
+	}
+	if badEvidence {
+		slog.Warn("aggregate rows excluded for malformed or missing dimension_specs",
+			"token_name", tokenName, "module_count", len(groups))
 	}
 
 	result := &AggregateResult{
@@ -137,12 +143,17 @@ func (s *Scorer) Aggregate(ctx context.Context, tokenName string, period activit
 // classifyRow 行分类：failed、insufficient、evidence 解析失败或口径摘要缺条目的
 // 行返回 false（剔除进 Excluded）；in_overview=false 参考维返回 true 但不累计
 // （不进聚合也不进 Excluded）；正常参与维返回 true 并累计入模块聚合器。
-func classifyRow(r *domain.DimensionScore, g *moduleAgg) bool {
+// parseErr 非空时回写解析失败标记，供调用侧记 WARN（F7 行 evidence 形状漂移的
+// 显形通道）。
+func classifyRow(r *domain.DimensionScore, g *moduleAgg, parseErr *bool) bool {
 	if r.Status != domain.ScoreStatusSuccess || r.Insufficient {
 		return false // failed 与 insufficient 一律剔除（specs 能力5 规则1）
 	}
 	var doc evidenceDoc
 	if err := json.Unmarshal([]byte(r.EvidenceJSON), &doc); err != nil {
+		if parseErr != nil {
+			*parseErr = true
+		}
 		return false // 坏行防御：解析失败按剔除处理，不阻断聚合
 	}
 	for _, sp := range doc.DimensionSpecs {
@@ -156,6 +167,9 @@ func classifyRow(r *domain.DimensionScore, g *moduleAgg) bool {
 		g.weightSum += sp.Weight
 		g.included = append(g.included, IncludedWeight{Code: sp.Code, Weight: sp.Weight})
 		return true
+	}
+	if parseErr != nil {
+		*parseErr = true
 	}
 	return false // 口径摘要缺本维度条目：无权重不可参与，按剔除处理
 }

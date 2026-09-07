@@ -224,7 +224,7 @@ func TestSessionExtractTimeoutConst(t *testing.T) {
 
 // TestNewMuxSessionExtractTimeout 核心锚点：NewMux 注册的 TypeSessionExtract
 // 携带 550s 任务级超时（BR1）。asynq v0.26.0 ServeMux 无 options 注册 API
-//（HandleFuncWithOptions 属更高版本），mux 无内省口，故以行为断言锚定：
+// （HandleFuncWithOptions 属更高版本），mux 无内省口，故以行为断言锚定：
 // 注入探针 handler，验证经 mux 派发后任务 ctx 被挂上 now+550s deadline。
 func TestNewMuxSessionExtractTimeout(t *testing.T) {
 	var gotDeadline time.Time

@@ -58,7 +58,7 @@ func blankEntriesRemoved(items []string) []string {
 }
 
 // readParams 单次往返批量读两参数键，回退口径与单键读一致：DB 故障整体回退出厂
-//（记 WARN 留观测），键缺失回退 nil（调用方按 nil 判回退），空集是运维显式语义。
+// （记 WARN 留观测），键缺失回退 nil（调用方按 nil 判回退），空集是运维显式语义。
 func (e *Extractor) readParams() (prefixes, patterns []string) {
 	loaded, err := e.params.ReadStringArrays(ParamKeyInjectPrefixes, ParamKeyRedactPatterns)
 	if err != nil {
@@ -165,7 +165,7 @@ func (s sessionRef) logAttrs() []any {
 }
 
 // withClientAttrs 追加 client 日志归因字段（specs §6.1）：空串表示未经探测
-//（detail_invalid 等路径），不追加防伪造归因。探测输出恒为七值非空串。
+// （detail_invalid 等路径），不追加防伪造归因。探测输出恒为七值非空串。
 func withClientAttrs(attrs []any, client string) []any {
 	if client == "" {
 		return attrs

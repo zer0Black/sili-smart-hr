@@ -24,9 +24,9 @@ import (
 
 // evalCalls 记录 fake 评估链路收到的调用（token/period/sessions 探针）。
 type evalCalls struct {
-	calls   int
-	token   string
-	period  activity.Period
+	calls    int
+	token    string
+	period   activity.Period
 	sessions []conversationlog.SessionSummary
 }
 
@@ -189,21 +189,21 @@ func (c *evalLLM) StreamChat(ctx context.Context, req llm.ChatRequest) (llm.Stre
 
 // 编译期接口断言：fake 集合满足各消费窄面。
 var (
-	_ activity.SessionListFetcher           = (*evalListFetcher)(nil)
-	_ repository.SessionFeatureRepository   = (*evalFeatureRepo)(nil)
-	_ evaluator.DimensionSpecReader         = (*evalSpecReader)(nil)
-	_ activity.ThresholdReader              = (*evalThresholds)(nil)
-	_ repository.DimensionScoreRepository   = (*evalScoreRepo)(nil)
-	_ repository.ActivityStatRepository     = (*evalActRepo)(nil)
-	_ repository.AggregateScoreRepository   = (*evalAggRepo)(nil)
-	_ repository.SystemParamReader          = (*evalSysParams)(nil)
-	_ llm.EnabledModelProvider             = (*evalModelProvider)(nil)
-	_ llm.Client                            = (*evalLLM)(nil)
+	_ activity.SessionListFetcher         = (*evalListFetcher)(nil)
+	_ repository.SessionFeatureRepository = (*evalFeatureRepo)(nil)
+	_ evaluator.DimensionSpecReader       = (*evalSpecReader)(nil)
+	_ activity.ThresholdReader            = (*evalThresholds)(nil)
+	_ repository.DimensionScoreRepository = (*evalScoreRepo)(nil)
+	_ repository.ActivityStatRepository   = (*evalActRepo)(nil)
+	_ repository.AggregateScoreRepository = (*evalAggRepo)(nil)
+	_ repository.SystemParamReader        = (*evalSysParams)(nil)
+	_ llm.EnabledModelProvider            = (*evalModelProvider)(nil)
+	_ llm.Client                          = (*evalLLM)(nil)
 )
 
 // TestPersonEvaluatePayloadInvalid 核心锚点：坏 JSON / 空 token_name /
 // period_end ≤ period_start 三种 payload → 返回 nil 丢弃且 evaluator 零调用
-//（03 §3.2，BR1/BR2）。
+// （03 §3.2，BR1/BR2）。
 func TestPersonEvaluatePayloadInvalid(t *testing.T) {
 	h := NewPersonEvaluateHandler(nil)
 	cases := []struct {
@@ -282,7 +282,7 @@ func TestNewMuxRegistersPersonEvaluate(t *testing.T) {
 }
 
 // TestNewMuxPersonEvaluateTimeout 核心锚点：注册 handler 挂 1050s 超时
-//（TestNewMuxSessionExtractTimeout 同款 deadline 行为断言，BR4）。
+// （TestNewMuxSessionExtractTimeout 同款 deadline 行为断言，BR4）。
 func TestNewMuxPersonEvaluateTimeout(t *testing.T) {
 	var gotDeadline time.Time
 	var hasDeadline bool

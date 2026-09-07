@@ -47,7 +47,7 @@ func newDetectScorer() *detectScorer {
 }
 
 // score 对单条消息跑全部客户端特征计分。tool_use/tool_result 是网关元信息行
-//（Text 形如 "TodoWrite args=..."），与判定链 classTool 同口径跳过，
+// （Text 形如 "TodoWrite args=..."），与判定链 classTool 同口径跳过，
 // 防工具转写字面误命中 omo 等前缀特征虚增计分。
 func (s *detectScorer) score(plans []clientDetectPlan, m conversationlog.Message) {
 	if m.Kind == kindToolUse || m.Kind == kindToolResult {
@@ -79,7 +79,7 @@ func (s *detectScorer) score(plans []clientDetectPlan, m conversationlog.Message
 }
 
 // verdict 裁决：最高分定归属，次高分 > 0 且分差 < 2 判 mixed，全零判 unknown
-//（specs §2.4 能力7 第 2 条）。
+// （specs §2.4 能力7 第 2 条）。
 func (s *detectScorer) verdict(plans []clientDetectPlan) string {
 	topClient := ""
 	var top, second int

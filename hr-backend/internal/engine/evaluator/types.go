@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/activity"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
@@ -19,7 +20,7 @@ const (
 	MaxRationaleChars       = 200                     // 单维度评分理由字数约束，落库校验容差 2 倍
 	ScoreMin                = 0                       // 绝对分下界（0-100 整数分制）
 	ScoreMax                = 100                     // 绝对分上界
-	PromptVersion           = "v1"                    // prompt 模板版本，模板变更时 +1 同步本常量
+	PromptVersion           = "v2"                    // prompt 模板版本（v2：空提示词维度分流不进 LLM 上下文），模板变更时 +1 同步本常量
 )
 
 // DimensionSpec 评分维度口径快照（specs §2.2）：取数时快照落评分行 evidence_json，
@@ -34,36 +35,26 @@ type DimensionSpec struct {
 	InOverview bool   // 是否参与聚合（模块分与总览分门槛）
 }
 
-// DimensionScore 评分行落库组装视图（specs §2.3），对应 dimension_score 表业务列。
-type DimensionScore struct {
-	DimensionCode string
-	Module        string
-	Score         int    // 0-100 整数，insufficient 与 failed 行落 0
-	Rationale     string // 评分理由（落库前过 Redact 兜底脱敏）
-	Insufficient  bool   // 证据不足标记，true 时聚合剔除
-	EvidenceJSON  string // 证据与口径快照 JSON（session_key 清单+统计摘要+维度口径摘要）
-	Source        string // conversation（本组件）/ active_test（F7 阅卷）
-	Status        string // success / failed
-}
-
 // EvaluateResult 单人周期评估组合结果（specs §2.3）：窄形态（Scores/Skipped/
 // Reused，Evaluate 产出）扩展 Activity 与 Aggregate 两组合字段（EvaluatePerson 产出）。
 type EvaluateResult struct {
-	Activity  *activity.ActivityStat // 活跃度统计行（EvaluatePerson 路径产出）
-	Scores    []DimensionScore       // 维度评分行（含 insufficient 标记行）
+	Activity  *activity.ActivityStat  // 活跃度统计行（EvaluatePerson 路径产出）
+	Scores    []domain.DimensionScore // 维度评分行（含 insufficient 标记行）
 	Aggregate *scorer.AggregateResult // 聚合结果（EvaluatePerson 路径产出）
-	Skipped   bool                   // 跳过 LLM 直接落全维度 insufficient（零有效档案或签名命中）
-	Reused    bool                   // 命中既有 success 评分行复用未调 LLM（幂等）
+	Skipped   bool                    // 跳过 LLM 直接落全维度 insufficient（零有效档案或签名命中）
+	Reused    bool                    // 命中既有 success 评分行复用未调 LLM（幂等）
 }
 
 // 哨兵错误（specs §2.3 错误码表）：均 error 上抛交 Asynq 任务级重试，不落评分行。
 var (
 	// ErrNoDimensions 无启用的对话分析维度（配置缺失或全部停用）。
 	ErrNoDimensions = errors.New("evaluator: no enabled conversation dimensions")
-	// ErrDimensionConfigRead 维度配置读取失败（wrap 底层错误）。
+	// ErrDimensionConfigRead 维度配置读取失败（适配层 wrap 后透传）。
 	ErrDimensionConfigRead = errors.New("evaluator: dimension config read failed")
 	// ErrProfileRead 档案表读取失败（wrap 底层错误）。
 	ErrProfileRead = errors.New("evaluator: profile read failed")
+	// ErrScoreRead 既有评分行读取失败（幂等判定路径）。
+	ErrScoreRead = errors.New("evaluator: score read failed")
 	// ErrStoreWrite 评分行落库失败（wrap 底层错误）：不落行，error 上抛交任务重试。
 	ErrStoreWrite = errors.New("evaluator: store write failed")
 )
@@ -104,11 +95,12 @@ func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 }
 
 // ActivityStatComponent EvaluatePerson 组合依赖窄面（合理实现形偏差：以接口
-// 窄化替代具体类型字段利测试探针注入）：ByKey 形态额外携带拉取到的窗口内列表，
-// 供 EvaluatePerson 注入 Evaluate 的签名识别列表口径（specs §2.2 sessions 参数
-// 说明）；*activity.Activity 经 NewActivityStatComponent 适配满足。
+// 窄化替代具体类型字段利测试探针注入）：ByKey 形态额外携带拉取到的窗口内列表
+// 与档案集（已归一过滤），供 EvaluatePerson 注入 Evaluate 免二次拉取与二次取数
+// （specs §2.2 sessions 参数说明）；*activity.Activity 经 NewActivityStatComponent
+// 适配满足。
 type ActivityStatComponent interface {
-	statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, error)
+	statPersonByKey(ctx context.Context, tokenName string, period activity.Period) (*activity.ActivityStat, []conversationlog.SessionSummary, []activity.ProfileDigest, error)
 	statPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period activity.Period) (*activity.ActivityStat, error)
 }
 

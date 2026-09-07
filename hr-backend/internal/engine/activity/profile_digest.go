@@ -13,16 +13,16 @@ import (
 // 不感知抽取内部结构。ProfileJSON 仅内存临时持有，禁止落日志。
 type ProfileDigest struct {
 	SessionKey  string
-	Status      string        // success / failed / skipped
-	Client      string        // 主客户端标识（T4 分层探测落库列，人群签名维度）
+	Status      string // success / failed / skipped
+	Client      string // 主客户端标识（T4 分层探测落库列，人群签名维度）
 	Stats       extractor.ProfileStats
-	HasBlocks   bool          // success 行为 true（Summary/Instruction/Behavior 三块可用）
-	ProfileJSON string        // 原始档案 JSON，仅内存临时持有
-	LastTurn    time.Time     // 末轮时间（归一过滤判据，from domain 行 LastTurnAt），T4 评分侧消费
+	HasBlocks   bool      // success 行为 true（Summary/Instruction/Behavior 三块可用）
+	ProfileJSON string    // 原始档案 JSON，仅内存临时持有
+	LastTurn    time.Time // 末轮时间（归一过滤判据，from domain 行 LastTurnAt），T4 评分侧消费
 }
 
 // digestJSON 是 ProfileJSON 的解析形态：顶层键与 extractor 落库序列化对齐
-//（FeatureProfile 无 json tag，键名为字段名原样）。
+// （FeatureProfile 无 json tag，键名为字段名原样）。
 type digestJSON struct {
 	Stats extractor.ProfileStats
 }

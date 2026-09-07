@@ -52,7 +52,7 @@ type fakeLLMRepo struct {
 	enableExclusiveErr    error
 
 	// DeleteAndTransferEnable 探针：deleteID/enableID 记录入参，可控返回错误。
-	deleteAndTransferCalled  bool
+	deleteAndTransferCalled   bool
 	deleteAndTransferDeleteID int64
 	deleteAndTransferEnableID int64
 	deleteAndTransferErr      error
@@ -69,6 +69,7 @@ func (f *fakeLLMRepo) Create(_ context.Context, cfg *domain.LLMConfig) error {
 	cfg.ID = 777
 	return nil
 }
+
 // CreateExclusiveFirst 模拟生产事务逻辑：按 createExclusiveCount 判首条，
 // count==0 时置 cfg.Enabled=true，再赋固定 ID。service.Create 不再自行置 Enabled。
 // 同步写入 createdCfg 探针，让首条启用断言与掩码断言沿用既有路径。
@@ -203,9 +204,9 @@ func TestLLMConfig_Create_Second(t *testing.T) {
 // TestLLMConfig_Create_InvalidParams 覆盖各类参数非法 → 1400。
 func TestLLMConfig_Create_InvalidParams(t *testing.T) {
 	cases := []struct {
-		name                  string
-		repo                  *fakeLLMRepo
-		dec                   *fakeLLMDecryptor
+		name                   string
+		repo                   *fakeLLMRepo
+		dec                    *fakeLLMDecryptor
 		nm, pv, mid, apiu, cph string
 	}{
 		{"bad provider", &fakeLLMRepo{countN: 0}, &fakeLLMDecryptor{pw: "sk-12345678"}, "模型", "xxx", "m", "", "c"},
@@ -351,7 +352,7 @@ func TestLLMConfig_Update_VersionConflict(t *testing.T) {
 // 返回 ErrRecordNotFound 时映射 1301（而非 1500 通用错误），提示前端刷新。
 func TestLLMConfig_Enable_RaceDeleted(t *testing.T) {
 	repo := &fakeLLMRepo{
-		byIDCfg:           &domain.LLMConfig{ID: 5, Enabled: false},
+		byIDCfg:            &domain.LLMConfig{ID: 5, Enabled: false},
 		enableExclusiveErr: gorm.ErrRecordNotFound,
 	}
 	_, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Enable(context.Background(), 5)
@@ -362,10 +363,10 @@ func TestLLMConfig_Enable_RaceDeleted(t *testing.T) {
 // DeleteAndTransferEnable 返回 ErrRecordNotFound 映射 1301。
 func TestLLMConfig_Delete_RaceDeleted(t *testing.T) {
 	repo := &fakeLLMRepo{
-		byIDCfg:               &domain.LLMConfig{ID: 1, Enabled: true},
-		countN:                2,
-		firstByIDOrderCfg:     &domain.LLMConfig{ID: 99},
-		deleteAndTransferErr:  gorm.ErrRecordNotFound,
+		byIDCfg:              &domain.LLMConfig{ID: 1, Enabled: true},
+		countN:               2,
+		firstByIDOrderCfg:    &domain.LLMConfig{ID: 99},
+		deleteAndTransferErr: gorm.ErrRecordNotFound,
 	}
 	_, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Delete(context.Background(), 1)
 	wantLLMCode(t, err, errcode.LLMConfigNotFound)
@@ -414,10 +415,10 @@ func TestLLMConfig_Delete_TransferEnable(t *testing.T) {
 // TestLLMConfig_Delete_TransferEnable_TxError 验证事务失败时 service 返错误不再吞错（03 T2 契约）。
 func TestLLMConfig_Delete_TransferEnable_TxError(t *testing.T) {
 	repo := &fakeLLMRepo{
-		byIDCfg:                &domain.LLMConfig{ID: 1, Enabled: true},
-		countN:                 2,
-		firstByIDOrderCfg:      &domain.LLMConfig{ID: 99},
-		deleteAndTransferErr:   errors.New("tx boom"),
+		byIDCfg:              &domain.LLMConfig{ID: 1, Enabled: true},
+		countN:               2,
+		firstByIDOrderCfg:    &domain.LLMConfig{ID: 99},
+		deleteAndTransferErr: errors.New("tx boom"),
 	}
 	_, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Delete(context.Background(), 1)
 	if err == nil {

@@ -217,11 +217,11 @@ func TestDimensionScoreListByPersonPeriodExact(t *testing.T) {
 	start, end := scoreBaseUnix, scoreBaseUnix+7*86400
 
 	seeds := []domain.DimensionScore{
-		makeScoreRow("张三", "AI_A", start, end, 80),                // 双界精确命中
-		makeScoreRow("张三", "AI_B", start, end, 70),                // 双界精确命中
-		makeScoreRow("张三", "AI_C", start, end+3600, 60),           // 同 start 不同 end：隔离
-		makeScoreRow("张三", "AI_D", start+86400, end+86400, 50),    // 不同 start：隔离
-		makeScoreRow("李四", "AI_A", start, end, 40),                // 他人：隔离
+		makeScoreRow("张三", "AI_A", start, end, 80),             // 双界精确命中
+		makeScoreRow("张三", "AI_B", start, end, 70),             // 双界精确命中
+		makeScoreRow("张三", "AI_C", start, end+3600, 60),        // 同 start 不同 end：隔离
+		makeScoreRow("张三", "AI_D", start+86400, end+86400, 50), // 不同 start：隔离
+		makeScoreRow("李四", "AI_A", start, end, 40),             // 他人：隔离
 	}
 	for i := range seeds {
 		if err := db.Create(&seeds[i]).Error; err != nil {

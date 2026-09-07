@@ -88,7 +88,7 @@ func TestBuildPromptFiveSegments(t *testing.T) {
 }
 
 // TestBuildPromptEmptyPromptTextDimension 维度段 PromptText 为空的维度照常入段
-//（specs §2.2 维度段：来自维度配置原文），且指令段标注该维度证据不足时标 insufficient。
+// （specs §2.2 维度段：来自维度配置原文），且指令段标注该维度证据不足时标 insufficient。
 func TestBuildPromptEmptyPromptTextDimension(t *testing.T) {
 	p := buildPrompt(promptSpecs(), promptSet())
 	if !strings.Contains(p, "审查把关") {

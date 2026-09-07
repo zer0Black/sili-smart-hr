@@ -144,7 +144,7 @@ func TestDetectClientOnceSemantics(t *testing.T) {
 
 // detectFakeClient 新客户端探测 fake（specs §5.1 新客户端接入零侵入、BR7）：
 // contributing 指针控制贡献窗口，defer 复原后注册表内该项零贡献
-//（注册只增不减，窗口复原模式同 rules_layering_test.go 的 newClientFake）。
+// （注册只增不减，窗口复原模式同 rules_layering_test.go 的 newClientFake）。
 type detectFakeClient struct {
 	contributing *bool
 }
@@ -178,7 +178,7 @@ func registerDetectFake() func() {
 }
 
 // TestDetectClientNewClientZeroIntrusion 核心断言：测试内注册 fake ClientRules
-//（专属前缀 "<newclient-frame>" Weight 3 Once），探测识别新客户端，
+// （专属前缀 "<newclient-frame>" Weight 3 Once），探测识别新客户端，
 // 既有五客户端典型样本结果不变（BR7）。
 func TestDetectClientNewClientZeroIntrusion(t *testing.T) {
 	defer registerDetectFake()()
@@ -217,7 +217,7 @@ func TestDetectClientNewClientZeroIntrusion(t *testing.T) {
 }
 
 // TestDetectClientPerformanceBudget 边界补充：500 消息探测预算 ≤ 10ms
-//（03 §4 性能预算；实测微秒级，超限走观测口径留记录不判失败，与
+// （03 §4 性能预算；实测微秒级，超限走观测口径留记录不判失败，与
 // TestDetectSinglePassBudget 同口径，防慢速 CI 容器产生与缺陷无关的 flaky）。
 func TestDetectClientPerformanceBudget(t *testing.T) {
 	msgs := make([]conversationlog.Message, 0, 500)

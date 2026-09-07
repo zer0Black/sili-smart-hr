@@ -4,6 +4,7 @@ package activity
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -11,6 +12,18 @@ import (
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/repository"
+)
+
+// 哨兵错误（specs §2.3 错误码表）：可 errors.Is 命中，供 pipeline/监控按码分类。
+var (
+	// ErrSessionListFetch 会话列表拉取失败（上游重试耗尽透传记因）。
+	ErrSessionListFetch = errors.New("activity: session list fetch failed")
+	// ErrProfileRead 档案表读取失败。
+	ErrProfileRead = errors.New("activity: profile read failed")
+	// ErrDimensionConfigRead 活跃度阈值读取失败（适配层 wrap 后透传）。
+	ErrDimensionConfigRead = errors.New("activity: dimension config read failed")
+	// ErrStoreWrite 活跃度行落库失败。
+	ErrStoreWrite = errors.New("activity: store write failed")
 )
 
 // listPageSize 列表翻页页大小（上游上限 100，specs §2.4 能力3 注意事项）。
@@ -74,21 +87,21 @@ func New(cl SessionListFetcher, featureRepo repository.SessionFeatureRepository,
 // → 按 token_name 内存分组 → session_key 去重 → 走 StatPerson 共用逻辑。
 // 拉取失败按 ErrSessionListFetch 语义 error 上抛，不落任何行。
 func (a *Activity) StatPersonByKey(ctx context.Context, tokenName string, period Period) (*ActivityStat, error) {
-	stat, _, err := a.StatPersonByKeyWithSessions(ctx, tokenName, period)
+	stat, _, _, err := a.StatPersonByKeyWithSessions(ctx, tokenName, period)
 	return stat, err
 }
 
-// StatPersonByKeyWithSessions StatPersonByKey 的列表透出形态（specs §2.4 能力6
-// 组合入口消费）：额外返回拉取到的窗口内列表，供 EvaluatePerson 注入 Evaluate
-// 的签名识别列表口径，免二次拉取。
-func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName string, period Period) (*ActivityStat, []conversationlog.SessionSummary, error) {
+// StatPersonByKeyWithSessions StatPersonByKey 的列表与档案透出形态（specs §2.4
+// 能力6 组合入口消费）：额外返回拉取到的窗口内列表与档案集（已归一过滤），
+// 供 EvaluatePerson 注入 Evaluate 免二次拉取与二次取数。
+func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName string, period Period) (*ActivityStat, []conversationlog.SessionSummary, []ProfileDigest, error) {
 	secret, err := a.secrets(ctx)
 	if err != nil {
-		return nil, nil, fmt.Errorf("activity: resolve integration secret: %w", err)
+		return nil, nil, nil, fmt.Errorf("activity: resolve integration secret: %w", err)
 	}
 	all, err := a.fetchAllSessions(ctx, secret, period)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	mine := make([]conversationlog.SessionSummary, 0, len(all))
 	seen := make(map[string]struct{}, len(all))
@@ -102,11 +115,15 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 		seen[s.SessionKey] = struct{}{}
 		mine = append(mine, s)
 	}
-	stat, err := a.StatPerson(ctx, mine, tokenName, period)
+	digests, err := a.fetchProfiles(ctx, tokenName, period)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return stat, mine, nil
+	stat, err := a.statPersonCore(ctx, tokenName, mine, digests, period)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	return stat, mine, digests, nil
 }
 
 // fetchAllSessions 串行翻页拉全量列表（并发翻页会返回重复页，specs §2.4 能力3
@@ -122,10 +139,12 @@ func (a *Activity) fetchAllSessions(ctx context.Context, secret string, period P
 			PageSize:  listPageSize,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("activity: ErrSessionListFetch: %w", err)
+			return nil, fmt.Errorf("%w: %w", ErrSessionListFetch, err)
 		}
 		all = append(all, items...)
-		if int64(len(all)) >= total || len(items) == 0 {
+		// 三重终止：累计覆盖 total、空页、短页（len(items) < 页大小即上游无更多数据，
+		// 防 total 低报时提前截断静默丢会话）。
+		if int64(len(all)) >= total || len(items) < listPageSize {
 			return all, nil
 		}
 		page++
@@ -135,14 +154,20 @@ func (a *Activity) fetchAllSessions(ctx context.Context, secret string, period P
 // StatPerson 对调用方传入的列表统计（sessions 须已按窗口过滤；档案侧数据由
 // 内部经 ListByPersonAndRange 读取）。落库经 repo.Upsert 幂等覆盖。
 func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period Period) (*ActivityStat, error) {
-	active, lowFreq, err := a.thresholds.ActivityThresholds(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("activity: ErrDimensionConfigRead: %w", err)
-	}
-
 	profiles, err := a.fetchProfiles(ctx, tokenName, period)
 	if err != nil {
 		return nil, err
+	}
+	return a.statPersonCore(ctx, tokenName, sessions, profiles, period)
+}
+
+// statPersonCore 统计共核（specs §2.4 能力3 步骤2-5）：列表去重计数 + 档案
+// status/client 分布 + 分级判定 + 签名识别 + 落库。profiles 由调用侧取数
+// （两条路径共用 fetchProfiles 单点，口径恒同源）。
+func (a *Activity) statPersonCore(ctx context.Context, tokenName string, sessions []conversationlog.SessionSummary, profiles []ProfileDigest, period Period) (*ActivityStat, error) {
+	active, lowFreq, err := a.thresholds.ActivityThresholds(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrDimensionConfigRead, err)
 	}
 
 	// 列表口径：session_key 去重兜底（跨页重复），TotalTurns 含 skipped 会话。
@@ -203,7 +228,7 @@ func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.Se
 	}
 	if err := a.repo.Upsert(ctx, rec); err != nil {
 		slog.Error("activity stat store failed", "token_name", tokenName, "code", "ErrStoreWrite")
-		return nil, fmt.Errorf("activity: ErrStoreWrite: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrStoreWrite, err)
 	}
 	if sig.Kind != KindNormal {
 		slog.Info("population signature", "token_name", tokenName, "kind", sig.Kind)
@@ -219,14 +244,21 @@ func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.Se
 	}, nil
 }
 
-// fetchProfiles 档案取数单点（specs §2.4 能力3 步骤3）：ListByPersonAndRange
-// start 前移 24h 缓冲取回三态行（上游按 first_turn_at 过滤的既定契约，容纳
-// first_turn 在前周期、last_turn 落本周期的跨边界行）→ ParseDigests → 内存过滤
-// LastTurn ∈ [Start, End) 归一到本周期。计数与签名判据两侧共用同一集合。
+// fetchProfiles 档案取数单点（specs §2.4 能力3 步骤3），evaluator 经
+// FetchWindowDigests 共用同款取数口径。
 func (a *Activity) fetchProfiles(ctx context.Context, tokenName string, period Period) ([]ProfileDigest, error) {
-	rows, err := a.featureRepo.ListByPersonAndRange(ctx, tokenName, period.Start-24*3600, period.End)
+	return FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
+}
+
+// FetchWindowDigests 档案取数归一单点（specs §2.4 能力3 步骤3，能力1 流程段
+// 同口径）：ListByPersonAndRange start 前移 24h 缓冲取回三态行（上游按
+// first_turn_at 过滤的既定契约，容纳 first_turn 在前周期、last_turn 落本周期的
+// 跨边界行）→ ParseDigests → 内存过滤 LastTurn ∈ [Start, End) 归一到本周期。
+// 计数、签名判据与评分证据三侧共用本函数，24h 缓冲与末轮归属只此一处定义。
+func FetchWindowDigests(ctx context.Context, repo repository.SessionFeatureRepository, tokenName string, period Period) ([]ProfileDigest, error) {
+	rows, err := repo.ListByPersonAndRange(ctx, tokenName, period.Start-24*3600, period.End)
 	if err != nil {
-		return nil, fmt.Errorf("activity: ErrProfileRead: %w", err)
+		return nil, fmt.Errorf("%w: %w", ErrProfileRead, err)
 	}
 	all := ParseDigests(rows)
 	filtered := make([]ProfileDigest, 0, len(all))

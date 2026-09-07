@@ -31,7 +31,7 @@ type DependencyProbe interface {
 // NoopDependencyProbe 在 config 未落地阶段统一返回 not_configured，区分降级文案与 unreachable（specs §4.2.4 规则2）。
 type NoopDependencyProbe struct{}
 
-func (NoopDependencyProbe) ProbeLLM(_ context.Context) string        { return StatusNotConfigured }
+func (NoopDependencyProbe) ProbeLLM(_ context.Context) string         { return StatusNotConfigured }
 func (NoopDependencyProbe) ProbeIntegration(_ context.Context) string { return StatusNotConfigured }
 
 // SystemService 是系统状态与组件健康域的业务接口（specs §5.3、§5.4）。

@@ -14,9 +14,9 @@ import (
 
 // fakeLLMStream 是 llm.Stream 的假实现：chunks 依次返回，之后 EOF；Close 记录调用。
 type fakeLLMStream struct {
-	chunks        []llm.StreamChunk
-	idx           int
-	closeCalled   bool
+	chunks      []llm.StreamChunk
+	idx         int
+	closeCalled bool
 }
 
 func (s *fakeLLMStream) Recv() (llm.StreamChunk, error) {
@@ -28,7 +28,7 @@ func (s *fakeLLMStream) Recv() (llm.StreamChunk, error) {
 	return llm.StreamChunk{}, io.EOF
 }
 
-func (s *fakeLLMStream) Close() error { s.closeCalled = true; return nil }
+func (s *fakeLLMStream) Close() error      { s.closeCalled = true; return nil }
 func (s *fakeLLMStream) Usage() (int, int) { return 3, 2 }
 
 // fakeLLMClient 是 llm.Client 的假实现：记录入参请求，返回预设流或错误。
@@ -148,7 +148,7 @@ func (s *errRecvStream) Recv() (llm.StreamChunk, error) {
 	e := *llm.ErrAuth
 	return llm.StreamChunk{}, &e
 }
-func (s *errRecvStream) Close() error { s.closed = true; return nil }
+func (s *errRecvStream) Close() error      { s.closed = true; return nil }
 func (s *errRecvStream) Usage() (int, int) { return 0, 0 }
 
 // streamOverridingClient 强制返回预设流（含读出错的流）。

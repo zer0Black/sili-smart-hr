@@ -459,7 +459,6 @@ func TestSaveFlipRefreshesUpdatedAt(t *testing.T) {
 	}
 }
 
-
 // simulateConcurrentFlip 经 rival 连接在目标 UPDATE 前抢先提交同 key 的 failed→success
 // 翻转，串行模拟 Asynq 双交付竞态：读得 failed 快照的后写者 UPDATE 必须落空转收敛。
 func simulateConcurrentFlip(t *testing.T, db, rival *gorm.DB, key string) {
@@ -561,7 +560,6 @@ func TestSaveFlipConcurrentTerminalNotOverwritten(t *testing.T) {
 	}
 }
 
-
 // TestSaveQueryFailure 验证预检查询故障透传：连接关闭后 Save 与 FindBySessionKey、
 // ListByPersonAndRange 均返回 error 而非静默成功。
 func TestSaveQueryFailure(t *testing.T) {
@@ -618,7 +616,7 @@ func TestSaveCreateNonUniqueError(t *testing.T) {
 
 // TestSaveConflictButRowMissing 验证 Create 报唯一冲突但重查无行（极端竞态：对端事务
 // 尚未提交又回滚）时返回原始冲突错误，不静默成功。注入 gorm.ErrDuplicatedKey
-//（生产 TranslateError 统一翻译形态）确保冲突被识别进收敛分支。
+// （生产 TranslateError 统一翻译形态）确保冲突被识别进收敛分支。
 func TestSaveConflictButRowMissing(t *testing.T) {
 	db := newFeatureTestDB(t, true)
 	conflict := gorm.ErrDuplicatedKey

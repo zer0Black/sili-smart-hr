@@ -29,9 +29,9 @@ type fakeLLM struct {
 	mu        sync.Mutex
 	responses []string // 逐次调用依次消费，耗尽后重复末项
 	calls     int
-	prompts   []string   // 每次调用的 user prompt 全文
-	blocks    bool       // true 时 StreamChat 阻塞至 ctx 取消
-	blockErr  error      // 阻塞模式的返回错误（默认 ctx.Err）
+	prompts   []string // 每次调用的 user prompt 全文
+	blocks    bool     // true 时 StreamChat 阻塞至 ctx 取消
+	blockErr  error    // 阻塞模式的返回错误（默认 ctx.Err）
 	lastReq   llm.ChatRequest
 }
 
@@ -114,7 +114,7 @@ var _ llm.EnabledModelProvider = (*fakeModelProvider)(nil)
 type fakeScoreRepo struct {
 	mu          sync.Mutex
 	existing    []domain.DimensionScore
-	saved        []domain.DimensionScore
+	saved       []domain.DimensionScore
 	saveErr     error
 	listErr     error
 	deleteErr   error
@@ -300,7 +300,7 @@ func TestEvaluateNormalFlow(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestEvaluateCodeHallucination(t *testing.T) {
 		dimJSON("AI_INSTRUCTION", &bad, false, "指令尚可") + `]}`
 	f.llm.responses = []string{first, goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestEvaluateSchemaRetryThenFailed(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{"这不是 JSON", "仍然不是 JSON"}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("schema 耗尽应落 failed 行 err=nil, got %v", err)
 	}
@@ -430,7 +430,7 @@ func TestEvaluateRationaleRedacted(t *testing.T) {
 		dimJSON("AI_REVIEW", nil, true, "证据不足") + `]}`
 	f.llm.responses = []string{raw}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestEvaluateZeroValidProfilesSkipped(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("零有效档案是业务态, got err=%v", err)
 	}
@@ -501,7 +501,7 @@ func TestEvaluateSignatureSkipLLM(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), sessions)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), sessions, nil)
 	if err != nil {
 		t.Fatalf("签名命中跳过是业务态, got err=%v", err)
 	}
@@ -531,7 +531,7 @@ func TestEvaluateNoDimensions(t *testing.T) {
 	f := newFixture(t)
 	f.specs.specs = []DimensionSpec{}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if !errors.Is(err, ErrNoDimensions) {
 		t.Fatalf("err = %v, want ErrNoDimensions", err)
 	}
@@ -555,7 +555,7 @@ func TestEvaluatePartialMissingPrompt(t *testing.T) {
 		dimJSON("AI_REVIEW", &s75, false, "LLM 仍给了分") + `]}`
 	f.llm.responses = []string{raw}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -583,7 +583,7 @@ func TestEvaluateTokenNameStripped(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -592,6 +592,80 @@ func TestEvaluateTokenNameStripped(t *testing.T) {
 	}
 	if strings.Contains(f.llm.prompts[0], "张三") {
 		t.Errorf("prompt 泄露人名: %.200s", f.llm.prompts[0])
+	}
+}
+
+// TestEvaluateMissingPromptNotInContext 锚点（prompt v2 分流）：空提示词维度
+// 不进 LLM 上下文（prompt 不含该维度编码），其行由代码确定性落 insufficient，
+// LLM 对其余维度的输出不受占位维度畸形输出的连带（specs §3.2 不阻断其余维度）。
+func TestEvaluateMissingPromptNotInContext(t *testing.T) {
+	f := newFixture(t)
+	specs := threeSpecs()
+	specs[2].PromptText = "" // AI_REVIEW 缺提示词
+	f.specs.specs = specs
+	s80 := 80
+	// LLM 只返回 2 维（AI_REVIEW 本就不在维度段，缺失补行路径接管）。
+	f.llm.responses = []string{`{"dimensions":[` +
+		dimJSON("AI_INSTRUCTION", &s80, false, "指令明确") + `,` +
+		dimJSON("AI_VALUE", &s80, false, "价值充分") + `]}`}
+
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if f.llm.calls != 1 || len(f.llm.prompts) != 1 {
+		t.Fatalf("LLM 调用 %d 次, want 1", f.llm.calls)
+	}
+	if strings.Contains(f.llm.prompts[0], "AI_REVIEW") {
+		t.Errorf("空提示词维度不应进 LLM 上下文: %s", f.llm.prompts[0][:200])
+	}
+	review := scoreRowByCode(t, f.scores.saved, "AI_REVIEW")
+	if !review.Insufficient || review.Score != 0 || review.Status != domain.ScoreStatusSuccess {
+		t.Errorf("AI_REVIEW = %+v, want insufficient/0/success（确定性补行）", review)
+	}
+}
+
+// TestEvaluateSessionsDedupBeforeSignature 锚点：含跨页重复 session_key 的列表
+// 传入 Evaluate → 签名识别按去重后列表判据（与 StatPersonByKey 路径同口径），
+// 正常人群不因分母膨胀误判 auto_client。
+func TestEvaluateSessionsDedupBeforeSignature(t *testing.T) {
+	f := newFixture(t)
+	p := testPeriod()
+	// 档案趋零形态：2 success + 9 skipped（占比 < 20%），client 全 workbuddy。
+	rows := []domain.SessionFeature{
+		{SessionKey: "ok-1", TokenName: "张三", Status: domain.FeatureStatusSuccess, Client: "workbuddy", FirstTurnAt: time.Unix(p.Start+100, 0).UTC(), LastTurnAt: time.Unix(p.Start+200, 0).UTC(), ProfileJSON: successProfileJSON("摘要一")},
+		{SessionKey: "ok-2", TokenName: "张三", Status: domain.FeatureStatusSuccess, Client: "workbuddy", FirstTurnAt: time.Unix(p.Start+300, 0).UTC(), LastTurnAt: time.Unix(p.Start+400, 0).UTC(), ProfileJSON: successProfileJSON("摘要二")},
+	}
+	for i := 0; i < 9; i++ {
+		rows = append(rows, domain.SessionFeature{
+			SessionKey: fmt.Sprintf("skip-%d", i), TokenName: "张三", Status: domain.FeatureStatusSkipped,
+			Client: "workbuddy", FirstTurnAt: time.Unix(p.Start+500, 0).UTC(), LastTurnAt: time.Unix(p.Start+600, 0).UTC(),
+		})
+	}
+	f.features.rows = rows
+	// 列表仅 4 条真实会话（< lowFreq=5 门槛）：去重后不满足旁路签名的列表量判据，
+	// 未去重的 8 条（重复键翻倍）会跨过门槛误判 bypass_orchestrator。
+	sessions := []conversationlog.SessionSummary{
+		{SessionKey: "s-1", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-2", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-3", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-4", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-1", TurnCount: 1, TokenName: "张三"}, // 跨页重复
+		{SessionKey: "s-2", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-3", TurnCount: 1, TokenName: "张三"},
+		{SessionKey: "s-4", TurnCount: 1, TokenName: "张三"},
+	}
+	f.llm.responses = []string{goodScoreJSON()}
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), sessions, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if res.Skipped {
+		t.Fatal("去重后列表量 4 < lowFreq 5，不满足旁路签名门槛，不应跳过 LLM")
+	}
+	if f.llm.calls != 1 {
+		t.Fatalf("LLM 调用 %d 次, want 1（正常走 LLM）", f.llm.calls)
 	}
 }
 
@@ -607,7 +681,7 @@ func TestEvaluateIdempotentReuse(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -632,7 +706,7 @@ func TestEvaluateFailedRerun(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -670,7 +744,7 @@ func TestEvaluatePeriodExactMatch(t *testing.T) {
 
 	narrow := activity.Period{Start: p.Start, End: p.Start + 24*3600}
 	// 档案行在窄窗口内也可见（last_turn 落首日内）。
-	res, err := f.ev.Evaluate(context.Background(), "张三", narrow, nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", narrow, nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -689,7 +763,7 @@ func TestEvaluateStoreWriteError(t *testing.T) {
 	f.scores.saveErr = errors.New("db down")
 	f.llm.responses = []string{goodScoreJSON()}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err == nil {
 		t.Fatal("SaveAll 失败应上抛错误")
 	}
@@ -706,7 +780,7 @@ func TestEvaluateCtxCancel(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	_, err := f.ev.Evaluate(ctx, "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(ctx, "张三", testPeriod(), nil, nil)
 	if err == nil {
 		t.Fatal("ctx 取消应走基础设施 error 通道")
 	}
@@ -730,7 +804,7 @@ func TestEpochRowsExcluded(t *testing.T) {
 	})
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -760,7 +834,7 @@ func TestEvaluateMaxTokensSet(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -776,7 +850,7 @@ func TestEvaluateModelResolveFailureNonBlocking(t *testing.T) {
 	f.provider.err = errors.New("no model")
 	f.llm.responses = []string{goodScoreJSON()}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("模型解析失败不阻断: %v", err)
 	}
@@ -786,15 +860,15 @@ func TestEvaluateModelResolveFailureNonBlocking(t *testing.T) {
 	}
 }
 
-// TestEvaluateThresholdReadFail 补充：thresholds 读取失败 → wrap
-// ErrDimensionConfigRead 上抛。
+// TestEvaluateThresholdReadFail 补充：thresholds 读取失败上抛（生产装配下
+// 适配层已 wrap ErrDimensionConfigRead；fake 直返原始错误，透传语义不二次包装）。
 func TestEvaluateThresholdReadFail(t *testing.T) {
 	f := newFixture(t)
 	f.th.err = errors.New("dim read down")
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
-	if !errors.Is(err, ErrDimensionConfigRead) {
-		t.Fatalf("err = %v, want ErrDimensionConfigRead", err)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "dim read down") {
+		t.Fatalf("err = %v, want 透传底层错误", err)
 	}
 }
 
@@ -803,7 +877,7 @@ func TestEvaluateScoreListFail(t *testing.T) {
 	f := newFixture(t)
 	f.scores.listErr = errors.New("db down")
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err == nil {
 		t.Fatal("ListByPersonPeriodExact 失败应上抛")
 	}
@@ -817,7 +891,7 @@ func TestEvaluateEmptyProfilesSkipped(t *testing.T) {
 	f := newFixture(t)
 	f.features.rows = nil
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("空档案集是业务态: %v", err)
 	}
@@ -833,12 +907,12 @@ func TestEvaluateEmptyProfilesSkipped(t *testing.T) {
 }
 
 // TestEvaluateEvidenceSummarySnapshot 补充：EvidenceJSON 统计摘要快照含关键计数
-//（sessions_total 与 success 数）。
+// （sessions_total 与 success 数）。
 func TestEvaluateEvidenceSummarySnapshot(t *testing.T) {
 	f := newFixture(t)
 	f.llm.responses = []string{goodScoreJSON()}
 
-	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	_, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -863,7 +937,7 @@ func TestEvaluateSignatureNormalProceeds(t *testing.T) {
 
 	// fixture 档案：2 条 success、client=claude_code、sessions 空（退化分支）。
 	// success 占比 100% ≥ 20% → work_tc1 判据分母为 0 落 normal。
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -886,7 +960,7 @@ func TestEvaluateAllSpecsSuccessReuseRequiresFullSet(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}
@@ -908,7 +982,7 @@ func TestEvaluateActiveTestRowsNotInReuse(t *testing.T) {
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
-	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil)
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
 	if err != nil {
 		t.Fatalf("Evaluate: %v", err)
 	}

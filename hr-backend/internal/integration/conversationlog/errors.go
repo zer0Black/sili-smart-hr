@@ -37,7 +37,7 @@ type UpstreamError struct {
 }
 
 // Error 返回上游 Msg 可读信息；不带哨兵前缀，避免 wrapErr 包装后重复拼接
-//（specs 330：错误文案只携带定位信息，哨兵英文串仅作日志 code，不进用户可见文案）。
+// （specs 330：错误文案只携带定位信息，哨兵英文串仅作日志 code，不进用户可见文案）。
 func (e *UpstreamError) Error() string {
 	return "upstream: " + e.Msg
 }
@@ -48,7 +48,7 @@ func (e *UpstreamError) Unwrap() error { return ErrUpstreamBusiness }
 // notFoundMsgs 是记录不存在白名单（specs §2.3 记录不存在识别）。
 // 英文条目统一小写，与归一化后的 Msg 比对；中文条目原样匹配。
 var notFoundMsgs = map[string]struct{}{
-	"会话不存在":                 {},
+	"会话不存在":                  {},
 	"conversation not found": {},
 }
 

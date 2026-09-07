@@ -39,11 +39,11 @@ type saveAssessmentMember struct {
 // saveAssessmentReq 是 POST /api/assessment-config/save 的请求体。
 // period/trigger_time/target_mode 必填；version 用于乐观锁；specified_members 在 target_mode=specified 时必填。
 type saveAssessmentReq struct {
-	Period           string                  `json:"period" binding:"required"`
-	TriggerTime      string                  `json:"trigger_time" binding:"required"`
-	TargetMode       string                  `json:"target_mode" binding:"required"`
-	SpecifiedMembers []saveAssessmentMember  `json:"specified_members"`
-	Version          int                     `json:"version"`
+	Period           string                 `json:"period" binding:"required"`
+	TriggerTime      string                 `json:"trigger_time" binding:"required"`
+	TargetMode       string                 `json:"target_mode" binding:"required"`
+	SpecifiedMembers []saveAssessmentMember `json:"specified_members"`
+	Version          int                    `json:"version"`
 }
 
 // Get 处理 GET /api/assessment-config：读取单例配置与指定人员列表。

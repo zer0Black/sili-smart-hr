@@ -140,7 +140,7 @@ func TestPing_Unreachable(t *testing.T) {
 }
 
 // TestPing_CanceledCtx 父 ctx 显式取消直通 context.Canceled，不误归 ErrNetwork
-//（与 doWithRetry 口径一致，调用方放弃不计网络故障）。
+// （与 doWithRetry 口径一致，调用方放弃不计网络故障）。
 func TestPing_CanceledCtx(t *testing.T) {
 	baseURL := startTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)

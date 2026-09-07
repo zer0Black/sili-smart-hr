@@ -33,8 +33,8 @@ type fakeAssessmentConfigService struct {
 
 	// ListStaffs
 	listLast struct {
-		Keyword              string
-		Page, PageSize       int
+		Keyword        string
+		Page, PageSize int
 	}
 	listRes   []service.StaffDTO
 	listTotal int64
