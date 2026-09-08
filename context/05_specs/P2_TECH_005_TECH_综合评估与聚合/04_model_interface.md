@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_TECH_005_TECH_综合评估与聚合 |
 | 模块代号 | TECH（技术组件，engine/evaluator + scorer + activity 子域） |
-| 文档版本 | v1.3 |
+| 文档版本 | v1.4 |
 | 创建日期 | 2026-09-05 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md) |
@@ -17,7 +17,7 @@
 
 ### 1.1 数据库选型
 
-按规则文件 §1.1，多库可切换（SQLite / PostgreSQL / MySQL），GORM AutoMigrate 为主建表加列加索引。模型 tag 一律用 GORM 通用类型（varchar/text/int/bigint/float），不写库特定类型。三张新表在 `model/migrate.go` 的 `allModels()` 登记参与 AutoMigrate。
+按规则文件 §1.1，多库可切换（SQLite / PostgreSQL / MySQL），GORM AutoMigrate 为主建表加列加索引。模型 tag 一律用 GORM 通用类型（varchar/text/int/bigint/float），不写库特定类型；一处方言例外：aggregate_scores 的 module_score/overview_score tag 落 `double precision`（裸 double 在 PG 是非法类型名、通用 float 在 MySQL 落单精度，double precision 在 PG/MySQL 皆合法且 SQLite 亲和收 REAL，保三库双精度）。三张新表在 `model/migrate.go` 的 `allModels()` 登记参与 AutoMigrate；另有一处手写幂等迁移钩子 migrateAggregateScoreFloatToDouble（aggregate_scores 存量列 float → double precision 修正，Migrator 探测列类型后按需 ALTER，先于 AutoMigrate 执行）。
 
 ### 1.2 主键策略
 
@@ -78,8 +78,8 @@ erDiagram
         datetime period_start_at
         datetime period_end_at
         varchar module
-        float module_score
-        float overview_score
+        double module_score
+        double overview_score
         text included_json
         text excluded_json
     }
@@ -195,7 +195,7 @@ COMMENT ON TABLE "dimension_scores" IS '维度评分记录';
 | model_name | VARCHAR(128) | VARCHAR(128) | 是 | 业务层置空串 | 评分时经 EnabledModelProvider 解析的启用模型 ModelID；零档案跳过等未调 LLM 的行落空串；观测侧按模型拆分 schema 失败率（specs §6.4 问题2 排查路径）[长度来源：与 llm_configs.model_id 量级对齐留余量] |
 | prompt_version | VARCHAR(16) | VARCHAR(16) | 是 | - | 评分 prompt 模板版本（evaluator 包内常量，如 v1），模板版本化演进时历史行口径可拆分观测（specs §3.2 档案演进兼容同构）[长度来源：版本号短串] |
 | status | VARCHAR(16) | VARCHAR(16) | 是 | - | 评分状态：success（含 insufficient 标记行）/ failed（LLM 段失败全维度占位，error_code 记因，补跑重评）。与 session_features 三态差异：评分行无 skipped 态（零档案走 insufficient+success）[长度来源：枚举值最长 7 字符] |
-| error_code | VARCHAR(64) | VARCHAR(64) | 是 | 业务层置空串 | failed 记组件错误码（ErrLLMEvalUpstream / ErrSchemaInvalid），success 空串；值域与 specs §2.3 错误码表对齐 [长度来源：specs 错误码值域] |
+| error_code | VARCHAR(64) | VARCHAR(64) | 是 | 业务层置空串 | failed 行记组件错误码（ErrLLMEvalUpstream / ErrSchemaInvalid）；success 行除空串外可落 skip_no_llm 标记（零 LLM 跳过路径：零有效档案、bypass/auto_client 签名命中、空提示词维度的 insufficient 行，Go 常量 ErrorCodeSkipNoLLM）——该标记行不可进幂等复用判定，重跑时随先删后评一并删除自愈（补全提示词后重评同款通道）；其余 success 行空串 [长度来源：specs 错误码值域加标记值] |
 | created_at | DATETIME | TIMESTAMP | 是 | GORM 自动 | 创建时间，autoCreateTime |
 | updated_at | DATETIME | TIMESTAMP | 是 | GORM 自动 | 更新时间，autoUpdateTime，upsert 覆盖落库时刷新；显式 UTC 与 T4 utcNow 同口径（SQLite 文本字典序可比） |
 
@@ -210,7 +210,7 @@ COMMENT ON TABLE "dimension_scores" IS '维度评分记录';
 
 **业务规则：**
 
-- **幂等与重评（specs §2.4 能力1/6 唯一权威）**：Evaluate 前按双界精确匹配读同人同周期 source=conversation 行。全 success 且维度集合齐 → Reused=true 跳过 LLM；存在 failed → 先删同人同周期 source=conversation 的 failed 行再完整重评（整体重评非单维补评，active_test 行不动）；重评产出行按唯一索引 upsert 全列覆盖。
+- **幂等与重评（specs §2.4 能力1/6 唯一权威）**：Evaluate 前按双界精确匹配读同人同周期 source=conversation 行。全 success（无 skip_no_llm 标记）且维度集合齐且启用维度内 prompt_version 与当前常量一致 → Reused=true 跳过 LLM；存在 failed 或 skip_no_llm 标记行 → 先删同人同周期 source=conversation 的对应行（DeleteConversationFailed 删除条件 status=failed 或 error_code=skip_no_llm）再完整重评（整体重评非单维补评，active_test 行不动）；停用维度的残留行不进复用集合也不触发重评，按其 evidence_json 快照口径留任聚合；重评产出行按唯一索引 upsert 全列覆盖。
 - **insufficient 行口径**：score 落 0、insufficient=true、status=success；三类产出路径（LLM 输出 insufficient、schema 缺失维度补行、零有效档案全维度跳过）同型落库，聚合一律剔除。
 - **failed 占位行**：LLM 段失败（ErrLLMEvalUpstream/ErrSchemaInvalid）时全维度落 failed 行（score=0、rationale 空串或占位、error_code 记因），当期聚合照常推进（剔除 failed 维度），补跑时先删后评翻转。
 - **权重快照契约**：evidence_json 内维度口径摘要（weight、in_overview）是聚合的唯一权重来源，Scorer 不从 dimension 域现读（防当期重算引入新权重）；F7 写入行必须同构携带（跨 Feature 契约，specs §2.4 能力1 注意事项）。
@@ -273,7 +273,7 @@ CREATE UNIQUE INDEX "uk_person_period_module" ON "aggregate_scores"("token_name"
 COMMENT ON TABLE "aggregate_scores" IS '聚合结果';
 ```
 
-> SQLite 由 GORM 直接翻译。module_score/overview_score 模型层用 `*float64`（可空，规则文件 §1.7 可空字段指针口径），tag 用 GORM 通用 float 类型。
+> SQLite 由 GORM 直接翻译。module_score/overview_score 模型层用 `*float64`（可空，规则文件 §1.7 可空字段指针口径），tag 落 `double precision`（§1.1 声明的方言例外，保三库双精度；存量列由 migrateAggregateScoreFloatToDouble 幂等钩子修正）。
 
 ---
 
@@ -481,6 +481,6 @@ COMMENT ON TABLE "activity_stats" IS '使用活跃度统计';
 
 ---
 
-**文档版本：** v1.3
-**最后更新：** 2026-09-06
+**文档版本：** v1.4
+**最后更新：** 2026-09-08
 **作者：** lixuetao

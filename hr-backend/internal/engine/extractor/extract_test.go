@@ -1347,7 +1347,7 @@ func TestExtractByKeyFetchErrKeepsRowMeta(t *testing.T) {
 }
 
 // TestExtractByKeyFetchErrLegacyEmptyClient 守护观测桶分离：legacy 失败行
-// （client 列加列迁移兜底 ”）重抽再失败时落 unknown 而非 ”，” 是 detail_invalid
+// （client 列加列迁移兜底 ''）重抽再失败时落 unknown 而非 ''，'' 是 detail_invalid
 // 专属空串口径。
 func TestExtractByKeyFetchErrLegacyEmptyClient(t *testing.T) {
 	fl := &fakeLLMClient{}

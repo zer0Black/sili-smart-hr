@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_TECH_005_TECH_综合评估与聚合 |
 | 模块代号 | TECH（技术组件，engine/evaluator + scorer + activity 子域） |
-| 文档版本 | v1.6 |
+| 文档版本 | v1.8 |
 | 创建日期 | 2026-09-05 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[04_model_interface.md](04_model_interface.md) |
@@ -90,7 +90,7 @@ type EvaluatorLLMClient llm.Client
 // 全维度误落 ErrSchemaInvalid failed 行。
 ```
 
-三个组件实例（act/sc/ev）均注册进 providers.go，worker/task 的 NewMux 经参数注入注册 person-evaluate handler（单一注册入口范式不变）。
+三个组件实例（act/ev）经 providers.go 内包装函数注册（NewActivityProvider/NewEvaluatorProvider），sc 走 scorer.New 原构造直接登记进 provider set（wire_gen.go 直调），worker/task 的 NewMux 经参数注入注册 person-evaluate handler（单一注册入口范式不变）。
 
 ---
 
@@ -164,14 +164,19 @@ payload 由 T6 跑批编排构造入队（本 Feature 只定义 schema 与消费
 | 方法 | 所属 | 签名（概念形，ctx 略） | 语义 | 需求追溯 |
 |------|------|----------------------|------|---------|
 | EvaluatePerson | Evaluator | (tokenName, period, sessions) → (*EvaluateResult, error) | 单人周期原子入口：活跃度统计 → 综合评估 → 聚合，三表落库；sessions 空时内部 StatPersonByKey 拉取 | specs §2.4 能力6 |
-| Evaluate | Evaluator | (tokenName, period, sessions) → (*EvaluateResult, error) | 仅综合评估：读档案、签名识别、组装、调 LLM、评分行落库；幂等判定内聚（全 success 复用、failed 先删后评） | specs §2.4 能力1 |
+| Evaluate | Evaluator | (tokenName, period, sessions, digests) → (*EvaluateResult, error) | 仅综合评估：读档案、签名识别、组装、调 LLM、评分行落库；幂等判定内聚（全 success 复用、failed 先删后评）。实现形四参：digests 由 EvaluatePerson 经 StatPerson 透出注入免二次取数，独立调用传 nil 走内部取数 | specs §2.4 能力1 |
 | AssembleProfileSet | Evaluator | (tokenName, period) → (*ProfileSet, error) | 档案集分层组装，纯读不调 LLM 不落库（内部读档案表，需 ctx） | specs §2.4 能力2 |
 | StatPersonByKey | Activity | (tokenName, period) → (*ActivityStat, error) | 活跃度统计，内部经 P2_TECH_002 拉列表 + 档案表取数，落库 | specs §2.4 能力3 |
-| StatPerson | Activity | (sessions, tokenName, period) → (*ActivityStat, []ProfileDigest, error) | 活跃度统计，列表由调用方传入（档案侧数据仍内部读取并透出，供组合入口注入 Evaluate 免二次取数），落库 | specs §2.4 能力3 |
+| StatPersonByKeyWithSessions | Activity | (tokenName, period) → (*ActivityStat, []conversationlog.SessionSummary, []ProfileDigest, error) | 活跃度统计并透出全量数据，**实现形新增方法**：EvaluatePerson 组合链的实际支撑（Evaluator 的 ActivityStatComponent 窄面要求其导出），返回过滤后会话列表与档案集供 Evaluate 注入免二次取数；StatPersonByKey 为其两返回值包装 | specs §2.4 能力6 |
+| StatPerson | Activity | (sessions, tokenName, period) → (*ActivityStat, []ProfileDigest, error) | 活跃度统计，列表由调用方传入（档案侧数据仍内部读取并透出，供组合入口注入 Evaluate 免二次取数），落库。实现形三返回值：第二返回透出过滤后 ProfileDigest 列表 | specs §2.4 能力3 |
 | IdentifyPopulation | activity 包级 | (sessions, profiles, lowFreqThreshold) → PopulationSignature | 人群签名识别纯函数。**实现形三参**：低频下限阈值入参注入（判据「列表会话量 ≥ 低频下限」需要阈值，specs §2.4 能力4 两参为概念签名，调用方从 ThresholdReader 读出后传入，测试可锚定边界），T4 ShouldSkip 三参先例 | specs §2.4 能力4 |
+| ParseDigests | activity 包级 | (rows []*domain.SessionFeature) → []ProfileDigest | 档案行到消费视图的归一转换纯函数（status 口径全集取数后转 ProfileDigest），StatPerson 系列内部调用，测试锚定字段映射 | specs §2.4 能力3 |
+| DedupSessions | activity 包级 | (sessions []conversationlog.SessionSummary) → []conversationlog.SessionSummary | session_key 跨页去重纯函数（翻页窗口重叠时防重复计数，SessionCount 口径的一部分），翻页取数内部调用 | specs §2.4 能力3 |
 | Aggregate | Scorer | (tokenName, period) → (*AggregateResult, error) | 读同人同周期全部 source 评分行重算聚合行，幂等 upsert | specs §2.4 能力5 |
 
 返回结构 `EvaluateResult{Activity, Scores, Aggregate, Skipped, Reused}`、`ActivityStat`、`AggregateResult`、`ProfileSet`、`PopulationSignature`、`Period`、`DimensionSpec`、`ProfileDigest` 的字段语义以 specs §2.2-2.3 为准，类型落位各自包内，本文档不重复定义。
+
+evaluator 侧另有两个导出窄接口（Wire 组合装配的实际消费面，具体类型结构化满足）：`ActivityStatComponent`（Evaluator 对 Activity 的窄面，即 StatPersonByKeyWithSessions/StatPerson 方法集）与 `ScoreAggregator`（对 Scorer 的窄面，即 Aggregate 方法集），定义于 evaluator/types.go，语义已被上表方法覆盖。
 
 ### 4.2 错误返回语义（error 通道与业务态字段的边界）
 
@@ -201,7 +206,7 @@ ErrNoValidProfiles 仅作文档语义标识，运行时走 Skipped=true 通道�
 - **model_name 落库**：调 LLM 前经 llm.EnabledModelProvider.GetEnabledModel 解析当前启用模型 ModelID；解析失败或未调 LLM 的行（零档案跳过路径）落空串。
 - **prompt_version**：evaluator 包内常量 `PromptVersion = "v2"`，模板变更时 +1 并同步该常量；幂等判定消费该列（见上），版本落后即触发重评。
 - **部分维度缺提示词**：DIM 规则 6 下对话分析维度提示词为空时该维度按 insufficient 处理（不阻断其余维度），rationale 落配置缺省文案，evidence_json 口径摘要记 config_missing 标记（specs §3.2 维度配置缺失行）；其 insufficient 行 error_code 落 skip_no_llm 标记（与零档案跳过路径同款），补全提示词后重跑经先删后评自愈。
-- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底，签名识别退化为仅档案侧判据（status 分布与 client 列），列表量门槛对空列表同样生效、落 normal（specs v1.1 判定次序澄清）；组合路径由 EvaluatePerson 注入 sessions 无此退化。单人列表拉取（StatPersonByKey 路径）全量串行翻页后按 token_name 内存分组（specs §3.2 上游兼容表：中文 token_name 上游过滤不可用，禁止依赖上游按人过滤参数），不向 ListSessionsRequest 透传 TokenName；翻页带 listMaxPages 页数上限兜底（防上游分页失效恒返满页时无界推进）。
+- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底，签名识别退化为仅档案侧判据（status 分布与 client 列），列表量门槛对空列表同样生效、落 normal（specs v1.1 判定次序澄清）；组合路径由 EvaluatePerson 注入 sessions 无此退化。单人列表拉取（StatPersonByKey 路径）全量串行翻页后按 token_name 内存分组（specs §3.2 上游兼容表：中文 token_name 上游过滤不可用，禁止依赖上游按人过滤参数），不向 ListSessionsRequest 透传 TokenName；翻页带 listMaxPages 页数上限兜底，常量值 100 页（防上游分页失效恒返满页时无界推进，达上限报 ErrSessionListFetch）。
 - **组合入口不包事务**：三表落库各自独立，中途失败重跑按幂等规则收敛（specs §2.4 能力6）。
 - **prompt 五段结构与 TokenName 剥离**：组装规则与 C01-C07 承接映射按 specs §2.2 执行，prompt 全文不含 token_name 人名。
 
@@ -220,8 +225,9 @@ type DimensionScoreRepository interface {
     // period_end 均精确等于传入 period 的 Unix 秒转换值；Evaluate 幂等判定与
     // Aggregate 聚合读数同口径，含 F7 写入的 active_test 行）。
     ListByPersonPeriodExact(ctx context.Context, tokenName string, start, end int64) ([]domain.DimensionScore, error)
-    // DeleteConversationFailed 删同人同周期 source=conversation 且 status=failed
-    // 的行（Evaluate failed 翻转前置；active_test 行不受影响）。
+    // DeleteConversationFailed 删同人同周期 source=conversation 且（status=failed
+    // 或 error_code=skip_no_llm）的行（Evaluate failed/skip 翻转前置；active_test 行
+    // 不受影响，与 §4.3 幂等判定同口径）。
     DeleteConversationFailed(ctx context.Context, tokenName string, start, end int64) (int64, error)
     // SaveAll 按唯一索引 (token_name, period_start_at, dimension_code) upsert
     // 全列覆盖落库（insufficient 标记行与 failed 占位行同路径）。
@@ -300,7 +306,7 @@ type ThresholdReader interface {
 
 ## 8. SSOT 合规与一致性
 
-- [x] 组件接口集合与 specs §2.3 输出定义一一对应（EvaluatePerson/Evaluate/AssembleProfileSet/StatPersonByKey/StatPerson/IdentifyPopulation/Aggregate）。实现形差异逐条声明：IdentifyPopulation 三参（阈值注入）、evaluator.New 九参组合形（§2.1，含 thresholds/sysParams/act/sc）、EvaluatorLLMClient 专用装配（§2.1）、ProfileDigest.LastTurn 实现形扩展（specs §2.2 两参概念形外的归一过滤判据字段，来源 domain 行 LastTurnAt，§4.3 档案取数口径消费）。
+- [x] 组件接口集合与 specs §2.3 输出定义一一对应（EvaluatePerson/Evaluate/AssembleProfileSet/StatPersonByKey/StatPerson/IdentifyPopulation/Aggregate）。实现形差异逐条声明：IdentifyPopulation 三参（阈值注入）、evaluator.New 九参组合形（§2.1，含 thresholds/sysParams/act/sc）、EvaluatorLLMClient 专用装配（§2.1）、Evaluate 四参与 StatPerson 三返回值（digests 透出形参，§4.1 方法清单注）、StatPersonByKeyWithSessions 四返回值导出方法（EvaluatePerson 组合链支撑，§4.1 方法清单）、ProfileDigest.LastTurn 实现形扩展（specs §2.2 两参概念形外的归一过滤判据字段，来源 domain 行 LastTurnAt，§4.3 档案取数口径消费）。
 - [x] 六个能力（综合评估/分层组装/活跃度统计/签名识别/聚合/原子入口）在方法契约与行为约定中均有承载。
 - [x] 错误码值域与 error/业务态双通道边界对齐 specs §2.3 错误码表（八错误码，ErrNoValidProfiles 走 Skipped 通道）。
 - [x] 隐私与安全约束（specs §3.3）在 §7 全量承接（TokenName 剥离、Redact 兜底、内存持有、日志最小化）。
@@ -321,6 +327,6 @@ type ThresholdReader interface {
 
 ---
 
-**文档版本：** v1.6
-**最后更新：** 2026-09-06
+**文档版本：** v1.8
+**最后更新：** 2026-09-08
 **作者：** lixuetao
