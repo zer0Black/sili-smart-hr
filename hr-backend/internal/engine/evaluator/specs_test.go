@@ -1,6 +1,6 @@
 package evaluator
 
-// digest_test.go 契约测试：fetchDigests 取数窗口口径（specs §2.4 能力1 流程段）。
+// specs_test.go 契约测试：档案取数窗口口径（specs §2.4 能力1 流程段，消费 activity.FetchWindowDigests）。
 
 import (
 	"context"
@@ -78,9 +78,9 @@ func TestFetchDigestsWindowFilter(t *testing.T) {
 		// last_turn 在窗口后 → 排除。
 		featRow("out-after", domain.FeatureStatusSuccess, p.End+3600, p.End+7200),
 	}}
-	got, err := fetchDigests(context.Background(), repo, "张三", p)
+	got, err := activity.FetchWindowDigests(context.Background(), repo, "张三", p)
 	if err != nil {
-		t.Fatalf("fetchDigests: %v", err)
+		t.Fatalf("activity.FetchWindowDigests: %v", err)
 	}
 	if len(got) != 2 {
 		t.Fatalf("len = %d, want 2（窗口内 2 行）", len(got))
@@ -112,9 +112,9 @@ func TestFetchDigestsBoundaryEndExcluded(t *testing.T) {
 		featRow("at-start", domain.FeatureStatusSuccess, p.Start, p.Start),
 		featRow("at-end", domain.FeatureStatusSuccess, p.End-3600, p.End),
 	}}
-	got, err := fetchDigests(context.Background(), repo, "张三", p)
+	got, err := activity.FetchWindowDigests(context.Background(), repo, "张三", p)
 	if err != nil {
-		t.Fatalf("fetchDigests: %v", err)
+		t.Fatalf("activity.FetchWindowDigests: %v", err)
 	}
 	if len(got) != 1 || got[0].SessionKey != "at-start" {
 		t.Fatalf("got = %+v, want 仅 at-start（[Start,End) 闭开）", got)
@@ -127,16 +127,16 @@ func TestFetchDigestsDigestFieldsParsed(t *testing.T) {
 	repo := &fakeFeatureRepo{rows: []domain.SessionFeature{
 		featRow("ok-1", domain.FeatureStatusSuccess, p.Start+100, p.Start+200),
 	}}
-	got, err := fetchDigests(context.Background(), repo, "张三", p)
+	got, err := activity.FetchWindowDigests(context.Background(), repo, "张三", p)
 	if err != nil {
-		t.Fatalf("fetchDigests: %v", err)
+		t.Fatalf("activity.FetchWindowDigests: %v", err)
 	}
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1", len(got))
 	}
 	d := got[0]
-	if !d.HasBlocks {
-		t.Errorf("success 行 HasBlocks 应为 true")
+	if d.Status != domain.FeatureStatusSuccess {
+		t.Errorf("Status = %q, want success", d.Status)
 	}
 	if !d.LastTurn.Equal(time.Unix(p.Start+200, 0).UTC()) {
 		t.Errorf("LastTurn = %v, want %v", d.LastTurn, time.Unix(p.Start+200, 0).UTC())
@@ -147,7 +147,7 @@ func TestFetchDigestsDigestFieldsParsed(t *testing.T) {
 func TestFetchDigestsRepoError(t *testing.T) {
 	cause := errors.New("db down")
 	repo := &fakeFeatureRepo{err: cause}
-	_, err := fetchDigests(context.Background(), repo, "张三", testPeriod())
+	_, err := activity.FetchWindowDigests(context.Background(), repo, "张三", testPeriod())
 	if !errors.Is(err, activity.ErrProfileRead) {
 		t.Fatalf("err = %v, want activity.ErrProfileRead", err)
 	}
@@ -159,9 +159,9 @@ func TestFetchDigestsRepoError(t *testing.T) {
 // TestFetchDigestsEmptyRows 空档案返回空切片非 nil、无错误。
 func TestFetchDigestsEmptyRows(t *testing.T) {
 	repo := &fakeFeatureRepo{rows: nil}
-	got, err := fetchDigests(context.Background(), repo, "张三", testPeriod())
+	got, err := activity.FetchWindowDigests(context.Background(), repo, "张三", testPeriod())
 	if err != nil {
-		t.Fatalf("fetchDigests: %v", err)
+		t.Fatalf("activity.FetchWindowDigests: %v", err)
 	}
 	if len(got) != 0 {
 		t.Errorf("len = %d, want 0", len(got))

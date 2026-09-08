@@ -1148,3 +1148,29 @@ func TestEvaluatePromptVersionMismatchRerun(t *testing.T) {
 		}
 	}
 }
+
+// TestEvaluateStaleDimRowsNotBlockReuse 补充：停用维度的旧版本 success 残留行
+// 不触发重评（版本比对只圈当前启用维度），否则每次跑批都因残留行白烧一次 LLM。
+func TestEvaluateStaleDimRowsNotBlockReuse(t *testing.T) {
+	f := newFixture(t)
+	p := testPeriod()
+	f.scores.existing = []domain.DimensionScore{
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		// 停用维度残留行：旧版本，不在当前 specs 内。
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_OLD", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: "v1"},
+	}
+	f.llm.responses = []string{goodScoreJSON()}
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if !res.Reused {
+		t.Fatal("停用维度残留行不应阻断复用")
+	}
+	if f.llm.calls != 0 {
+		t.Fatalf("LLM 调用 %d 次, want 0（复用跳过）", f.llm.calls)
+	}
+}

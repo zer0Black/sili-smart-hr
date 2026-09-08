@@ -362,3 +362,17 @@ func TestParseScoreOutputHugeFloatRejected(t *testing.T) {
 		t.Fatalf("超 int64 范围值应判 ErrSchemaInvalid, got %v", err)
 	}
 }
+
+// TestParseScoreOutputStringFormRejected 补充：带引号的字符串分数（"72"）按
+// schema 属校验失败（json.Number 本质 string，Unmarshal 会剥引号静默接受），
+// 显式按 JSON 首字节拒绝，走 ErrSchemaInvalid 重试通道。
+func TestParseScoreOutputStringFormRejected(t *testing.T) {
+	for _, raw := range []string{
+		`{"dimensions":[{"code":"AI_INSTRUCTION","score":"72","insufficient":false,"rationale":"指令清晰"}]}`,
+		`{"dimensions":[{"code":"AI_INSTRUCTION","score":"78.0","insufficient":false,"rationale":"指令清晰"}]}`,
+	} {
+		if _, err := parseScoreOutput(raw); !errors.Is(err, ErrSchemaInvalid) {
+			t.Fatalf("字符串 score 应判 ErrSchemaInvalid, got %v (%s)", err, raw)
+		}
+	}
+}

@@ -135,13 +135,15 @@ payload 由 T6 跑批编排构造入队（本 Feature 只定义 schema 与消费
        ErrProfileRead / ErrScoreRead / ErrSessionListFetch / ErrStoreWrite，
        specs §2.3 错误码表）
 超时:  任务级超时 1050s，单点声明在 worker/task 的 personEvaluateTimeout：
-       列表拉取最坏 190s（30s × 4 次尝试 + 10/20/40s 退避，P2_TECH_002 契约）
-       + LLM 段最坏 840s（评估专用 client Timeout 180s：429 带 Retry-After
+       LLM 段最坏 840s（评估专用 client Timeout 180s：429 带 Retry-After
        封顶 60s 下单次 callOnce 180+60+180=420s，schema 校验失败重试共 2 次
-       完整调用）+ 档案取数组装亚秒级 + 三表落库冗余 ≈ 1035s 最坏，1050s
-       含 15s 冗余。满足 specs §2.2 对 EvaluatePerson 的 ctx 预算 ≥ 900s
-       下限（该下限按 LLM 840s + 取数组装余量计，未含 StatPersonByKey 的
-       列表拉取段；任务级 1050s 全覆盖）。前提：EvaluatorLLMClient 的
+       完整调用）+ 列表翻页与落库共享剩余 210s。列表拉取是全量串行翻页
+       （specs §3.2 上游兼容：中文 token_name 过滤不可用），每页最坏 190s
+       （30s × 4 次尝试 + 10/20/40s 退避，P2_TECH_002 契约），多页用户慢路径
+       会先于 LLM 段吃预算直至 ctx 超时交任务重试；极端翻页由 activity 包
+       listMaxPages 页数上限兜底终止，不至无界循环。满足 specs §2.2 对
+       EvaluatePerson 的 ctx 预算 ≥ 900s 下限（该下限按 LLM 840s + 取数组装
+       余量计；任务级 1050s 全覆盖）。前提：EvaluatorLLMClient 的
        cfg.Timeout 装配为 180s 量级（§2.1），否则 LLM 慢路径（120s 验收
        线至 180s 观测线区间）会先触 deadline 产生伪失败
 并发:  由 config.Asynq.Concurrency 承载，评估通道 LLM 在飞 ≤ 4 由评估专用
@@ -193,13 +195,13 @@ ErrNoValidProfiles 仅作文档语义标识，运行时走 Skipped=true 通道�
 ### 4.3 关键行为约定（实现锚点）
 
 - **档案取数口径**：ListByPersonAndRange 传参 start 前移 7 天（容纳跨周期边界的长会话，覆盖周周期内任意跨界形态），取回后统一按 `last_turn_time ∈ [Start, End)` 内存二次过滤；Evaluate（评分证据）、StatPerson/StatPersonByKey（status 口径计数）、IdentifyPopulation（签名判据）三处共用同一过滤后集合（specs §2.4 能力3/4）。
-- **Evaluate 幂等判定**：ListExact 读同人同周期 source=conversation 评分行（period 双界精确匹配），无 failed 且 success 行（无 skip_no_llm 标记）的 prompt_version 与当前常量一致、dimension_code 集合覆盖当前启用维度集合 → Reused=true 跳过 LLM；存在 failed 或 skip_no_llm 标记行 → 先删同人同周期 source=conversation 的对应行再走完整调用（active_test 行不受影响）；prompt_version 落后于当前常量（模板升级发版）→ 不复用直接重评，旧行由 SaveAll upsert 全列覆盖替换。
+- **Evaluate 幂等判定**：ListExact 读同人同周期 source=conversation 评分行（period 双界精确匹配），无 failed 且 success 行（无 skip_no_llm 标记）的 prompt_version 与当前常量一致、dimension_code 集合覆盖当前启用维度集合 → Reused=true 跳过 LLM；存在 failed 或 skip_no_llm 标记行 → 先删同人同周期 source=conversation 的对应行再走完整调用（active_test 行不受影响）；prompt_version 比对只圈当前启用维度的行：启用维度内版本落后于当前常量（模板升级发版）→ 不复用直接重评，旧行由 SaveAll upsert 全列覆盖替换；停用维度的残留行（任意版本）不进复用集合也不触发重评，按其 evidence_json 快照口径留任聚合（specs 能力5 规则1）。
 - **评分 schema 校验**：code 白名单收敛（未知丢弃、缺失补 insufficient 行）、score 非 null 时 0-100 整数、rationale 超 MaxRationaleChars×2 判失败；宽容解析同 T4（剥 markdown 围栏、截首个含 dimensions 键的顶层平衡 JSON）；失败重试一次，仍失败落 failed 行。
 - **rationale 兜底脱敏**：落库前过 extractor.Redact(text, patterns)，patterns 经 SystemParamReader 读 extractor.redact_patterns 键（nil 回退出厂集，Redact 内建回退，复用 T4 参数键与函数）。
 - **model_name 落库**：调 LLM 前经 llm.EnabledModelProvider.GetEnabledModel 解析当前启用模型 ModelID；解析失败或未调 LLM 的行（零档案跳过路径）落空串。
 - **prompt_version**：evaluator 包内常量 `PromptVersion = "v2"`，模板变更时 +1 并同步该常量；幂等判定消费该列（见上），版本落后即触发重评。
 - **部分维度缺提示词**：DIM 规则 6 下对话分析维度提示词为空时该维度按 insufficient 处理（不阻断其余维度），rationale 落配置缺省文案，evidence_json 口径摘要记 config_missing 标记（specs §3.2 维度配置缺失行）；其 insufficient 行 error_code 落 skip_no_llm 标记（与零档案跳过路径同款），补全提示词后重跑经先删后评自愈。
-- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底，签名识别退化为仅档案侧判据（status 分布与 client 列），note 落 auto_client 表型并列呈现（specs §2.4 能力1 注意事项）；组合路径由 EvaluatePerson 注入 sessions 无此退化。单人列表拉取（StatPersonByKey 路径）按 token_name 上游精确过滤翻页（ListSessionsRequest.TokenName 透传），不再全量拉组织列表后内存过滤。
+- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底，签名识别退化为仅档案侧判据（status 分布与 client 列），列表量门槛对空列表同样生效、落 normal（specs v1.1 判定次序澄清）；组合路径由 EvaluatePerson 注入 sessions 无此退化。单人列表拉取（StatPersonByKey 路径）全量串行翻页后按 token_name 内存分组（specs §3.2 上游兼容表：中文 token_name 上游过滤不可用，禁止依赖上游按人过滤参数），不向 ListSessionsRequest 透传 TokenName；翻页带 listMaxPages 页数上限兜底（防上游分页失效恒返满页时无界推进）。
 - **组合入口不包事务**：三表落库各自独立，中途失败重跑按幂等规则收敛（specs §2.4 能力6）。
 - **prompt 五段结构与 TokenName 剥离**：组装规则与 C01-C07 承接映射按 specs §2.2 执行，prompt 全文不含 token_name 人名。
 

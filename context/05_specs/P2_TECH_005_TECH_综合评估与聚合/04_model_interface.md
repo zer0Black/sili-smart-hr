@@ -404,7 +404,7 @@ COMMENT ON TABLE "activity_stats" IS '使用活跃度统计';
 
 **业务规则：**
 
-- **统计口径（specs §2.4 能力3 唯一权威）**：窗口归属按 last_turn_time ∈ [Start, End)（末轮归属）；档案侧取数 start 前移 24h 缓冲后统一内存过滤归一（跨边界会话跨周期只计一次）；ValidSessionCount/SkippedCount/ClientDist 为档案口径，SessionCount/TotalTurns 为列表口径，两口径语义分离。
+- **统计口径（specs §2.4 能力3 唯一权威）**：窗口归属按 last_turn_time ∈ [Start, End)（末轮归属）；档案侧取数 start 前移 7 天缓冲后统一内存过滤归一（跨边界会话跨周期只计一次）；ValidSessionCount/SkippedCount/ClientDist 为档案口径，SessionCount/TotalTurns 为列表口径，两口径语义分离。
 - **分级判定**：ActiveLevel 按 ValidSessionCount 与 dimension_settings 阈值比较；签名 auto_client 命中时强制 unused（C08 承接）；阈值热调在新一轮统计生效。
 - **人群签名判定次序**：failed 主导（failed 行占比 ≥ 50%）前置排除 → success 占比 ≥ 20% 走 work_tc1 正常路径 → client 全行属旁路族判 bypass_orchestrator → 其余档案趋零形态判 auto_client；threshold_overskip 首期保留枚举不生效；空档案集边界（0 行）按列表量分派 auto_client/normal。判据细节与分母口径以 specs §2.4 能力4 表格为唯一权威。
 - **幂等 upsert**：同人同周期重跑按唯一索引全列覆盖，历史周期行不动。

@@ -29,6 +29,11 @@ var (
 // listPageSize 列表翻页页大小（上游上限 100，specs §2.4 能力3 注意事项）。
 const listPageSize = 100
 
+// listMaxPages 翻页页数上限：组织单周期会话总量按 100/页折算的安全上界
+//（规格实证最活跃单人 143+ 会话，组织全员周期级 100 页即万条量级足够宽裕），
+// 防上游分页失效恒返满页时循环无界推进直到任务超时、内存膨胀。
+const listMaxPages = 100
+
 // Period 评估区间（specs §2.2），闭开区间 [Start, End)，Unix 秒。
 // 落 activity 包（消费主体），evaluator import 复用。
 type Period struct {
@@ -111,7 +116,7 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 		mine = append(mine, s)
 	}
 	mine = DedupSessions(mine) // 跨页重复去重后透出（能力4 两处口径一致）
-	digests, err := a.fetchProfiles(ctx, tokenName, period)
+	digests, err := FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -122,17 +127,14 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 	return stat, mine, digests, nil
 }
 
-// fetchSessionsByToken 按 token_name 上游过滤拉取单人窗口列表：单人评估任务
-// 免全量翻页整组织列表再内存丢弃（N 人批跑把列表 I/O 放大 N 倍的问题根因）。
-// 内存按 TokenName 二次过滤保留在调用侧作兜底（上游过滤未生效时口径仍收敛）。
-// 翻页串行（并发翻页会返回重复页，specs §2.4 能力3 注意事项）；终止唯一可信
-// 信号是短页/空页：total 低报时累计条数判据会提前截断静默丢会话，已移除。
+// fetchSessionsByToken 全量翻页周期窗口列表后按 token_name 内存分组（specs §3.2：
+// 中文 token_name 上游过滤不可用，透传触发上游 Database error，T4 3.2 实测）。
+// 翻页串行（并发翻页返回重复页）；终止唯一可信信号是短页/空页（total 低报时
+// 累计条数判据会提前截断静默丢会话）；页数上限防上游分页失效恒返满页。
 func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName string, period Period) ([]conversationlog.SessionSummary, error) {
 	var all []conversationlog.SessionSummary
-	page := 1
-	for {
+	for page := 1; page <= listMaxPages; page++ {
 		items, _, err := a.cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
-			TokenName: tokenName,
 			StartTime: period.Start,
 			EndTime:   period.End,
 			Page:      page,
@@ -145,16 +147,17 @@ func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName s
 		if len(items) < listPageSize {
 			return all, nil
 		}
-		page++
 	}
+	slog.Warn("session list page cap reached, result may be truncated",
+		"token_name", tokenName, "page_cap", listMaxPages, "code", "ErrSessionListFetch")
+	return nil, fmt.Errorf("%w: page cap %d exceeded (upstream pagination suspected broken)", ErrSessionListFetch, listMaxPages)
 }
 
 // StatPerson 对调用方传入的列表统计（sessions 须已按窗口过滤；档案侧数据由
 // 内部经 ListByPersonAndRange 读取）。落库经 repo.Upsert 幂等覆盖。
-// 透出取回的档案集，供 EvaluatePerson 注入 Evaluate 免二次取数（与
-// StatPersonByKeyWithSessions 对称）。
+// 透出取回的档案集，供 EvaluatePerson 注入 Evaluate 免二次取数。
 func (a *Activity) StatPerson(ctx context.Context, sessions []conversationlog.SessionSummary, tokenName string, period Period) (*ActivityStat, []ProfileDigest, error) {
-	profiles, err := a.fetchProfiles(ctx, tokenName, period)
+	profiles, err := FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -261,12 +264,6 @@ func (a *Activity) statPersonCore(ctx context.Context, tokenName string, session
 		PopulationNote:    rec.PopulationNote,
 		ClientDist:        clientDist,
 	}, nil
-}
-
-// fetchProfiles 档案取数单点（specs §2.4 能力3 步骤3），evaluator 经
-// FetchWindowDigests 共用同款取数口径。
-func (a *Activity) fetchProfiles(ctx context.Context, tokenName string, period Period) ([]ProfileDigest, error) {
-	return FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
 }
 
 // fetchLookbackSecs 取数缓冲前移量：容纳跨周期边界的长会话（first_turn 早于

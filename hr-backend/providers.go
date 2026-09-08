@@ -228,12 +228,9 @@ func NewExtractorProvider(llmClient ExtractorLLMClient, cl *conversationlog.Clie
 type EvaluatorLLMClient llm.Client
 
 // NewEvaluatorLLMClient 构造评估专用 LLM 客户端（03 §2.1）：Timeout 180s 覆盖
-// 建连到流式 body 读毕全程，支撑 120s 验收线与 180s p99 观测线；与全局及
-// extractor client 各持独立并发 gate。TokenBudget = MaxProfileSetTokens 30000
-// + 维度段与固定段余量 21000 = 51000，按 20 维满配最坏合法组合标定：维度段
-// ≈16900 + 逐块标签/分隔（预算口径刻意排除、实际进 prompt）≈2000 + 汇总块与
-// 固定段 ≈1000 + 裕量 ≈1100 token。
-// 任务级超时的单点声明在 worker/task 的 personEvaluateTimeout（1050s），
+// 建连到流式 body 读毕全程，与全局及 extractor client 各持独立并发 gate。
+// TokenBudget 51000 = MaxProfileSetTokens 30000 + 20 维满配维度段/标签/固定段
+// 与裕量 21000。任务级超时单点在 worker/task 的 personEvaluateTimeout（1050s），
 // 调整本处参数须同步该处。
 func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient {
 	return llm.New(llm.Config{

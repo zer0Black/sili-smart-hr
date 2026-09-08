@@ -139,13 +139,13 @@ func TestEmptyProfilesBoundary(t *testing.T) {
 }
 
 func TestEmptySessionsDegraded(t *testing.T) {
-	// sessions=nil + 档案趋零（全 skipped、client=workbuddy）：列表量门槛跳过，档案侧判据照判 bypass 表型。
-	if sig := IdentifyPopulation(nil, allSkipped(20, "workbuddy"), 5); sig.Kind != "bypass_orchestrator" || sig.Note != NoteBypass {
-		t.Fatalf("nil sessions + workbuddy: got %+v, want bypass_orchestrator", sig)
+	// sessions=nil + 档案趋零：列表量门槛对空列表同样生效（specs 判定次序
+	//「列表会话量为 0 → normal」），判据缺席落 normal 不直判档案表型。
+	if sig := IdentifyPopulation(nil, allSkipped(20, "workbuddy"), 5); sig.Kind != "normal" || sig.Note != "" {
+		t.Fatalf("nil sessions + workbuddy: got %+v, want normal", sig)
 	}
-	// sessions=nil + client=claude_code：auto_client 表型。
-	if sig := IdentifyPopulation(nil, allSkipped(20, "claude_code"), 5); sig.Kind != "auto_client" || sig.Note != NoteAutoClient {
-		t.Fatalf("nil sessions + claude_code: got %+v, want auto_client", sig)
+	if sig := IdentifyPopulation(nil, allSkipped(20, "claude_code"), 5); sig.Kind != "normal" || sig.Note != "" {
+		t.Fatalf("nil sessions + claude_code: got %+v, want normal", sig)
 	}
 }
 
@@ -245,13 +245,10 @@ func TestParseDigests(t *testing.T) {
 		t.Fatalf("len=%d, want 4", len(ds))
 	}
 
-	// success 行：Stats 解析正确、HasBlocks=true。
+	// success 行：Stats 解析正确。
 	d1 := ds[0]
 	if d1.SessionKey != "k1" || d1.Status != domain.FeatureStatusSuccess || d1.Client != "claude_code" {
 		t.Fatalf("row0 meta mismatch: %+v", d1)
-	}
-	if !d1.HasBlocks {
-		t.Fatal("success row HasBlocks must be true")
 	}
 	if d1.ProfileJSON != goodJSON {
 		t.Fatal("ProfileJSON must be carried through")
@@ -274,29 +271,20 @@ func TestParseDigests(t *testing.T) {
 		t.Fatalf("cmd reuse hashes mismatch: %+v", st.CmdReuseHashes)
 	}
 
-	// skipped 行：HasBlocks=false、Stats 零值。
+	// skipped 行：Stats 零值。
 	d2 := ds[1]
-	if d2.HasBlocks {
-		t.Fatal("skipped row HasBlocks must be false")
-	}
 	if !reflect.DeepEqual(d2.Stats, extractor.ProfileStats{}) {
 		t.Fatalf("skipped row stats must be zero value, got %+v", d2.Stats)
 	}
 
 	// 坏 JSON success 行：Stats 零值不 panic。
 	d3 := ds[2]
-	if d3.HasBlocks != true {
-		t.Fatal("success row HasBlocks stays true even with bad JSON")
-	}
 	if !reflect.DeepEqual(d3.Stats, extractor.ProfileStats{}) {
 		t.Fatalf("bad JSON row stats must be zero value, got %+v", d3.Stats)
 	}
 
-	// failed 行：仅 Stats 块（specs §2.2），HasBlocks=false、Stats 解析正确。
+	// failed 行：仅 Stats 块（specs §2.2）、Stats 解析正确。
 	d4 := ds[3]
-	if d4.HasBlocks {
-		t.Fatal("failed row HasBlocks must be false")
-	}
 	if d4.Stats.TurnCount != 2 || d4.Stats.UserMsgCount != 4 {
 		t.Fatalf("failed row stats mismatch: %+v", d4.Stats)
 	}

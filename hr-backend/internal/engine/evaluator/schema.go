@@ -42,10 +42,16 @@ type scoreNumber struct {
 }
 
 // UnmarshalJSON 按 json.Number 解码：整数值原样承载，浮点形态仅容忍无小数部分
-//（78.0 收敛 78，78.5 判解码失败）。ParseFloat 回退同时覆盖科学计数法整型浮点
-//（7e1 收敛 70）；超 int64 范围值判失败（int(f) 超范围转换是未定义行为），
-// 越界分数由 validateAndConverge 的 0-100 校验兜底拒绝。
+//（78.0 收敛 78，78.5 判解码失败）。字符串形态（"72"）显式拒绝——json.Number
+// 本质 string，Unmarshal 会剥引号静默接受，须按 JSON 首字节排除（specs 评分输出
+// schema：score 是 0-100 整数或 null，字符串形态属校验失败走重试通道）。
+// ParseFloat 回退同时覆盖科学计数法整型浮点（7e1 收敛 70）；超 int64 范围值判
+// 失败（int(f) 超范围转换是未定义行为），越界分数由 validateAndConverge 的
+// 0-100 校验兜底拒绝。
 func (s *scoreNumber) UnmarshalJSON(b []byte) error {
+	if len(b) > 0 && b[0] == '"' {
+		return fmt.Errorf("score 非数值形态: %s", b)
+	}
 	var num json.Number
 	if err := json.Unmarshal(b, &num); err != nil {
 		return err

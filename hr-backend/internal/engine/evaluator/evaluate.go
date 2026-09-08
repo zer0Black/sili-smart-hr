@@ -73,7 +73,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 	}
 
 	if digests == nil {
-		digests, err = fetchDigests(ctx, e.featureRepo, tokenName, period)
+		digests, err = activity.FetchWindowDigests(ctx, e.featureRepo, tokenName, period)
 		if err != nil {
 			return nil, err
 		}
@@ -88,13 +88,17 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		}
 	}
 
+	// 证据快照单点计算：签名 kind 是唯一的路径相关变量，落 LLM 维度行时置空
+	//（specs：签名处置经独立通道承载，score 行 evidence 记 normal 口径）。
+	ev := buildEvidence(specs, digests)
+
 	// 零有效档案与签名命中（bypass_orchestrator / auto_client）同走零 LLM 跳过路径，
 	// 全维度落 insufficient 行（specs §2.3 ErrNoValidProfiles：业务态非错误）。
 	if successCount < MinValidProfilesForEval ||
 		(sig.Kind == activity.KindBypassOrchestrator || sig.Kind == activity.KindAutoClient) {
 		slog.Info("eval skipped", "token_name", tokenName, "period_start", period.Start,
 			"success_profiles", successCount, "signature_kind", sig.Kind)
-		rows := e.skipRows(specs, digests, sig.Kind)
+		rows := skipInsufficientRows(specs, ev, sig.Kind, func(DimensionSpec) bool { return true })
 		if err := e.saveRows(ctx, tokenName, period, rows); err != nil {
 			return nil, err
 		}
@@ -102,12 +106,13 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 	}
 
 	// 空提示词维度不进 LLM 上下文（specs §3.2 维度配置缺失：不阻断其余维度）：
-	// 其 insufficient 行由 skipMissingPromptRows 确定性生成。
+	// 其 insufficient 行由 skipInsufficientRows 确定性生成。
 	scored := scoredPromptSpecs(specs)
+	missingPrompt := func(s DimensionSpec) bool { return s.PromptText == "" }
 	if len(scored) == 0 {
 		// 全维度空提示词：零维度 prompt 无评分意义，直接短路落全量 insufficient 行
 		//（DB 直改或存量脏数据绕过 service 校验的防御，免烧空 LLM 调用）。
-		rows := skipMissingPromptRows(specs, digests)
+		rows := skipInsufficientRows(specs, ev, "", missingPrompt)
 		if err := e.saveRows(ctx, tokenName, period, rows); err != nil {
 			return nil, err
 		}
@@ -132,11 +137,11 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		slog.Warn("eval model resolve failed, model_name will be empty", "err", err)
 	}
 
-	rows, err := e.llmEvaluate(ctx, tokenName, period, set, specs, scored, digests, modelID)
+	rows, err := e.llmEvaluate(ctx, tokenName, period, set, scored, ev, modelID)
 	if err != nil {
 		return nil, err // ctx 取消类基础设施错误：不落行交任务重试
 	}
-	rows = append(rows, skipMissingPromptRows(specs, digests)...)
+	rows = append(rows, skipInsufficientRows(specs, ev, "", missingPrompt)...)
 	if err := e.saveRows(ctx, tokenName, period, rows); err != nil {
 		return nil, err
 	}
@@ -156,59 +161,52 @@ func scoredPromptSpecs(specs []DimensionSpec) []DimensionSpec {
 	return out
 }
 
-// insufficientRowWithEvidence 带证据快照的 insufficient 行（skipRows 与
-// skipMissingPromptRows 共用落库口径）。
-func insufficientRowWithEvidence(spec DimensionSpec, ev string) domain.DimensionScore {
-	return domain.DimensionScore{
-		DimensionCode: spec.Code,
-		Module:        spec.Module,
-		Rationale:     insufficientDefaultRationale,
-		Insufficient:  true,
-		EvidenceJSON:  ev,
-		Source:        domain.ScoreSourceConversation,
-		PromptVersion: PromptVersion,
-		Status:        domain.ScoreStatusSuccess,
-	}
-}
-
-// skipMissingPromptRows 空提示词维度的确定性 insufficient 行（specs §3.2 维度配置
-// 缺失处置）。evidence 快照用全量 specs（含 missing 标记），与 LLM 维度行同构。
-// ErrorCode 落 skip_no_llm 标记（与 skipRows 同款）：补全提示词后重跑经先删后评
-// 自愈，防无标记 success 行被复用判定永久跳过。
-func skipMissingPromptRows(specs []DimensionSpec, digests []activity.ProfileDigest) []domain.DimensionScore {
-	hasMissing := false
-	for _, s := range specs {
-		if s.PromptText == "" {
-			hasMissing = true
-			break
-		}
-	}
-	if !hasMissing {
-		return nil
-	}
-	ev := buildEvidence(specs, digests, "")
+// skipInsufficientRows 零 LLM 路径的确定性 insufficient 行单点：predicate 圈定
+// 落行维度（全量 skip 恒 true，空提示词按 PromptText==""），ErrorCode 落
+// skip_no_llm 标记走先删后评自愈（skip 行不进复用判定，补全提示词后同款自愈）。
+func skipInsufficientRows(specs []DimensionSpec, ev, sigKind string, predicate func(DimensionSpec) bool) []domain.DimensionScore {
 	rows := make([]domain.DimensionScore, 0, len(specs))
 	for _, spec := range specs {
-		if spec.PromptText != "" {
+		if !predicate(spec) {
 			continue
 		}
-		row := insufficientRowWithEvidence(spec, ev)
-		row.ErrorCode = domain.ErrorCodeSkipNoLLM
-		rows = append(rows, row)
+		rows = append(rows, domain.DimensionScore{
+			DimensionCode: spec.Code,
+			Module:        spec.Module,
+			Rationale:     insufficientDefaultRationale,
+			Insufficient:  true,
+			EvidenceJSON:  evidenceWithSignature(ev, sigKind),
+			Source:        domain.ScoreSourceConversation,
+			PromptVersion: PromptVersion,
+			Status:        domain.ScoreStatusSuccess,
+			ErrorCode:     domain.ErrorCodeSkipNoLLM,
+		})
 	}
 	return rows
 }
 
-// idempotencyCheck 幂等预检（specs §2.3 Evaluate 行 + 能力6 规则1/2）：
-// ListByPersonPeriodExact 双界精确读同人同周期全 source 行（含 F7 active_test），
-// 按 source=conversation 过滤后判定：全 success（无 skip_no_llm 标记行）、
-// prompt_version 与当前常量一致且 dimension_code 集合覆盖当前启用维度集合 →
-// true；存在 failed 或 skip_no_llm 标记行 → DeleteConversationFailed 后继续
-//（返回 false）；版本不匹配只判不复用，旧行由 SaveAll upsert 全列覆盖替换。
+// evidenceWithSignature 把签名 kind 写入证据快照：ev 由调用方按 normal 口径
+// 单点构造，skip 路径覆写 signature_kind 字段（无需二次序列化整个快照的
+// 重新计算，JSON 尾部字段替换即可；sigKind 为空时原样返回）。
+func evidenceWithSignature(ev, sigKind string) string {
+	if sigKind == "" || sigKind == activity.KindNormal {
+		return ev
+	}
+	return strings.TrimSuffix(ev, "}") + `,"signature_kind":"` + sigKind + `"}`
+}
+
+// idempotencyCheck 幂等预检（specs 能力6 规则1/2）：全 success（无 skip_no_llm
+// 标记）且启用维度集合覆盖 → 复用；存在 failed/skip 标记/版本落后行 → 先删后评。
+// 版本比对只圈当前启用维度行：停用维度残留行不触发重评，按其 evidence 快照
+// 口径留任聚合（specs 能力5 规则1），否则每次跑批都因残留旧版本行判定需重评。
 func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, period activity.Period, specs []DimensionSpec) (bool, error) {
 	existing, err := e.scoreRepo.ListByPersonPeriodExact(ctx, tokenName, period.Start, period.End)
 	if err != nil {
 		return false, fmt.Errorf("%w: %w", ErrScoreRead, err)
+	}
+	enabled := make(map[string]bool, len(specs))
+	for _, s := range specs {
+		enabled[s.Code] = true
 	}
 	hasFailed := false
 	codes := make(map[string]bool, len(existing))
@@ -223,8 +221,12 @@ func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, peri
 				hasFailed = true // skip 行不可复用：证据面可能已变（抽取后落行），走先删后评
 				continue
 			}
+			if !enabled[r.DimensionCode] {
+				continue // 停用维度残留行不进复用集合，也不触发重评
+			}
 			if r.PromptVersion != PromptVersion {
-				return false, nil // 模板升级发版：旧版本行不复用，重评后 upsert 覆盖
+				hasFailed = true // 模板升级发版：旧版本行经先删后评重落地（非提前返回，
+				continue         // 让本周期 failed/skip 残留行一并进入删除清理）
 			}
 			codes[r.DimensionCode] = true
 		}
@@ -245,29 +247,15 @@ func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, peri
 	return full, nil
 }
 
-// skipRows 零 LLM 跳过路径的全维度 insufficient 行（specs §2.4 能力1 与能力4 处置列）：
-// Score=0、缺省文案、Source=conversation、Status=success，EvidenceJSON 记签名 kind。
-// ErrorCode 落 skip_no_llm 标记：评估先于抽取落库时，重跑经 idempotencyCheck
-// 先删后评自愈（skip 行不进复用判定）。
-func (e *Evaluator) skipRows(specs []DimensionSpec, digests []activity.ProfileDigest, sigKind string) []domain.DimensionScore {
-	ev := buildEvidence(specs, digests, sigKind)
-	rows := make([]domain.DimensionScore, 0, len(specs))
-	for _, spec := range specs {
-		row := insufficientRowWithEvidence(spec, ev)
-		row.ErrorCode = domain.ErrorCodeSkipNoLLM
-		rows = append(rows, row)
-	}
-	return rows
-}
-
 // llmEvaluate LLM 段（specs §2.4 能力1）：ErrSchemaInvalid 且 ctx 未取消重试一次
 //（extractor llmExtract 同构）；重试耗尽与调用失败落 scored 维度 failed 行
 //（error_code 记因，err=nil 终态）；ctx 取消返回基础设施 error 不落行。
+// ev 证据快照由调用方单点传入，与 skip 补行同源同口径。
 func (e *Evaluator) llmEvaluate(ctx context.Context, tokenName string, period activity.Period,
-	set *ProfileSet, allSpecs, scored []DimensionSpec, digests []activity.ProfileDigest, modelID string) ([]domain.DimensionScore, error) {
-	ev := buildEvidence(allSpecs, digests, "")
+	set *ProfileSet, scored []DimensionSpec, ev, modelID string) ([]domain.DimensionScore, error) {
+	// prompt 由 (scored, set) 决定且重试间不可变，前置到重试单元外算一次。
+	prompt := buildPrompt(scored, set)
 	callOnce := func() ([]domain.DimensionScore, error) {
-		prompt := buildPrompt(scored, set)
 		stream, err := e.llm.StreamChat(ctx, llm.ChatRequest{
 			Messages:  []llm.ChatMessage{{Role: "user", Content: prompt}},
 			MaxTokens: evalMaxTokens,
@@ -360,10 +348,10 @@ func applyRowMeta(rows []domain.DimensionScore, ev, modelID string) {
 	}
 }
 
-// buildEvidence 构造证据快照（specs §2.3 evidence_json 注释）：session_key 清单
-// 取周期 success 档案（与 prompt 证据段同集）、统计摘要取 aggregateWindow 单源
-// （与 prompt 统计段同口径）、维度口径摘要含 config_missing 标记。
-func buildEvidence(specs []DimensionSpec, digests []activity.ProfileDigest, sigKind string) string {
+// buildEvidence 构造证据快照（specs §2.3 evidence_json 注释）：恒以 normal
+// 口径构造，skip 路径的签名标注经 evidenceWithSignature 尾部覆写，避免同周期
+// 不同维度行由两处独立计算分叉。
+func buildEvidence(specs []DimensionSpec, digests []activity.ProfileDigest) string {
 	keys := make([]string, 0, len(digests))
 	for _, d := range digests {
 		if d.Status == domain.FeatureStatusSuccess {
@@ -383,7 +371,6 @@ func buildEvidence(specs []DimensionSpec, digests []activity.ProfileDigest, sigK
 		SessionKeys:    keys,
 		Summary:        aggregateWindow(digests).evidenceSummary(),
 		DimensionSpecs: specSnaps,
-		SignatureKind:  sigKind,
 	})
 	if err != nil {
 		// 纯值 marshal 恒成功，兜底空对象防 evidence 列落空串。

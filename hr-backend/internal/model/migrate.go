@@ -142,27 +142,30 @@ func seedStringArrayParam(db *gorm.DB, key, description string, values []string)
 }
 
 // migrateAggregateScoreFloatToDouble 把 aggregate_scores 的 module_score/overview_score
-// 从早期 type:float 建出的单精度列改为双精度（specs 04 DDL：MySQL DOUBLE、PG DOUBLE
-// PRECISION；float32 仅约 7 位有效数字，一位小数分数读回漂移）。SQLite 类型亲和
-// REAL 恒双精度跳过。幂等：列已是目标类型即跳过。须在 AutoMigrate 之前执行
+// 从早期 type:float 建出的单精度列改为双精度（float32 仅约 7 位有效数字，一位
+// 小数分数读回漂移）。SQLite 亲和 REAL 恒双精度跳过；幂等，须在 AutoMigrate 之前
 //（GORM 不改列类型，AutoMigrate 之后无法收敛存量列）。
 func migrateAggregateScoreFloatToDouble(db *gorm.DB) error {
+	if Using(DBSQLite) {
+		return nil // REAL 亲和恒双精度
+	}
 	m := db.Migrator()
 	if !m.HasTable(&domain.AggregateScore{}) {
-		return nil // 首启建表由 AutoMigrate 按 type:double 正常建列
+		return nil // 首启建表由 AutoMigrate 按 type:double precision 正常建列
 	}
 	for _, col := range []string{"module_score", "overview_score"} {
 		if !m.HasColumn(&domain.AggregateScore{}, col) {
 			continue
 		}
-		t, ok := columnDataType(db, &domain.AggregateScore{}, col)
-		if !ok {
-			continue
+		t, err := columnDataType(db, &domain.AggregateScore{}, col)
+		if err != nil {
+			return fmt.Errorf("probe aggregate_scores.%s data type: %w", col, err)
 		}
-		// PG 驱动 dataTypeOf 返回全小写；MySQL information_schema 返回小写。
+		// 目标与过渡形态均跳过：double/double precision 是目标；real 覆盖
+		// MySQL float 与 PG float4（information_schema 双方均报 real）。
 		switch strings.ToLower(t) {
 		case "double", "double precision", "real":
-			continue // 已是目标类型（SQLite real 亲和恒双精度）
+			continue
 		}
 		target := "DOUBLE PRECISION"
 		if Using(DBMySQL) {
@@ -180,17 +183,19 @@ func migrateAggregateScoreFloatToDouble(db *gorm.DB) error {
 	return nil
 }
 
-// columnDataType 查列当前数据类型（information_schema），失败返回 false 由调用方跳过。
-func columnDataType(db *gorm.DB, model any, col string) (string, bool) {
-	var dataType string
-	row := db.Raw(
-		"SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ? LIMIT 1",
-		"aggregate_scores", col,
-	).Row()
-	if err := row.Scan(&dataType); err != nil {
-		return "", false
+// columnDataType 经 Migrator.ColumnTypes 查列当前数据类型（Migrator 自带
+// 库/schema 限定，替代裸查 information_schema 的同名表误命中面），失败返回 error。
+func columnDataType(db *gorm.DB, model any, col string) (string, error) {
+	cols, err := db.Migrator().ColumnTypes(model)
+	if err != nil {
+		return "", fmt.Errorf("read column types: %w", err)
 	}
-	return dataType, true
+	for _, c := range cols {
+		if c.Name() == col {
+			return c.DatabaseTypeName(), nil
+		}
+	}
+	return "", fmt.Errorf("column %s not found", col)
 }
 
 // migrateSessionFeatureClient 给存量 session_features 补 client 列（幂等）：

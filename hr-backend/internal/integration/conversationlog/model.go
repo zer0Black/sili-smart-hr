@@ -1,11 +1,11 @@
 package conversationlog
 
 // ListSessionsRequest 是会话列表查询条件。UserID 非 0 时组件层内存过滤，
-// total 保持上游口径；Username/TokenName 透传上游精确匹配参数；时间窗为
-// Unix 秒；Page/PageSize 越界由 buildListQuery 钳制。
+// total 保持上游口径；Username 透传上游精确匹配（token_name 中文值上游过滤
+// 触发 Database error，TECH_005 §3.2 禁用，按人过滤走全量拉取内存分组）；
+// 时间窗为 Unix 秒；Page/PageSize 越界由 buildListQuery 钳制。
 type ListSessionsRequest struct {
 	Username  string
-	TokenName string
 	UserID    int
 	StartTime int64 // Unix 秒
 	EndTime   int64

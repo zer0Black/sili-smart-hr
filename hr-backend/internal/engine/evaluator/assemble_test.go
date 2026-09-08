@@ -22,7 +22,6 @@ func digestOf(key, status string, st extractor.ProfileStats, pj string) activity
 		SessionKey:  key,
 		Status:      status,
 		Stats:       st,
-		HasBlocks:   status == domain.FeatureStatusSuccess,
 		ProfileJSON: pj,
 	}
 }

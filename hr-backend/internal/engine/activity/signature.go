@@ -40,7 +40,7 @@ type PopulationSignature struct {
 
 // IdentifyPopulation 人群签名识别（specs §2.4 能力4 判定次序唯一权威）：
 // failed 主导排除 → work_tc1 → bypass_orchestrator → auto_client → threshold 首期保留不生效。
-// sessions 空且 profiles 非空时跳过列表量门槛判据（Evaluate 独立调用退化形态）。
+// 列表量门槛对 sessions 空（独立调用退化或组合路径拉回 0 条）同样生效，落 normal。
 func IdentifyPopulation(sessions []conversationlog.SessionSummary, profiles []ProfileDigest, lowFreqThreshold int) PopulationSignature {
 	total := len(profiles)
 	var success, failed int
@@ -79,8 +79,10 @@ func IdentifyPopulation(sessions []conversationlog.SessionSummary, profiles []Pr
 		return PopulationSignature{Kind: KindNormal} // 命中即止：success 达线不落趋零签名
 	}
 
-	// ③④ 档案趋零形态：列表量门槛缺席（sessions 空的退化分支）时跳过门槛判据。
-	if len(sessions) > 0 && len(sessions) < lowFreqThreshold {
+	// ③④ 档案趋零形态：列表量门槛（specs 判定次序「列表会话量为 0 → normal」）
+	// 无条件生效——sessions 空无论来自独立调用退化还是组合路径拉回 0 条，
+	// 都属列表判据缺席，门槛不满足即落 normal（不能跳过门槛直判档案表型）。
+	if len(sessions) < lowFreqThreshold {
 		return PopulationSignature{Kind: KindNormal}
 	}
 	if allBypassClient {

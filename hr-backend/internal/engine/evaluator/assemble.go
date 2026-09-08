@@ -22,10 +22,10 @@ type ProfileSet struct {
 	TotalSuccess  int      // 周期 success 档案总数（截断披露分母）
 }
 
-// AssembleProfileSet 分层组装档案集（specs §2.4 能力2）：fetchDigests 取数归一后
-// 纯内存组装，纯读不调 LLM 不落库。
+// AssembleProfileSet 分层组装档案集（specs §2.4 能力2）：FetchWindowDigests
+// 取数归一后纯内存组装，纯读不调 LLM 不落库。
 func (e *Evaluator) AssembleProfileSet(ctx context.Context, tokenName string, period activity.Period) (*ProfileSet, error) {
-	digests, err := fetchDigests(ctx, e.featureRepo, tokenName, period)
+	digests, err := activity.FetchWindowDigests(ctx, e.featureRepo, tokenName, period)
 	if err != nil {
 		return nil, err
 	}

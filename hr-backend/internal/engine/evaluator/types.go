@@ -51,8 +51,6 @@ var (
 	ErrNoDimensions = errors.New("evaluator: no enabled conversation dimensions")
 	// ErrDimensionConfigRead 维度配置读取失败（适配层 wrap 后透传）。
 	ErrDimensionConfigRead = errors.New("evaluator: dimension config read failed")
-	// ErrProfileRead 档案表读取失败（wrap 底层错误）。
-	ErrProfileRead = errors.New("evaluator: profile read failed")
 	// ErrScoreRead 既有评分行读取失败（幂等判定路径）。
 	ErrScoreRead = errors.New("evaluator: score read failed")
 	// ErrStoreWrite 评分行落库失败（wrap 底层错误）：不落行，error 上抛交任务重试。

@@ -15,8 +15,12 @@ import (
 // TypePersonEvaluate 单人评估任务类型（03 §3.1）。
 const TypePersonEvaluate = "engine:person-evaluate"
 
-// personEvaluateTimeout 任务级超时 1050s（03 §3.3 推导：列表拉取最坏 190s +
-// LLM 段最坏 840s + 落库冗余 ≈1035s，1050s 含 15s 冗余）。
+// personEvaluateTimeout 任务级超时 1050s（03 §3.3 推导）：LLM 段最坏 840s
+//（评估专用 client Timeout 180s：429 带 Retry-After 封顶 60s 下单次 callOnce
+// 180+60+180=420s，schema 校验失败重试共 2 次完整调用）+ 列表翻页与落库共享
+// 剩余 210s。列表每页最坏 190s（30s×4 次尝试 + 10/20/40s 退避），多页慢路径
+// 会先于 LLM 段吃预算直至 ctx 超时交任务重试；极端翻页由 listMaxPages 页数
+// 上限兜底终止（activity 包），不至无界循环。
 const personEvaluateTimeout = 1050 * time.Second
 
 // PersonEvaluateTaskPayload 任务载荷（03 §3.2）。

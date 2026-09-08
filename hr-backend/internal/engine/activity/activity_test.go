@@ -415,8 +415,33 @@ func TestActivityStatPerf(t *testing.T) {
 
 // ---- 自行补充边界与异常 ----
 
+// TestStatPersonByKeyPageCap 补充：上游分页失效恒返满页时，翻到 listMaxPages
+// 上限即报 ErrSessionListFetch 终止，不再无界推进（防内存膨胀到任务超时）。
+func TestStatPersonByKeyPageCap(t *testing.T) {
+	p := weekPeriod()
+	full := make([]conversationlog.SessionSummary, listPageSize)
+	for i := range full {
+		full[i] = conversationlog.SessionSummary{
+			SessionKey: fmt.Sprintf("k-%03d", i), TurnCount: 1, TokenName: "张三",
+		}
+	}
+	act := New(&stuckFullPageFetcher{full}, &fakeFeatureRepo{},
+		&fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{}, secretOK)
+	if _, err := act.StatPersonByKey(context.Background(), "张三", p); err == nil {
+		t.Fatal("恒满页 want ErrSessionListFetch, got nil")
+	}
+}
+
+// stuckFullPageFetcher 模拟上游分页失效：任意页请求恒返同一满页。
+type stuckFullPageFetcher struct{ page []conversationlog.SessionSummary }
+
+func (f *stuckFullPageFetcher) ListSessions(ctx context.Context, secret string, req conversationlog.ListSessionsRequest) ([]conversationlog.SessionSummary, int64, error) {
+	return f.page, int64(len(f.page)), nil
+}
+
 // TestStatPersonByKeyPagination：多页串行翻页、内存分组、去重。page1 为满页
 // （100 条，上游按 PageSize 填页契约），短页即尾页的终止判据下须由 page2 收尾。
+// 全量拉取口径（specs §3.2：中文 token_name 上游过滤不可用，不透传过滤参数）。
 func TestStatPersonByKeyPagination(t *testing.T) {
 	p := weekPeriod()
 	page1 := make([]conversationlog.SessionSummary, 0, 100)
@@ -453,8 +478,9 @@ func TestStatPersonByKeyPagination(t *testing.T) {
 	if cl.calls != 2 {
 		t.Errorf("list calls = %d, want 2（满页翻到下一页）", cl.calls)
 	}
-	if cl.lastReq.PageSize != 100 || cl.lastReq.TokenName != "张三" {
-		t.Errorf("lastReq = %+v, want PageSize=100 TokenName=张三（上游按 token 过滤）", cl.lastReq)
+	// 全量拉取口径：请求无按人过滤字段（specs §3.2 禁令，ListSessionsRequest 已不含该参数）。
+	if cl.lastReq.PageSize != 100 || cl.lastReq.Username != "" {
+		t.Errorf("lastReq = %+v, want PageSize=100 且无按人过滤（全量拉取后内存分组）", cl.lastReq)
 	}
 	// 时间窗参数：列表拉取按 [Start, End) 传窗口。
 	if cl.lastReq.StartTime != p.Start || cl.lastReq.EndTime != p.End {

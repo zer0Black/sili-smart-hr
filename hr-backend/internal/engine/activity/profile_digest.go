@@ -16,7 +16,6 @@ type ProfileDigest struct {
 	Status      string // success / failed / skipped
 	Client      string // 主客户端标识（T4 分层探测落库列，人群签名维度）
 	Stats       extractor.ProfileStats
-	HasBlocks   bool      // success 行为 true（Summary/Instruction/Behavior 三块可用）
 	ProfileJSON string    // 原始档案 JSON，仅内存临时持有
 	LastTurn    time.Time // 末轮时间（归一过滤判据，from domain 行 LastTurnAt），T4 评分侧消费
 }
@@ -28,7 +27,8 @@ type digestJSON struct {
 }
 
 // ParseDigests 把 domain.SessionFeature 行转 ProfileDigest 列表：
-// json.Unmarshal ProfileJSON 取 Stats（失败或 skipped 行零值），HasBlocks=status==success。
+// json.Unmarshal ProfileJSON 取 Stats（失败或 skipped 行零值）。
+// 块可用性由消费方按 Status==success 判（success 行三块必在）。
 // 坏 JSON 行 Stats 落零值不报错（签名判定只依赖 status/client 分布，单行统计缺失可容忍）。
 func ParseDigests(rows []domain.SessionFeature) []ProfileDigest {
 	ds := make([]ProfileDigest, 0, len(rows))
@@ -38,7 +38,6 @@ func ParseDigests(rows []domain.SessionFeature) []ProfileDigest {
 			SessionKey:  r.SessionKey,
 			Status:      r.Status,
 			Client:      r.Client,
-			HasBlocks:   r.Status == domain.FeatureStatusSuccess,
 			ProfileJSON: r.ProfileJSON,
 			LastTurn:    r.LastTurnAt,
 		}

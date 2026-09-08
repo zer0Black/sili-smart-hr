@@ -2,9 +2,6 @@ package evaluator
 
 import (
 	"context"
-
-	"sili-smart-hr/backend/internal/engine/activity"
-	"sili-smart-hr/backend/internal/repository"
 )
 
 // DimensionSpecReader 评分维度口径读取窄接口（03 §5.2），DimensionRepository
@@ -26,11 +23,4 @@ func loadSpecs(ctx context.Context, r DimensionSpecReader) ([]DimensionSpec, err
 		return nil, ErrNoDimensions
 	}
 	return specs, nil
-}
-
-// fetchDigests 档案取数归一（specs §2.4 能力1 流程段）：走 activity.
-// FetchWindowDigests 单点（24h 缓冲 + LastTurn ∈ [Start, End) 末轮归属过滤，
-// 与活跃度侧同源同口径），读取失败由单点 wrap activity.ErrProfileRead。
-func fetchDigests(ctx context.Context, repo repository.SessionFeatureRepository, tokenName string, period activity.Period) ([]activity.ProfileDigest, error) {
-	return activity.FetchWindowDigests(ctx, repo, tokenName, period)
 }
