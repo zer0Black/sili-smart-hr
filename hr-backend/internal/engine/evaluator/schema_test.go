@@ -339,3 +339,26 @@ func TestParseScoreOutputFractionalRejected(t *testing.T) {
 		t.Fatalf("非整数 score 应判 ErrSchemaInvalid, got %v", err)
 	}
 }
+
+// TestParseScoreOutputScientificNotationConverged 补充：科学计数法整型浮点
+//（7e1）收敛 70（ParseFloat 回退的宽容路径，结果与整数形态等值）。
+func TestParseScoreOutputScientificNotationConverged(t *testing.T) {
+	raw := `{"dimensions":[{"code":"AI_INSTRUCTION","score":7e1,"insufficient":false,"rationale":"指令清晰"}]}`
+	out, err := parseScoreOutput(raw)
+	if err != nil {
+		t.Fatalf("科学计数法整型浮点应解析成功: %v", err)
+	}
+	d := out.Dimensions[0]
+	if d.Score == nil || d.Score.n != 70 {
+		t.Errorf("score = %+v, want 70", d.Score)
+	}
+}
+
+// TestParseScoreOutputHugeFloatRejected 补充：超 int64 范围的整型浮点（1e30）
+// 判解码失败（int(f) 超范围转换是未定义行为，前置拒绝），走 ErrSchemaInvalid。
+func TestParseScoreOutputHugeFloatRejected(t *testing.T) {
+	raw := `{"dimensions":[{"code":"AI_INSTRUCTION","score":1e30,"insufficient":false,"rationale":"指令清晰"}]}`
+	if _, err := parseScoreOutput(raw); !errors.Is(err, ErrSchemaInvalid) {
+		t.Fatalf("超 int64 范围值应判 ErrSchemaInvalid, got %v", err)
+	}
+}

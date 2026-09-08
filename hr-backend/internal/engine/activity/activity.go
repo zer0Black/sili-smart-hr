@@ -99,7 +99,7 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("activity: resolve integration secret: %w", err)
 	}
-	all, err := a.fetchAllSessions(ctx, secret, period)
+	all, err := a.fetchSessionsByToken(ctx, secret, tokenName, period)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -122,13 +122,17 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 	return stat, mine, digests, nil
 }
 
-// fetchAllSessions 串行翻页拉全量列表（并发翻页会返回重复页，specs §2.4 能力3
-// 注意事项）：total 驱动翻页，累计条数覆盖 total 即止，防上游 total 抖动死循环。
-func (a *Activity) fetchAllSessions(ctx context.Context, secret string, period Period) ([]conversationlog.SessionSummary, error) {
+// fetchSessionsByToken 按 token_name 上游过滤拉取单人窗口列表：单人评估任务
+// 免全量翻页整组织列表再内存丢弃（N 人批跑把列表 I/O 放大 N 倍的问题根因）。
+// 内存按 TokenName 二次过滤保留在调用侧作兜底（上游过滤未生效时口径仍收敛）。
+// 翻页串行（并发翻页会返回重复页，specs §2.4 能力3 注意事项）；终止唯一可信
+// 信号是短页/空页：total 低报时累计条数判据会提前截断静默丢会话，已移除。
+func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName string, period Period) ([]conversationlog.SessionSummary, error) {
 	var all []conversationlog.SessionSummary
 	page := 1
 	for {
-		items, total, err := a.cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
+		items, _, err := a.cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
+			TokenName: tokenName,
 			StartTime: period.Start,
 			EndTime:   period.End,
 			Page:      page,
@@ -138,9 +142,7 @@ func (a *Activity) fetchAllSessions(ctx context.Context, secret string, period P
 			return nil, fmt.Errorf("%w: %w", ErrSessionListFetch, err)
 		}
 		all = append(all, items...)
-		// 三重终止：累计覆盖 total、空页、短页（len(items) < 页大小即上游无更多数据，
-		// 防 total 低报时提前截断静默丢会话）。
-		if int64(len(all)) >= total || len(items) < listPageSize {
+		if len(items) < listPageSize {
 			return all, nil
 		}
 		page++
@@ -198,6 +200,9 @@ func (a *Activity) statPersonCore(ctx context.Context, tokenName string, session
 	}
 
 	// 档案口径：status 分布与 client 分布同源同一过滤后集合。
+	// clientDist 空串键是 detail_invalid 档案行的既定形态（T4_004 契约：空串
+	// 与 unknown 是两个桶，签名侧判据合并、分布侧忠实分桶），消费方（前端
+	// 图表/画像）须按可空键处理，勿按已知客户端枚举硬映射。
 	valid, skipped := 0, 0
 	clientDist := make(map[string]int, len(profiles))
 	for _, p := range profiles {
@@ -264,11 +269,16 @@ func (a *Activity) fetchProfiles(ctx context.Context, tokenName string, period P
 	return FetchWindowDigests(ctx, a.featureRepo, tokenName, period)
 }
 
+// fetchLookbackSecs 取数缓冲前移量：容纳跨周期边界的长会话（first_turn 早于
+// 周期起点、last_turn 落窗内）。7 天覆盖周周期内任意跨界形态；不足时该会话
+// 不计入任何周期（无索引可按 last_turn 直查，扩缓冲是既有索引下的取数口径）。
+const fetchLookbackSecs = 7 * 24 * 3600
+
 // FetchWindowDigests 档案取数归一单点（specs §2.4 能力3 步骤3）：ListByPersonAndRange
-// start 前移 24h 缓冲取回三态行（容纳跨边界行）→ ParseDigests → 内存过滤
+// start 前移 7 天缓冲取回三态行（容纳跨边界长会话）→ ParseDigests → 内存过滤
 // LastTurn ∈ [Start, End) 归一到本周期。计数、签名判据与评分证据三侧共用本函数。
 func FetchWindowDigests(ctx context.Context, repo repository.SessionFeatureRepository, tokenName string, period Period) ([]ProfileDigest, error) {
-	rows, err := repo.ListByPersonAndRange(ctx, tokenName, period.Start-24*3600, period.End)
+	rows, err := repo.ListByPersonAndRange(ctx, tokenName, period.Start-fetchLookbackSecs, period.End)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrProfileRead, err)
 	}

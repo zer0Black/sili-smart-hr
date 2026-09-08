@@ -200,6 +200,9 @@ func buildListQuery(req ListSessionsRequest) url.Values {
 	if req.Username != "" {
 		q.Set("username", req.Username) // 精确匹配
 	}
+	if req.TokenName != "" {
+		q.Set("token_name", req.TokenName) // 精确匹配
+	}
 	if req.StartTime != 0 {
 		q.Set("start_timestamp", strconv.FormatInt(req.StartTime, 10))
 	}

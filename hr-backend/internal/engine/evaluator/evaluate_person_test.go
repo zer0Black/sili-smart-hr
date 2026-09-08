@@ -385,9 +385,9 @@ func TestEvaluatePersonReusedPath(t *testing.T) {
 	f := newPersonFixture(t)
 	p := testPeriod()
 	f.scores.existing = []domain.DimensionScore{
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 	f.ev = f.newProbingEvaluator()

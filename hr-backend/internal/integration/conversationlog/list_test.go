@@ -105,6 +105,7 @@ func TestListSessionsQueryContract(t *testing.T) {
 	c := newSleepClient(baseURL)
 	if _, _, err := c.ListSessions(context.Background(), "s", ListSessionsRequest{
 		Username:  "user1",
+		TokenName: "my-token",
 		StartTime: 1781234567,
 		EndTime:   1781237890,
 		Page:      1,
@@ -127,6 +128,9 @@ func TestListSessionsQueryContract(t *testing.T) {
 	if withUser.Get("username") != "user1" {
 		t.Errorf("username: got %q want user1", withUser.Get("username"))
 	}
+	if withUser.Get("token_name") != "my-token" {
+		t.Errorf("token_name: got %q want my-token", withUser.Get("token_name"))
+	}
 	if _, ok := withUser["page"]; ok {
 		t.Error("query must use p, not page")
 	}
@@ -137,6 +141,9 @@ func TestListSessionsQueryContract(t *testing.T) {
 	}
 	if _, ok := withoutUser["username"]; ok {
 		t.Error("empty Username must not be sent")
+	}
+	if _, ok := withoutUser["token_name"]; ok {
+		t.Error("empty TokenName must not be sent")
 	}
 	if _, ok := withoutUser["start_timestamp"]; ok {
 		t.Error("zero StartTime must not be sent")

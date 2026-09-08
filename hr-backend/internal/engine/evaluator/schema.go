@@ -42,7 +42,9 @@ type scoreNumber struct {
 }
 
 // UnmarshalJSON 按 json.Number 解码：整数值原样承载，浮点形态仅容忍无小数部分
-//（78.0 收敛 78，78.5 判解码失败）。
+//（78.0 收敛 78，78.5 判解码失败）。ParseFloat 回退同时覆盖科学计数法整型浮点
+//（7e1 收敛 70）；超 int64 范围值判失败（int(f) 超范围转换是未定义行为），
+// 越界分数由 validateAndConverge 的 0-100 校验兜底拒绝。
 func (s *scoreNumber) UnmarshalJSON(b []byte) error {
 	var num json.Number
 	if err := json.Unmarshal(b, &num); err != nil {
@@ -54,7 +56,7 @@ func (s *scoreNumber) UnmarshalJSON(b []byte) error {
 		return nil
 	}
 	f, ferr := strconv.ParseFloat(num.String(), 64)
-	if ferr != nil || f != math.Trunc(f) {
+	if ferr != nil || f != math.Trunc(f) || f < math.MinInt64 || f > math.MaxInt64 {
 		return fmt.Errorf("score 非整数形态: %s", num.String())
 	}
 	s.n = int(f)

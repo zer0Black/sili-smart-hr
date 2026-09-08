@@ -177,9 +177,27 @@ func TestWindowAttributionAndDedup(t *testing.T) {
 	if stat.ClientDist["claude_code"] != 1 || stat.ClientDist["opencode"] != 1 {
 		t.Errorf("ClientDist = %v, want claude_code:1 opencode:1", stat.ClientDist)
 	}
-	// 取数缓冲窗：start 前移 24h。
-	if feats.lastArg.start != p.Start-day {
-		t.Errorf("fetch start = %d, want %d（前移 24h 缓冲）", feats.lastArg.start, p.Start-day)
+	// 取数缓冲窗：start 前移 7 天。
+	if feats.lastArg.start != p.Start-7*day {
+		t.Errorf("fetch start = %d, want %d（前移 7 天缓冲）", feats.lastArg.start, p.Start-7*day)
+	}
+}
+
+// TestWindowLookbackCoversLongCrossBorder 补充：first_turn 早于 Start-24h 但
+// last_turn 落本周期的长会话（跨周续用）仍取回计入，不再被 24h 假设漏出。
+func TestWindowLookbackCoversLongCrossBorder(t *testing.T) {
+	p := weekPeriod()
+	feats := &fakeFeatureRepo{rows: []domain.SessionFeature{
+		// first_turn 在周期前 3 天（超出旧 24h 缓冲）、last_turn 落本周期首小时。
+		featRow("long-1", domain.FeatureStatusSuccess, p.Start-3*24*3600, p.Start+3600, "claude_code"),
+	}}
+	act := newAct(nil, feats, &fakeThresholds{active: 10, lowFreq: 5}, &fakeStatRepo{})
+	stat, _, err := act.StatPerson(context.Background(), nil, "张三", p)
+	if err != nil {
+		t.Fatalf("StatPerson: %v", err)
+	}
+	if stat.ValidSessionCount != 1 {
+		t.Errorf("ValidSessionCount = %d, want 1（跨周长会话计入本周期）", stat.ValidSessionCount)
 	}
 }
 
@@ -435,8 +453,8 @@ func TestStatPersonByKeyPagination(t *testing.T) {
 	if cl.calls != 2 {
 		t.Errorf("list calls = %d, want 2（满页翻到下一页）", cl.calls)
 	}
-	if cl.lastReq.PageSize != 100 || cl.lastReq.Username != "" {
-		t.Errorf("lastReq = %+v, want PageSize=100 Username 空（全量拉取）", cl.lastReq)
+	if cl.lastReq.PageSize != 100 || cl.lastReq.TokenName != "张三" {
+		t.Errorf("lastReq = %+v, want PageSize=100 TokenName=张三（上游按 token 过滤）", cl.lastReq)
 	}
 	// 时间窗参数：列表拉取按 [Start, End) 传窗口。
 	if cl.lastReq.StartTime != p.Start || cl.lastReq.EndTime != p.End {

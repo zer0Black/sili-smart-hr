@@ -64,7 +64,7 @@ func featRow(key, status string, first, last int64) domain.SessionFeature {
 }
 
 // TestFetchDigestsWindowFilter 锚点：4 行档案（窗口内 2、缓冲窗内但 last_turn
-// 在前周期 1、窗口后 1）→ 过滤后 2 行；且取数 start 前移 24h 缓冲。
+// 在前周期 1、窗口后 1）→ 过滤后 2 行；且取数 start 前移 7 天缓冲。
 func TestFetchDigestsWindowFilter(t *testing.T) {
 	p := testPeriod()
 	day := int64(24 * 3600)
@@ -92,9 +92,9 @@ func TestFetchDigestsWindowFilter(t *testing.T) {
 	if !keys["cross-1"] || !keys["in-1"] {
 		t.Errorf("过滤结果键集 = %v, want cross-1 与 in-1", keys)
 	}
-	// 取数窗口：start 前移 24h 缓冲、end 取周期 End。
-	if repo.lastArg.start != p.Start-day {
-		t.Errorf("fetch start = %d, want %d（前移 24h）", repo.lastArg.start, p.Start-day)
+	// 取数窗口：start 前移 7 天缓冲、end 取周期 End。
+	if repo.lastArg.start != p.Start-7*day {
+		t.Errorf("fetch start = %d, want %d（前移 7 天）", repo.lastArg.start, p.Start-7*day)
 	}
 	if repo.lastArg.end != p.End {
 		t.Errorf("fetch end = %d, want %d", repo.lastArg.end, p.End)

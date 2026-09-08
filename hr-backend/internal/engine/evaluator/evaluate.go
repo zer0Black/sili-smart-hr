@@ -65,10 +65,11 @@ func (e *Evaluator) Evaluate(ctx context.Context, tokenName string, period activ
 		return &EvaluateResult{Reused: true}, nil
 	}
 
-	// 活跃度阈值（签名判据入参）：适配层已 wrap ErrDimensionConfigRead，透传即可。
+	// 活跃度阈值（签名判据入参）：适配器双消费方共用返回裸错误，
+	// 哨兵由本包在此 wrap（activity 侧同款各自 wrap）。
 	_, lowFreq, err := e.thresholds.ActivityThresholds(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrDimensionConfigRead, err)
 	}
 
 	if digests == nil {
@@ -172,6 +173,8 @@ func insufficientRowWithEvidence(spec DimensionSpec, ev string) domain.Dimension
 
 // skipMissingPromptRows 空提示词维度的确定性 insufficient 行（specs §3.2 维度配置
 // 缺失处置）。evidence 快照用全量 specs（含 missing 标记），与 LLM 维度行同构。
+// ErrorCode 落 skip_no_llm 标记（与 skipRows 同款）：补全提示词后重跑经先删后评
+// 自愈，防无标记 success 行被复用判定永久跳过。
 func skipMissingPromptRows(specs []DimensionSpec, digests []activity.ProfileDigest) []domain.DimensionScore {
 	hasMissing := false
 	for _, s := range specs {
@@ -189,16 +192,19 @@ func skipMissingPromptRows(specs []DimensionSpec, digests []activity.ProfileDige
 		if spec.PromptText != "" {
 			continue
 		}
-		rows = append(rows, insufficientRowWithEvidence(spec, ev))
+		row := insufficientRowWithEvidence(spec, ev)
+		row.ErrorCode = domain.ErrorCodeSkipNoLLM
+		rows = append(rows, row)
 	}
 	return rows
 }
 
 // idempotencyCheck 幂等预检（specs §2.3 Evaluate 行 + 能力6 规则1/2）：
 // ListByPersonPeriodExact 双界精确读同人同周期全 source 行（含 F7 active_test），
-// 按 source=conversation 过滤后判定：全 success（无 skip_no_llm 标记行）且
-// dimension_code 集合覆盖当前启用维度集合 → true；存在 failed 或 skip_no_llm
-// 标记行 → DeleteConversationFailed 后继续（返回 false）。
+// 按 source=conversation 过滤后判定：全 success（无 skip_no_llm 标记行）、
+// prompt_version 与当前常量一致且 dimension_code 集合覆盖当前启用维度集合 →
+// true；存在 failed 或 skip_no_llm 标记行 → DeleteConversationFailed 后继续
+//（返回 false）；版本不匹配只判不复用，旧行由 SaveAll upsert 全列覆盖替换。
 func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, period activity.Period, specs []DimensionSpec) (bool, error) {
 	existing, err := e.scoreRepo.ListByPersonPeriodExact(ctx, tokenName, period.Start, period.End)
 	if err != nil {
@@ -216,6 +222,9 @@ func (e *Evaluator) idempotencyCheck(ctx context.Context, tokenName string, peri
 			if r.ErrorCode == domain.ErrorCodeSkipNoLLM {
 				hasFailed = true // skip 行不可复用：证据面可能已变（抽取后落行），走先删后评
 				continue
+			}
+			if r.PromptVersion != PromptVersion {
+				return false, nil // 模板升级发版：旧版本行不复用，重评后 upsert 覆盖
 			}
 			codes[r.DimensionCode] = true
 		}

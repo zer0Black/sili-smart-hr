@@ -230,7 +230,9 @@ type EvaluatorLLMClient llm.Client
 // NewEvaluatorLLMClient 构造评估专用 LLM 客户端（03 §2.1）：Timeout 180s 覆盖
 // 建连到流式 body 读毕全程，支撑 120s 验收线与 180s p99 观测线；与全局及
 // extractor client 各持独立并发 gate。TokenBudget = MaxProfileSetTokens 30000
-// + 维度段与固定段余量 18000 = 48000（20 维度满配标定，见 03 §2.1 推导）。
+// + 维度段与固定段余量 21000 = 51000，按 20 维满配最坏合法组合标定：维度段
+// ≈16900 + 逐块标签/分隔（预算口径刻意排除、实际进 prompt）≈2000 + 汇总块与
+// 固定段 ≈1000 + 裕量 ≈1100 token。
 // 任务级超时的单点声明在 worker/task 的 personEvaluateTimeout（1050s），
 // 调整本处参数须同步该处。
 func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient {
@@ -240,7 +242,7 @@ func NewEvaluatorLLMClient(provider llm.EnabledModelProvider) EvaluatorLLMClient
 		InitialBackoff: 5 * time.Second,
 		MaxBackoff:     10 * time.Second,
 		MaxRetryAfter:  60 * time.Second,
-		TokenBudget:    evaluator.MaxProfileSetTokens + 18000,
+		TokenBudget:    evaluator.MaxProfileSetTokens + 21000,
 		TokenCounter:   llm.NewCharDiv3Counter(),
 	}, provider)
 }
@@ -257,12 +259,13 @@ func NewActivityThresholdReader(dimRepo repository.DimensionRepository) *Activit
 }
 
 // ActivityThresholds 读 dimension_settings 单行。任何读取失败（含
-// ErrRecordNotFound）一律 wrap ErrDimensionConfigRead 上抛：阈值不重复定义
-// 默认值，migrateDB seed 保证行存在，无回退分支。
+// ErrRecordNotFound）一律带上下文上抛，哨兵由消费方各自 wrap（activity 与
+// evaluator 双消费方，哨兵语义归消费侧包）：阈值不重复定义默认值，
+// migrateDB seed 保证行存在，无回退分支。
 func (r *ActivityThresholdReader) ActivityThresholds(ctx context.Context) (int, int, error) {
 	s, err := r.dimRepo.GetActivitySetting(ctx)
 	if err != nil {
-		return 0, 0, fmt.Errorf("%w: %w", evaluator.ErrDimensionConfigRead, err)
+		return 0, 0, fmt.Errorf("read dimension_settings: %w", err)
 	}
 	return s.ActiveThreshold, s.LowFrequencyThreshold, nil
 }

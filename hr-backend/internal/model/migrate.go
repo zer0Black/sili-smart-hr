@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/extractor"
@@ -18,6 +19,9 @@ import (
 func migrateDB(db *gorm.DB) error {
 	// A 段：AutoMigrate 之前的手写类型/加列迁移钩子（幂等）。
 	if err := migrateSessionFeatureClient(db); err != nil {
+		return err
+	}
+	if err := migrateAggregateScoreFloatToDouble(db); err != nil {
 		return err
 	}
 
@@ -135,6 +139,58 @@ func seedStringArrayParam(db *gorm.DB, key, description string, values []string)
 		return fmt.Errorf("seed system_params %s: %w", key, err)
 	}
 	return nil
+}
+
+// migrateAggregateScoreFloatToDouble 把 aggregate_scores 的 module_score/overview_score
+// 从早期 type:float 建出的单精度列改为双精度（specs 04 DDL：MySQL DOUBLE、PG DOUBLE
+// PRECISION；float32 仅约 7 位有效数字，一位小数分数读回漂移）。SQLite 类型亲和
+// REAL 恒双精度跳过。幂等：列已是目标类型即跳过。须在 AutoMigrate 之前执行
+//（GORM 不改列类型，AutoMigrate 之后无法收敛存量列）。
+func migrateAggregateScoreFloatToDouble(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable(&domain.AggregateScore{}) {
+		return nil // 首启建表由 AutoMigrate 按 type:double 正常建列
+	}
+	for _, col := range []string{"module_score", "overview_score"} {
+		if !m.HasColumn(&domain.AggregateScore{}, col) {
+			continue
+		}
+		t, ok := columnDataType(db, &domain.AggregateScore{}, col)
+		if !ok {
+			continue
+		}
+		// PG 驱动 dataTypeOf 返回全小写；MySQL information_schema 返回小写。
+		switch strings.ToLower(t) {
+		case "double", "double precision", "real":
+			continue // 已是目标类型（SQLite real 亲和恒双精度）
+		}
+		target := "DOUBLE PRECISION"
+		if Using(DBMySQL) {
+			target = "DOUBLE"
+		}
+		q := fmt.Sprintf("ALTER TABLE aggregate_scores ALTER COLUMN %s TYPE %s", QuoteIdent(col), target)
+		// MySQL ALTER ... MODIFY 与 PG 语法不同，按方言分派。
+		if Using(DBMySQL) {
+			q = fmt.Sprintf("ALTER TABLE aggregate_scores MODIFY COLUMN %s %s NULL", QuoteIdent(col), target)
+		}
+		if err := db.Exec(q).Error; err != nil {
+			return fmt.Errorf("migrate aggregate_scores.%s to double: %w", col, err)
+		}
+	}
+	return nil
+}
+
+// columnDataType 查列当前数据类型（information_schema），失败返回 false 由调用方跳过。
+func columnDataType(db *gorm.DB, model any, col string) (string, bool) {
+	var dataType string
+	row := db.Raw(
+		"SELECT data_type FROM information_schema.columns WHERE table_name = ? AND column_name = ? LIMIT 1",
+		"aggregate_scores", col,
+	).Row()
+	if err := row.Scan(&dataType); err != nil {
+		return "", false
+	}
+	return dataType, true
 }
 
 // migrateSessionFeatureClient 给存量 session_features 补 client 列（幂等）：

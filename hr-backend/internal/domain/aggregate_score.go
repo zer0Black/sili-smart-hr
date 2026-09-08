@@ -17,8 +17,8 @@ type AggregateScore struct {
 	PeriodStartAt time.Time `gorm:"not null;uniqueIndex:uk_person_period_module"`                  // 评估周期起点（含），与评分行同转换口径
 	PeriodEndAt   time.Time `gorm:"not null"`                                                      // 评估周期终点（不含），同上
 	Module        string    `gorm:"type:varchar(32);not null;uniqueIndex:uk_person_period_module"` // 模块编码，业务模块行落 module_code 原值，总览行落哨兵值 overview
-	ModuleScore   *float64  `gorm:"type:float"`                                                    // 模块分（模块内 InOverview 且参与维度的加权平均），总览行与全剔除模块为 NULL
-	OverviewScore *float64  `gorm:"type:float"`                                                    // 总览分（跨模块直接加权平均），仅总览行落值，全剔除为 NULL
+	ModuleScore   *float64  `gorm:"type:double"`                                                    // 模块分（模块内 InOverview 且参与维度的加权平均），总览行与全剔除模块为 NULL；double 保三库双精度（MySQL type:float 落单精度 FLOAT）
+	OverviewScore *float64  `gorm:"type:double"`                                                    // 总览分（跨模块直接加权平均），仅总览行落值，全剔除为 NULL
 	IncludedJSON  string    `gorm:"type:text;not null"`                                            // 参与聚合维度编码与权重快照 JSON，业务层置值
 	ExcludedJSON  string    `gorm:"type:text;not null"`                                            // 剔除维度清单 JSON（insufficient 与 failed），业务层置值
 	CreatedAt     time.Time `gorm:"autoCreateTime"`

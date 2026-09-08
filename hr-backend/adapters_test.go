@@ -71,7 +71,8 @@ func mkSetting(active, lowFreq int) *domain.DimensionSetting {
 }
 
 // TestThresholdAdapterReadFailure 核心锚点：GetActivitySetting 任何失败（含
-// ErrRecordNotFound）→ wrap ErrDimensionConfigRead 上抛，无默认值回退（BR6）。
+// ErrRecordNotFound）→ 错误上抛且保留底层错误链，无默认值回退（BR6）。
+// 哨兵 wrap 归消费方包（activity/evaluator 各自 wrap），适配器只带上下文。
 func TestThresholdAdapterReadFailure(t *testing.T) {
 	cases := []struct {
 		name string
@@ -87,8 +88,8 @@ func TestThresholdAdapterReadFailure(t *testing.T) {
 			t.Errorf("%s: 应上抛错误", tc.name)
 			continue
 		}
-		if !errors.Is(err, evaluator.ErrDimensionConfigRead) {
-			t.Errorf("%s: 应 wrap ErrDimensionConfigRead, got %v", tc.name, err)
+		if !errors.Is(err, tc.err) {
+			t.Errorf("%s: 应保留底层错误链, got %v", tc.name, err)
 		}
 	}
 }
@@ -146,11 +147,11 @@ func TestDimensionSpecAdapterDataSource(t *testing.T) {
 }
 
 // TestThresholdAdapterEmptyFixture 边界补充：setting 缺省（nil 且无错误注入）时
-// fake 回 NotFound，适配器同样 wrap 上抛（无零值回退分支的又一证据）。
+// fake 回 NotFound，适配器同样上抛（无零值回退分支的又一证据）。
 func TestThresholdAdapterEmptyFixture(t *testing.T) {
 	r := NewActivityThresholdReader(&fakeDimensionRepo{})
 	_, _, err := r.ActivityThresholds(context.Background())
-	if !errors.Is(err, evaluator.ErrDimensionConfigRead) {
-		t.Errorf("缺省 setting 应走 NotFound 上抛, got %v", err)
+	if err == nil {
+		t.Error("缺省 setting 应走 NotFound 上抛")
 	}
 }

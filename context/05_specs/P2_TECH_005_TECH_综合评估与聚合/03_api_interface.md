@@ -79,9 +79,11 @@ type EvaluatorLLMClient llm.Client
 // Timeout 覆盖建连到流式 body 读毕全程（底座 http.Client.Timeout 语义），
 // 评估输出多维度 JSON，120s 验收线（specs §3.1）与 180s
 // p99 观测线（specs §6.2）都要求单次调用预算至少 180s。
-// TokenBudget = MaxProfileSetTokens + 18000 = 48000：证据段 90000 字符（30000 token）
+// TokenBudget = MaxProfileSetTokens + 21000 = 51000：证据段 90000 字符（30000 token）
 // + 维度段按 specs §3.1 20 维度满配标定（20 × (prompt≤2000 + anchor≤500 + 模板约 35)
-// ≈ 50.7k 字符 ≈ 16.9k token）+ 系统段、统计块与指令段约 800 token 余量；TokenCounter
+// ≈ 50.7k 字符 ≈ 16.9k token）+ 逐块标签与分隔（预算口径刻意排除、实际进 prompt，
+// 150 会话约 6k 字符 ≈ 2k token）+ 系统段、统计块与指令段 ≈ 1k token + 裕量 ≈ 1.1k；
+// TokenCounter
 // 用 CharDiv3Counter（与 T4 同折算）。评分请求 MaxTokens=14000（20 维度 × 容差上限
 // 400 字理由按中文 1 字 ≈ 1.5 token + JSON 结构开销 ≈ 700 token/维，ChatRequest
 // 逐请求设置），低于此值时满配输出会在 max_tokens 处静默截断为非平衡 JSON，
@@ -190,14 +192,14 @@ ErrNoValidProfiles 仅作文档语义标识，运行时走 Skipped=true 通道�
 
 ### 4.3 关键行为约定（实现锚点）
 
-- **档案取数口径**：ListByPersonAndRange 传参 start 前移 24h（容纳跨边界档案行），取回后统一按 `last_turn_time ∈ [Start, End)` 内存二次过滤；Evaluate（评分证据）、StatPerson/StatPersonByKey（status 口径计数）、IdentifyPopulation（签名判据）三处共用同一过滤后集合（specs §2.4 能力3/4）。
-- **Evaluate 幂等判定**：ListExact 读同人同周期 source=conversation 评分行（period 双界精确匹配），无 failed 且 success 行的 dimension_code 集合覆盖当前启用维度集合 → Reused=true 跳过 LLM；存在 failed → 先删同人同周期 source=conversation 的 failed 行再走完整调用（active_test 行不受影响）。
+- **档案取数口径**：ListByPersonAndRange 传参 start 前移 7 天（容纳跨周期边界的长会话，覆盖周周期内任意跨界形态），取回后统一按 `last_turn_time ∈ [Start, End)` 内存二次过滤；Evaluate（评分证据）、StatPerson/StatPersonByKey（status 口径计数）、IdentifyPopulation（签名判据）三处共用同一过滤后集合（specs §2.4 能力3/4）。
+- **Evaluate 幂等判定**：ListExact 读同人同周期 source=conversation 评分行（period 双界精确匹配），无 failed 且 success 行（无 skip_no_llm 标记）的 prompt_version 与当前常量一致、dimension_code 集合覆盖当前启用维度集合 → Reused=true 跳过 LLM；存在 failed 或 skip_no_llm 标记行 → 先删同人同周期 source=conversation 的对应行再走完整调用（active_test 行不受影响）；prompt_version 落后于当前常量（模板升级发版）→ 不复用直接重评，旧行由 SaveAll upsert 全列覆盖替换。
 - **评分 schema 校验**：code 白名单收敛（未知丢弃、缺失补 insufficient 行）、score 非 null 时 0-100 整数、rationale 超 MaxRationaleChars×2 判失败；宽容解析同 T4（剥 markdown 围栏、截首个含 dimensions 键的顶层平衡 JSON）；失败重试一次，仍失败落 failed 行。
 - **rationale 兜底脱敏**：落库前过 extractor.Redact(text, patterns)，patterns 经 SystemParamReader 读 extractor.redact_patterns 键（nil 回退出厂集，Redact 内建回退，复用 T4 参数键与函数）。
 - **model_name 落库**：调 LLM 前经 llm.EnabledModelProvider.GetEnabledModel 解析当前启用模型 ModelID；解析失败或未调 LLM 的行（零档案跳过路径）落空串。
-- **prompt_version**：evaluator 包内常量 `PromptVersion = "v1"`，模板变更时 +1 并同步该常量。
-- **部分维度缺提示词**：DIM 规则 6 下对话分析维度提示词为空时该维度按 insufficient 处理（不阻断其余维度），rationale 落配置缺省文案，evidence_json 口径摘要记 config_missing 标记（specs §3.2 维度配置缺失行）。
-- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底（中文 token_name 上游过滤不可用），签名识别退化为仅档案侧判据（status 分布与 client 列），note 落 auto_client 表型并列呈现（specs §2.4 能力1 注意事项）；组合路径由 EvaluatePerson 注入 sessions 无此退化。
+- **prompt_version**：evaluator 包内常量 `PromptVersion = "v2"`，模板变更时 +1 并同步该常量；幂等判定消费该列（见上），版本落后即触发重评。
+- **部分维度缺提示词**：DIM 规则 6 下对话分析维度提示词为空时该维度按 insufficient 处理（不阻断其余维度），rationale 落配置缺省文案，evidence_json 口径摘要记 config_missing 标记（specs §3.2 维度配置缺失行）；其 insufficient 行 error_code 落 skip_no_llm 标记（与零档案跳过路径同款），补全提示词后重跑经先删后评自愈。
+- **Evaluate 独立调用 sessions 空的退化**：sessions 空时不做单人列表拉取兜底，签名识别退化为仅档案侧判据（status 分布与 client 列），note 落 auto_client 表型并列呈现（specs §2.4 能力1 注意事项）；组合路径由 EvaluatePerson 注入 sessions 无此退化。单人列表拉取（StatPersonByKey 路径）按 token_name 上游精确过滤翻页（ListSessionsRequest.TokenName 透传），不再全量拉组织列表后内存过滤。
 - **组合入口不包事务**：三表落库各自独立，中途失败重跑按幂等规则收敛（specs §2.4 能力6）。
 - **prompt 五段结构与 TokenName 剥离**：组装规则与 C01-C07 承接映射按 specs §2.2 执行，prompt 全文不含 token_name 人名。
 

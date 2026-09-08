@@ -677,9 +677,9 @@ func TestEvaluateIdempotentReuse(t *testing.T) {
 	f := newFixture(t)
 	p := testPeriod()
 	f.scores.existing = []domain.DimensionScore{
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
@@ -738,9 +738,9 @@ func TestEvaluatePeriodExactMatch(t *testing.T) {
 	p := testPeriod()
 	// 宽窗口行：同 start、end 更晚。
 	f.scores.existing = []domain.DimensionScore{
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End+24*3600, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
@@ -958,8 +958,8 @@ func TestEvaluateAllSpecsSuccessReuseRequiresFullSet(t *testing.T) {
 	f := newFixture(t)
 	p := testPeriod()
 	f.scores.existing = []domain.DimensionScore{
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
-		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: PromptVersion},
 	}
 	f.llm.responses = []string{goodScoreJSON()}
 
@@ -1078,6 +1078,73 @@ func TestEvaluateAllPromptEmptyShortCircuit(t *testing.T) {
 	for _, r := range f.scores.saved {
 		if !r.Insufficient || r.Status != domain.ScoreStatusSuccess {
 			t.Errorf("空提示词维度应落 insufficient success 行: %+v", r)
+		}
+	}
+}
+
+// TestEvaluateMissingPromptRowsCarryMarker 补充：空提示词维度的 insufficient 行
+// 带 skip_no_llm 标记（与 skipRows 同款），补全提示词后重跑走先删后评自愈。
+func TestEvaluateMissingPromptRowsCarryMarker(t *testing.T) {
+	f := newFixture(t)
+	specs := threeSpecs()
+	specs[2].PromptText = "" // AI_REVIEW 缺提示词
+	f.specs.specs = specs
+	s80 := 80
+	f.llm.responses = []string{`{"dimensions":[` +
+		dimJSON("AI_INSTRUCTION", &s80, false, "指令明确") + `,` +
+		dimJSON("AI_VALUE", &s80, false, "价值充分") + `]}`}
+
+	if _, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil); err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	review := scoreRowByCode(t, f.scores.saved, "AI_REVIEW")
+	if review.ErrorCode != domain.ErrorCodeSkipNoLLM {
+		t.Fatalf("空提示词行 ErrorCode = %q, want skip_no_llm（自愈标记）", review.ErrorCode)
+	}
+
+	// 补全提示词后重跑：无标记 success 行集会误判复用，带标记行触发先删后评。
+	// 先把首轮落库行搬进 existing 模拟真实链路（DB 落库后重跑读到既有行）。
+	f.scores.existing = append(f.scores.existing, f.scores.saved...)
+	f.scores.saved = nil
+	specs[2].PromptText = "补全的提示词"
+	f.specs.specs = specs
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("重跑 Evaluate: %v", err)
+	}
+	if res.Reused {
+		t.Fatal("skip_no_llm 标记行不应触发复用")
+	}
+	if f.scores.deleteCalls != 1 {
+		t.Fatalf("DeleteConversationFailed 调用 %d 次, want 1（先删后评自愈）", f.scores.deleteCalls)
+	}
+}
+
+// TestEvaluatePromptVersionMismatchRerun 补充：存量行 prompt_version 落后于当前
+// 常量（模板升级发版）→ 不复用，重评后 upsert 覆盖为新版本行。
+func TestEvaluatePromptVersionMismatchRerun(t *testing.T) {
+	f := newFixture(t)
+	p := testPeriod()
+	f.scores.existing = []domain.DimensionScore{
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_INSTRUCTION", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: "v1"},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_VALUE", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: "v1"},
+		{TokenName: "张三", PeriodStartAt: time.Unix(p.Start, 0).UTC(), PeriodEndAt: time.Unix(p.End, 0).UTC(), DimensionCode: "AI_REVIEW", Source: domain.ScoreSourceConversation, Status: domain.ScoreStatusSuccess, PromptVersion: "v1"},
+	}
+	f.llm.responses = []string{goodScoreJSON()}
+
+	res, err := f.ev.Evaluate(context.Background(), "张三", testPeriod(), nil, nil)
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if res.Reused {
+		t.Fatalf("旧版本行不应复用（模板升级须重评）")
+	}
+	if f.llm.calls != 1 {
+		t.Fatalf("LLM 调用 %d 次, want 1（重评）", f.llm.calls)
+	}
+	for _, r := range f.scores.saved {
+		if r.PromptVersion != PromptVersion {
+			t.Errorf("重评行 prompt_version = %q, want %s", r.PromptVersion, PromptVersion)
 		}
 	}
 }
