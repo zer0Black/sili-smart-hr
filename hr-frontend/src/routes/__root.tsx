@@ -9,6 +9,7 @@ import { NotFound, RouteError } from '@/components/error-boundary';
 import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/sonner';
 import { fetchSetupStatus } from '@/features/system/api';
+import { useAuthStore } from '@/stores/auth';
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -16,8 +17,10 @@ interface RouterContext {
 
 export const Route = createRootRouteWithContext<RouterContext>()({
   // 首访探针：先于子路由 beforeLoad（如 _authenticated 的 token 校验）执行。
-  // 仅在查询成功且 initialized=false 时跳转向导页；查询失败 fail-soft 放行，
-  // 由目标路由自身鉴权接管，避免后端瞬态故障把已登录用户甩到公开向导页。
+  // 查询成功且 initialized=false 时跳转向导页；查询失败时按访问态分流：
+  // 无 token 视同未初始化跳 /setup（specs §3.2 流程说明 1，向导页环境自检复测暴露真实环境问题，
+  // 避免空库且后端未就绪时用户被放行到 /login 锁死）；有 token 保持 fail-soft 放行，
+  // 避免后端瞬态故障把已登录用户甩到公开向导页。
   beforeLoad: async ({ context, location }) => {
     let initialized: boolean;
     try {
@@ -28,9 +31,13 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       });
       initialized = status.initialized;
     } catch {
-      // 网络/5xx 等场景放行到目标路由：setup 探针是一次性首启检测，
-      // 不应放大为全站掉线。_authenticated 的 token 校验、401 拦截器、
-      // /answer/$token 的令牌鉴权会各自兜住真实未授权态。
+      // 网络/5xx 等场景：无 token 按未初始化处理进向导页（该页自检会复测并暴露环境问题）；
+      // 有 token 放行到目标路由，由 _authenticated 的 token 校验、401 拦截器、
+      // /answer/$token 的令牌鉴权各自兜住真实异常态。
+      const { token } = useAuthStore.getState();
+      if (!token && location.pathname !== '/setup') {
+        throw redirect({ to: '/setup' });
+      }
       return;
     }
     if (!initialized && location.pathname !== '/setup') {

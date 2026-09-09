@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-本文件给在前端目录（hr-frontend/）下工作的 Claude Code 提供操作规约。项目整体定位、跨前后端约定、本地启动见上一层 [../CLAUDE.md](../CLAUDE.md)，本文件只承载前端独有约定，不重复后端内容。当前仓库处于 B 档可运行脚手架阶段，前端只有 account 登录链路端到端贯通并作为新增业务域的样板，其余业务域（config/dimension/assessment/questionbank/profile/dashboard/workspace）在导航里均为待激活占位，feature 尚未建立。规格权威源是 [../context/03_architecture/architecture.md](../context/03_architecture/architecture.md)，第 4 章承载运行时约定。
+本文件给在前端目录（hr-frontend/）下工作的 Claude Code 提供操作规约。项目整体定位、跨前后端约定、本地启动见上一层 [../CLAUDE.md](../CLAUDE.md)，本文件只承载前端独有约定，不重复后端内容。当前仓库处于 B 档可运行脚手架阶段，前端已贯通六个业务域：account（登录 + 用户管理）、system（初始化向导 + 系统状态）、dimension（维度与权重）、llm-config（大模型配置）、integration-secret（集成密钥，卡片内嵌大模型配置页）、system-params（评估周期配置），对应路由 /login、/setup 与 _authenticated 下的 /system/users、/system/status、/system/dimension、/system/llm、/system/params，其中 account 链路是最早的端到端样板。dashboard（仪表盘）、profile（画像）、assessment（会话测评/主动测试/题库）、运营日志仍是导航里的待激活占位，/answer/$token 作答页为 B 档占位页。规格权威源是 [../context/03_architecture/architecture.md](../context/03_architecture/architecture.md)，第 4 章承载运行时约定。
 
 ## 常用命令
 
@@ -23,7 +23,7 @@ pnpm test:watch   # vitest watch 模式
 
 [src/](src/) 各目录职责是既定约定，新增内容按归属落盘：
 
-[routes/](src/routes/) 是 TanStack 文件路由的编排层，只做路由与页面入口，页面实现下沉到 feature。[features/](src/features/) 按业务域自包含，每个域三件套：`api.ts`（纯函数请求）、`hooks.ts`（TanStack Query 封装）、`types.ts`（域私有类型），目前只有 [features/account/](src/features/account/)。[lib/](src/lib/) 放框架级基础设施（http-client、query-client、contracts、jwt、utils），跨域共享。[stores/](src/stores/) 是 Zustand store，目前只有 [auth.ts](src/stores/auth.ts)。[components/ui/](src/components/ui/) 只放 shadcn new-york 原子件，[components/](src/components/) 放业务通用件（error-boundary、nav-menu、theme-provider）。[i18n/](src/i18n/) 是国际化配置与语言资源，[styles/](src/styles/) 只有 [globals.css](src/styles/globals.css) 一个文件。
+[routes/](src/routes/) 是 TanStack 文件路由的编排层，只做路由与页面入口，页面实现下沉到 feature。[features/](src/features/) 按业务域自包含，每个域三件套：`api.ts`（纯函数请求）、`hooks.ts`（TanStack Query 封装）、`types.ts`（域私有类型），现有 account、system、dimension、llm-config、integration-secret、system-params 六个域，dimension 另有 `validation.ts`、system-params 另有 `period.ts`（周期联动纯函数），页面专用组件在 `features/<域>/components/`。[lib/](src/lib/) 放框架级基础设施（http-client、query-client、contracts、jwt、crypto、validation、utils），跨域共享。[stores/](src/stores/) 是 Zustand store，目前只有 [auth.ts](src/stores/auth.ts)。[components/ui/](src/components/ui/) 只放 shadcn new-york 原子件（button/card/input/label/select/switch/slider/table/textarea/dialog/alert-dialog/badge/sonner），[components/](src/components/) 放业务通用件（error-boundary、nav-menu、theme-provider、auth-split-layout）。[i18n/](src/i18n/) 是国际化配置与语言资源，[styles/](src/styles/) 只有 [globals.css](src/styles/globals.css) 一个文件。
 
 跨域共享的契约类型（统一响应结构、`Account`、`LoginResult`、`MeResult`、`ErrCode` 等）集中收在 [lib/contracts.ts](src/lib/contracts.ts)，避免各 feature 的 types.ts 重复定义造成漂移。feature 私有类型才进 `features/<域>/types.ts`。
 
@@ -31,7 +31,7 @@ pnpm test:watch   # vitest watch 模式
 
 路由由 `TanStackRouterRspack` 插件在 dev/build 时扫描 routes/ 自动生成 [routeTree.gen.ts](src/routeTree.gen.ts)（见 [rsbuild.config.ts](rsbuild.config.ts)）。该文件头部标 `@ts-nocheck` 并注明不可手改，新增路由只能在 routes/ 下加 `.tsx` 文件，文件内 `export const Route = createFileRoute('/路径')({...})`，保存即注册。
 
-根路由 [__root.tsx](src/routes/__root.tsx) 下挂三棵子树：`_authenticated` 布局路由、`/login`、`/answer/$token`。后两者直接挂 root，刻意不套鉴权布局也不带顶栏。
+根路由 [__root.tsx](src/routes/__root.tsx) 下挂四棵子树：`_authenticated` 布局路由、`/login`、`/setup`、`/answer/$token`。后三者直接挂 root，刻意不套鉴权布局也不带顶栏。
 
 `_authenticated` 下划线前缀是 pathless layout route，不贡献 URL 段，其子路由共享顶栏与 main 容器。鉴权在 [_authenticated/route.tsx](src/routes/_authenticated/route.tsx) 的 `beforeLoad` 里同步读 `useAuthStore.getState().token`，用 [lib/jwt.ts](src/lib/jwt.ts) 的 `isTokenExpired()` 本地校验过期，过期或缺失即 `throw redirect({ to: '/login' })`。这是同步本地探测，目的是避免带着过期 token 进受保护页再被 401 踢回造成登录态闪烁。该路由的 `component` 是 `AuthLayout`，渲染顶栏（品牌点、NavMenu、账号名、语言/主题/登出三个 ghost icon）与 `max-w-7xl` 的 main 容器。
 
@@ -55,7 +55,7 @@ auth store（[stores/auth.ts](src/stores/auth.ts)）用 Zustand persist 落 loca
 
 [i18n/config.ts](src/i18n/config.ts) 把中英资源同步 `import`，因此 i18n 在 `import '@/i18n/config'` 时即同步初始化完成，`useTranslation` 在路由外、ThemeProvider 挂载前都能用，不依赖 I18nextProvider。`fallbackLng: 'zh'`，`defaultNS: 'common'`，语言偏好存 localStorage key `sili-smart-hr-lang`。
 
-命名空间有 common（默认）、auth、account、errorBoundary、notFound。页面级用 `useTranslation('域')` 指定 ns，跨 ns 引用传第二参数 `{ ns: 'common' }`。[zh.json](src/i18n/locales/zh.json) 与 [en.json](src/i18n/locales/en.json) 的 key 树必须逐一对齐同步维护，漏翻会让缺失 key 回退到 zh。
+命名空间有 11 个：common（默认）、auth、account、errorBoundary、notFound、setup、system、dimension、llmConfig、integrationSecret、systemParams。页面级用 `useTranslation('域')` 指定 ns，跨 ns 引用传第二参数 `{ ns: 'common' }`。[zh.json](src/i18n/locales/zh.json) 与 [en.json](src/i18n/locales/en.json) 的 key 树必须逐一对齐同步维护，漏翻会让缺失 key 回退到 zh。
 
 ## 组件与样式
 
@@ -73,7 +73,7 @@ token 流向是：所有颜色、圆角、字体以 CSS 变量定义在 globals.
 
 ## account 样板（新增业务域照此七步走）
 
-account 登录链路是端到端贯通的唯一样板，新增业务域照它走：先在 [lib/contracts.ts](src/lib/contracts.ts) 定义跨域共享类型，再到 feature 的 `api.ts` 写纯函数请求（拦截器已解包，直接解构返回），`hooks.ts` 包成 TanStack Query hook（mutation 在 onSuccess 废弃相关缓存，query 用 enabled 守卫），route 组件用 react-hook-form 加 zodResolver，schema 内用 `t()` 构造校验消息保证校验文案也国际化，`onSubmit` 里 mutate，成功走 setAuth 与 toast 与 navigate，失败用 `instanceof ApiError` 分支，最后 store 集成与 `_authenticated` 布局挂载。[routes/login.tsx](src/routes/login.tsx)、[features/account/](src/features/account/) 是完整参照。NavMenu 里已预留各业务域编号（见 [components/nav-menu.tsx](src/components/nav-menu.tsx)）。
+account 登录链路是最早端到端贯通的样板，新增业务域照它走：先在 [lib/contracts.ts](src/lib/contracts.ts) 定义跨域共享类型，再到 feature 的 `api.ts` 写纯函数请求（拦截器已解包，直接解构返回），`hooks.ts` 包成 TanStack Query hook（mutation 在 onSuccess 废弃相关缓存，query 用 enabled 守卫），route 组件用 react-hook-form 加 zodResolver，schema 内用 `t()` 构造校验消息保证校验文案也国际化，`onSubmit` 里 mutate，成功走 setAuth 与 toast 与 navigate，失败用 `instanceof ApiError` 分支，最后 store 集成与 `_authenticated` 布局挂载。[routes/login.tsx](src/routes/login.tsx)、[features/account/](src/features/account/) 是完整参照。NavMenu 里已预留各业务域编号（见 [components/nav-menu.tsx](src/components/nav-menu.tsx)）。
 
 ## TS 与构建约束
 
@@ -83,7 +83,7 @@ account 登录链路是端到端贯通的唯一样板，新增业务域照它走
 
 ## 陷阱
 
-[recharts](package.json)、[@tanstack/react-table](package.json)、dayjs 在 package.json 里声明但当前零 import，是为业务域预留的前瞻性依赖，骨架阶段未用。[next-themes](package.json)、sonner、lucide-react 是真实在用的。注意 [@base-ui/react](src/components/nav-menu.tsx) 尚未引入，只在 nav-menu 注释里作为后续 hover 下拉的候选方案被提及，根级文档把它列为在用组件与实现有偏差，落地时如需再用再装。
+[recharts](package.json)、[@tanstack/react-table](package.json) 在 package.json 里声明但当前零 import，是为业务域预留的前瞻性依赖；dayjs 已在用（system/status 的启动时间格式化、users 页的时间展示）。[next-themes](package.json)、sonner、lucide-react 是真实在用的。注意 [@base-ui/react](src/components/nav-menu.tsx) 尚未引入，只在 nav-menu 注释里作为后续 hover 下拉的候选方案被提及，根级文档把它列为在用组件与实现有偏差，落地时如需再用再装。
 
 Windows 环境下 Rsbuild dev 可能绑到 IPv6 `::1`，localhost 访问不到时改用 127.0.0.1，rsbuild 的 proxy target 也用 `127.0.0.1:8080` 与此呼应。系统代理（常见 7897 端口）会劫持 pnpm install 与 go mod，拉取卡住先关代理或配镜像加速。
 

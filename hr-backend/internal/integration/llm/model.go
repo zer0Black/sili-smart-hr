@@ -58,11 +58,14 @@ type StreamChunk struct {
 }
 
 // Error 即 specs 的 LLMError：统一领域错误，携带稳定 Code 供调用方分类处置。
+// cause 未导出：仅 wrap 场景（wrapProviderUnavailable）携带原始错误供 Unwrap 穿透，
+// 调用方可经 errors.Is 同时识别领域码与底层哨兵（如 service.ErrLLMModelNotEnabled）。
 type Error struct {
 	Code       string // 稳定错误码，见下方 sentinel 的 Code 值
 	Msg        string
 	StatusCode int  // 原始 HTTP 状态码，0 表示非 HTTP 错误
 	Retryable  bool // 是否已重试耗尽，供调用方判断是否走 fallback
+	cause      error
 }
 
 func (e *Error) Error() string {
@@ -84,6 +87,9 @@ func (e *Error) Is(target error) bool {
 	t, ok := target.(*Error)
 	return ok && e.Code == t.Code
 }
+
+// Unwrap 穿透 wrap 场景携带的原始错误，errors.Is 可达底层哨兵。
+func (e *Error) Unwrap() error { return e.cause }
 
 // specs §2.3 错误码定义，8 个 sentinel，Code 与表格错误码列一致（§6.2 日志 code= 值印证）。
 var (

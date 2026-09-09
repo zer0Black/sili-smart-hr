@@ -43,8 +43,10 @@ func InitializeApp(configPath string) (*App, error) {
 		service.NewIntegrationSecretService,
 		// userapi.Client 是结构化类型，需同包 provider 把它适配为 service 内的 userapiClient 接口。
 		service.ProvideUserapiClient,
-		// setup 域：用 app.NewSetupServiceAdapter 适配命名类型 probe（避免 Wire func 类型冲突）。
+		// setup 域：用 app.NewSetupServiceAdapter 适配命名类型 probe（避免 Wire func 类型冲突），
+		// NewJWTSecretSecure 供环境自检 checks.jwt_secret.secure（specs 03 §3.1）。
 		NewSetupServiceAdapter,
+		NewJWTSecretSecure,
 		// system 域：用 app.NewSystemServiceAdapter 适配命名类型 probe，真实 DependencyProbe 经 provider 绑定为接口。
 		NewSystemServiceAdapter,
 		NewRealDependencyProbeProvider,

@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
@@ -32,7 +33,9 @@ const (
 // Dimension 能力模型叶子维度，四模块统一承载。
 type Dimension struct {
 	ID              int64          `gorm:"primaryKey" json:"id,string"`                                         // 雪花 ID（应用层生成），string 化规避前端 JS 精度坑
-	Code            string         `gorm:"type:varchar(64);not null" json:"code"`                               // 维度编码，系统生成，全大写下划线，业务层校验唯一（排除软删除）
+	// uniqueIndex 是查重兜底：查重与 Create 之间无锁，并发同名请求靠索引拦截重复 code。
+	// 软删行释放 code 的方式是软删时改写 code（见 Dimension.DeletedCode），非 partial index（MySQL 不支持）。
+	Code            string         `gorm:"type:varchar(64);not null;uniqueIndex:uk_dimension_code" json:"code"`   // 维度编码，系统生成，全大写下划线，唯一（排除软删除）
 	Name            string         `gorm:"type:varchar(64);not null" json:"name"`                               // 维度名称，2~30 字符
 	ModuleCode      string         `gorm:"type:varchar(32);not null;index:idx_module_group" json:"module_code"` // 所属模块：ACTIVITY/AI_USAGE/AI_MGMT/ENNEAGRAM
 	GroupCode       *string        `gorm:"type:varchar(32);index:idx_module_group" json:"group_code"`           // 所属分组，仅 AI_USAGE 非 nil：BASE/UPPER，其余模块为 nil
@@ -50,9 +53,19 @@ type Dimension struct {
 	UpdatedAt       time.Time      `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
+// DeletedCode 由原 code 派生软删占位码，保证唯一索引下原 code 可被新建复用
+//（普通 unique index 不支持「软删行与新行同 code」共存，三库通吃的占位方案）。
+func DeletedCode(code string, id int64) string {
+	return fmt.Sprintf("%s__D%d", code, id)
+}
+
+// SingleRowID 是系统级单行表的固定主键：三张单行表（dimension_settings 等）共用，
+// seed 与自愈补行都以它写行，并发双写撞主键由 UniqueViolation 容错收敛。
+const SingleRowID int64 = 1
+
 // DimensionSetting 维度域系统级单例配置，当前承载活跃度判定阈值。
 type DimensionSetting struct {
-	ID                    int64     `gorm:"primaryKey" json:"id,string"`                      // 雪花 ID（应用层生成），单行表固定一行
+	ID                    int64     `gorm:"primaryKey" json:"id,string"`                      // 固定 SingleRowID，单行表恒一行
 	ActiveThreshold       int       `gorm:"type:int;not null" json:"active_threshold"`        // 活跃判定下限，1~999，有效对话达此值判活跃
 	LowFrequencyThreshold int       `gorm:"type:int;not null" json:"low_frequency_threshold"` // 低频判定下限，1~999，须小于活跃下限
 	CreatedAt             time.Time `gorm:"autoCreateTime" json:"created_at"`

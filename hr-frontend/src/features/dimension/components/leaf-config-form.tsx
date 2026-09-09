@@ -7,28 +7,23 @@ import type { TFunction } from 'i18next';
 import { toast } from 'sonner';
 import { z } from 'zod';
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { SaveConfirmDialog } from '@/features/dimension/components/save-confirm-dialog';
+import { WeightField } from '@/features/dimension/components/weight-field';
+import { handleDimensionSubmitError } from '@/features/dimension/form-errors';
 import { useDeleteDimension, useUpdateDimension } from '@/features/dimension/hooks';
 import { MODULE_META } from '@/features/dimension/types';
 import type { DataSource, ModuleCode, ModuleMeta } from '@/features/dimension/types';
-import { DIM_FIELD_LIMITS } from '@/features/dimension/validation';
+import {
+  DIM_FIELD_LIMITS,
+  runeLengthAtLeast,
+  runeLengthAtMost,
+} from '@/features/dimension/validation';
 import { ErrCode } from '@/lib/contracts';
 import type { DimensionDetail, UpdateDimensionPayload } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
@@ -53,6 +48,7 @@ interface LeafFormValues {
  *   createLeafFormSchema({ dataSource: 'CONVERSATION', isReference: false }, t)
  *     .safeParse({ ...values, prompt: '' }).success === false
  * prompt 是否必填取决于 data_source（specs §4.1.4 规则6 + §4.2.5）。
+ * 长度校验按码点计数（countRunes），对齐后端 utf8.RuneCountInString 口径。
  */
 export function createLeafFormSchema(
   opts: { dataSource: DataSource; isReference: boolean },
@@ -62,19 +58,19 @@ export function createLeafFormSchema(
   return z.object({
     name: z
       .string()
-      .min(DIM_FIELD_LIMITS.nameMin, t('leaf.nameMinLength'))
-      .max(DIM_FIELD_LIMITS.nameMax, t('leaf.nameMaxLength')),
+      .refine(runeLengthAtLeast(DIM_FIELD_LIMITS.nameMin), t('leaf.nameMinLength'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.nameMax), t('leaf.nameMaxLength')),
     prompt: z
       .string()
-      .max(DIM_FIELD_LIMITS.promptMax, t('leaf.promptMaxLength'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.promptMax), t('leaf.promptMaxLength'))
       .refine(
         (v) => !promptRequired || v.trim().length > 0,
         t('leaf.promptRequired'),
       ),
     anchor: z
       .string()
-      .min(DIM_FIELD_LIMITS.anchorMin, t('leaf.anchorRequired'))
-      .max(DIM_FIELD_LIMITS.anchorMax, t('leaf.anchorMaxLength')),
+      .refine(runeLengthAtLeast(DIM_FIELD_LIMITS.anchorMin), t('leaf.anchorRequired'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.anchorMax), t('leaf.anchorMaxLength')),
     weight: z
       .number()
       .int(t('leaf.weightInteger'))
@@ -84,7 +80,7 @@ export function createLeafFormSchema(
     enabled: z.boolean(),
     description: z
       .string()
-      .max(DIM_FIELD_LIMITS.descriptionMax, t('leaf.descriptionMaxLength')),
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.descriptionMax), t('leaf.descriptionMaxLength')),
   });
 }
 
@@ -116,7 +112,7 @@ function buildPayload(detail: DimensionDetail, v: LeafFormValues): UpdateDimensi
 
 /**
  * 叶子维度配置表单。校验通过后弹二次确认弹窗，确认再提交。
- * 删除按钮在启用态禁用并提示，停用态走 AlertDialog popconfirm 软删除。
+ * 删除按钮在启用态禁用并提示，停用态走确认弹窗软删除。
  */
 export function LeafConfigForm({ detail, onSaved }: LeafConfigFormProps) {
   const { t } = useTranslation('dimension');
@@ -177,30 +173,19 @@ export function LeafConfigForm({ detail, onSaved }: LeafConfigFormProps) {
         onSaved();
       },
       onError: (err) => {
-        const code = err instanceof ApiError ? err.code : undefined;
         // 校验类错误（specs §4.1.4 规则9）：映射到字段内联报错，保留输入。
-        if (code === ErrCode.DimensionNameInvalid) {
-          setError('name', { message: t('leaf.nameInvalid') });
-          return;
-        }
-        if (code === ErrCode.DimensionAnchorRequired) {
-          setError('anchor', { message: t('leaf.anchorRequired') });
-          return;
-        }
-        if (code === ErrCode.DimensionPromptRequired) {
-          setError('prompt', { message: t('leaf.promptRequired') });
-          return;
-        }
-        if (code === ErrCode.BadRequest) {
-          toast.error(t('leaf.toastBadRequest'));
-          return;
-        }
-        if (code === ErrCode.DimensionVersionConflict) {
-          toast.error(t('leaf.toastVersionConflict'));
-          return;
-        }
-        // 1500 / 网络 / 其他
-        toast.error(t('leaf.toastGeneric'));
+        handleDimensionSubmitError(
+          err,
+          (f, msg) => setError(f, { message: msg }),
+          {
+            nameInvalid: t('leaf.nameInvalid'),
+            anchorRequired: t('leaf.anchorRequired'),
+            promptRequired: t('leaf.promptRequired'),
+            toastBadRequest: t('leaf.toastBadRequest'),
+            toastGeneric: t('leaf.toastGeneric'),
+          },
+          { [ErrCode.DimensionVersionConflict]: t('leaf.toastVersionConflict') },
+        );
       },
     });
   };
@@ -287,48 +272,20 @@ export function LeafConfigForm({ detail, onSaved }: LeafConfigFormProps) {
       </div>
 
       {/* 聚合权重：数字 Input + Slider 双向联动，禁用时展示提示 */}
-      <div className="flex flex-col gap-2">
-        <Label>{t('leaf.weight')}</Label>
-        <Controller
-          control={control}
-          name="weight"
-          render={({ field }) => (
-            <div className="flex items-center gap-4">
-              <Slider
-                value={[field.value]}
-                min={0}
-                max={100}
-                step={1}
-                disabled={weightDisabled}
-                onValueChange={(v) => field.onChange(v[0])}
-                className="flex-1"
-              />
-              <Input
-                type="number"
-                min={0}
-                max={100}
-                step={1}
-                value={field.value}
-                disabled={weightDisabled}
-                onChange={(e) => {
-                  // 清空时不写值，保留上一个合法值，避免空串被 Number() 钳成 0 静默改写默认权重。
-                  if (e.target.value === '') return;
-                  const n = Number(e.target.value);
-                  if (Number.isFinite(n)) {
-                    field.onChange(Math.max(0, Math.min(100, Math.trunc(n))));
-                  }
-                }}
-                className="w-20"
-              />
-              <span className="text-muted-foreground text-sm">%</span>
-            </div>
-          )}
-        />
-        {weightDisabled && (
-          <p className="text-muted-foreground text-xs">{weightHint}</p>
+      <Controller
+        control={control}
+        name="weight"
+        render={({ field }) => (
+          <WeightField
+            label={t('leaf.weight')}
+            value={field.value}
+            onChange={field.onChange}
+            disabled={weightDisabled}
+            hint={weightHint}
+            error={errors.weight?.message}
+          />
         )}
-        {errors.weight && <p className="text-destructive text-sm">{errors.weight.message}</p>}
-      </div>
+      />
 
       {/* 参与总览分 */}
       <div className="flex items-center justify-between rounded-md border p-3">
@@ -399,35 +356,29 @@ export function LeafConfigForm({ detail, onSaved }: LeafConfigFormProps) {
             {t('leaf.delete')}
           </Button>
         ) : (
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogTrigger asChild>
-              <Button type="button" variant="destructive" disabled={isPending}>
-                {t('leaf.delete')}
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>{t('leaf.deleteTitle')}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  {t('leaf.deleteDesc')}
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isPending}>{t('saveConfirm.cancel')}</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={(e) => {
-                    e.preventDefault();
-                    onConfirmDelete();
-                  }}
-                  disabled={isPending}
-                >
-                  {t('leaf.deleteConfirm')}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isPending}
+            onClick={() => setDeleteOpen(true)}
+          >
+            {t('leaf.delete')}
+          </Button>
         )}
       </div>
+
+      {/* 删除二次确认弹窗（specs §4.1.3，停用态软删除） */}
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={t('leaf.deleteTitle')}
+        desc={t('leaf.deleteDesc')}
+        confirmText={t('leaf.deleteConfirm')}
+        cancelText={t('saveConfirm.cancel')}
+        submitting={isPending}
+        destructive
+        onConfirm={onConfirmDelete}
+      />
 
       {/* 保存配置二次确认弹窗（specs §4.1.3 + §4.1.4 规则1） */}
       <SaveConfirmDialog

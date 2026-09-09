@@ -18,7 +18,6 @@ const llmProbeTimeout = 10 * time.Second
 // realDependencyProbe 是 config 落地后的真实外部依赖探测（specs 03 §3.4 处理流程 4/5 步），
 // 替换 NoopDependencyProbe 接入 wire。探测只读，不修改任何配置与数据（specs §5.4.4 规则1）。
 type realDependencyProbe struct {
-	provider   llm.EnabledModelProvider
 	llmClient  llm.Client
 	secretRepo repository.IntegrationSecretRepository
 	encKey     []byte
@@ -27,16 +26,16 @@ type realDependencyProbe struct {
 
 var _ DependencyProbe = (*realDependencyProbe)(nil)
 
-// NewRealDependencyProbe 注入启用模型桥接、LLM 底座客户端、集成密钥仓库、AES 密钥与会话日志探活。
+// NewRealDependencyProbe 注入 LLM 底座客户端、集成密钥仓库、AES 密钥与会话日志探活。
+// 启用模型解析收敛在 llm.Client.StreamChat 第一步（含解密），探测不经 provider 前置查询，
+// 每次健康测试对 llm_configs 只查一次。
 func NewRealDependencyProbe(
-	provider llm.EnabledModelProvider,
 	llmClient llm.Client,
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	convLog ConversationlogPinger,
 ) DependencyProbe {
 	return &realDependencyProbe{
-		provider:   provider,
 		llmClient:  llmClient,
 		secretRepo: secretRepo,
 		encKey:     encKey,
@@ -44,19 +43,11 @@ func NewRealDependencyProbe(
 	}
 }
 
-// ProbeLLM 读启用模型发一次最小流式请求（specs 03 §3.4 流程 4）：
-// 未启用 → not_configured_model；建立/读取失败 → unreachable；成功 → reachable。
+// ProbeLLM 发一次最小流式请求（specs 03 §3.4 流程 4）：
+// 无启用模型（StreamChat 前置解析失败，ErrLLMModelNotEnabled 经 wrapProviderUnavailable
+// 的 cause 链穿透）→ not_configured_model；其余建立/读取失败 → unreachable；成功 → reachable。
 // 走生产 llm.Client 完整链路（模型解析、并发闸、适配器路由），探测即真实调用的抽样。
 func (p *realDependencyProbe) ProbeLLM(ctx context.Context) string {
-	mc, err := p.provider.GetEnabledModel(ctx)
-	if err != nil {
-		if errors.Is(err, ErrLLMModelNotEnabled) {
-			return StatusNotConfiguredModel
-		}
-		slog.Error("llm probe resolve enabled model failed", "err", err)
-		return StatusUnreachable
-	}
-
 	probeCtx, cancel := context.WithTimeout(ctx, llmProbeTimeout)
 	defer cancel()
 
@@ -65,7 +56,10 @@ func (p *realDependencyProbe) ProbeLLM(ctx context.Context) string {
 		MaxTokens: 8,
 	})
 	if err != nil {
-		slog.Warn("llm probe unreachable", "code", llmErrCode(err), "model", mc.ModelID)
+		if errors.Is(err, ErrLLMModelNotEnabled) {
+			return StatusNotConfiguredModel
+		}
+		slog.Warn("llm probe unreachable", "code", llmErrCode(err))
 		return StatusUnreachable
 	}
 	defer stream.Close()
@@ -78,7 +72,7 @@ func (p *realDependencyProbe) ProbeLLM(ctx context.Context) string {
 		if errors.Is(rerr, io.EOF) {
 			return StatusReachable
 		}
-		slog.Warn("llm probe stream failed", "code", llmErrCode(rerr), "model", mc.ModelID)
+		slog.Warn("llm probe stream failed", "code", llmErrCode(rerr))
 		return StatusUnreachable
 	}
 }

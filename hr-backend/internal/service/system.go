@@ -4,6 +4,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"sili-smart-hr/backend/internal/model"
@@ -88,11 +89,8 @@ func (s *systemService) GetSummary(ctx context.Context) (*SystemSummary, error) 
 	}, nil
 }
 
-// HealthCheck 逐项探测组件连通性（specs §5.4.2，异常处理 §5.4.5）。
-//
-//	数据库与缓存用注入探针，结果 connected/disconnected；大模型与会话日志集成走 DependencyProbe。
-//	单项探测失败仅影响对应项，不阻断其他项与接口响应（specs §5.4.4 规则1、§5.4.5）。
-//	接口始终返回 nil error：探测失败是业务结果而非接口错误（specs §5.4.5）。
+// HealthCheck 逐项探测组件连通性（specs §5.4.2）。单项探测失败仅影响对应项，
+// 始终返回 nil error：探测失败是业务结果而非接口错误（specs §5.4.5）。
 func (s *systemService) HealthCheck(ctx context.Context) (*HealthResult, error) {
 	db := StatusConnected
 	if !s.dbProbe(ctx) {
@@ -102,10 +100,39 @@ func (s *systemService) HealthCheck(ctx context.Context) (*HealthResult, error) 
 	if !s.redisProbe(ctx) {
 		r = StatusDisconnected
 	}
+	llmStatus, integStatus := s.probeParallel(ctx)
 	return &HealthResult{
 		Database:    db,
 		Redis:       r,
-		LLM:         s.probe.ProbeLLM(ctx),
-		Integration: s.probe.ProbeIntegration(ctx),
+		LLM:         llmStatus,
+		Integration: integStatus,
 	}, nil
+}
+
+// probeParallel 并行执行大模型（上限 10s）与会话日志探活（5s）收敛总耗时；
+// 单项 panic 经 recover 降级 unreachable，不影响另一项与接口响应（specs §5.4.4 规则1）。
+func (s *systemService) probeParallel(ctx context.Context) (llmStatus, integStatus string) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	run := func(target *string, name string, f func(context.Context) string) {
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if rec := recover(); rec != nil {
+					slog.Error("health probe panicked", "probe", name, "panic", rec)
+				}
+			}()
+			*target = f(ctx)
+		}()
+	}
+	run(&llmStatus, "llm", s.probe.ProbeLLM)
+	run(&integStatus, "integration", s.probe.ProbeIntegration)
+	wg.Wait()
+	if llmStatus == "" {
+		llmStatus = StatusUnreachable
+	}
+	if integStatus == "" {
+		integStatus = StatusUnreachable
+	}
+	return llmStatus, integStatus
 }

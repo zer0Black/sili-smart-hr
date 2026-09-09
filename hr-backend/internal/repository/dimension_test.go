@@ -9,12 +9,14 @@ package repository_test
 
 import (
 	"context"
+	"strconv"
 	"testing"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/pkg/dberr"
 	"sili-smart-hr/backend/internal/pkg/snowflake"
 	"sili-smart-hr/backend/internal/repository"
 )
@@ -390,22 +392,104 @@ func TestUpdateActivitySetting(t *testing.T) {
 	}
 }
 
-// TestUpdateActivitySetting_NoRow verifies UpdateActivitySetting on empty table affects 0 rows
-// without error (save-overwrite semantics, no optimistic lock).
-func TestUpdateActivitySetting_NoRow(t *testing.T) {
+// TestUpdateActivitySetting_NoRowSelfHeal 空表自愈：UPDATE 0 行时补建单行（ID 固定 SingleRowID），
+// 后续 GetActivitySetting 可读到刚保存的值，保存链路不再恒 1500。
+func TestUpdateActivitySetting_NoRowSelfHeal(t *testing.T) {
 	db := newDimensionTestDB(t)
 	repo := repository.NewDimensionRepository(db)
-	// 表空，UPDATE 影响 0 行，方法不返回错误。
 	if err := repo.UpdateActivitySetting(context.Background(), 100, 20); err != nil {
 		t.Fatalf("UpdateActivitySetting on empty: %v", err)
 	}
 	got, err := repo.GetActivitySetting(context.Background())
-	if err != gorm.ErrRecordNotFound {
-		t.Fatalf("empty setting still want ErrRecordNotFound, got got=%+v err=%v", got, err)
+	if err != nil {
+		t.Fatalf("after self-heal want readable setting, got err %v", err)
+	}
+	if got.ID != domain.SingleRowID || got.ActiveThreshold != 100 || got.LowFrequencyThreshold != 20 {
+		t.Fatalf("self-healed setting want id=1 active=100 low=20, got %+v", got)
 	}
 }
 
-// TestListEnabledFullByDataSource 核心断言：预置启用/停用/软删除/不同 data_source 各行，
+// TestUpdateActivitySetting_LegacySnowflakeRow 存量库主键为雪花值的已 seed 行：
+// UPDATE id=1 落 0 行后，第二条 Where("1 = 1") 命中存量行写入（migrateDB 的 Where("1 = 1") 兼容口径）。
+func TestUpdateActivitySetting_LegacySnowflakeRow(t *testing.T) {
+	db := newDimensionTestDB(t)
+	seedSetting(t, db, 50, 10) // ID 为雪花值，非 SingleRowID
+
+	repo := repository.NewDimensionRepository(db)
+	if err := repo.UpdateActivitySetting(context.Background(), 300, 90); err != nil {
+		t.Fatalf("UpdateActivitySetting on legacy row: %v", err)
+	}
+	got, err := repo.GetActivitySetting(context.Background())
+	if err != nil {
+		t.Fatalf("GetActivitySetting after legacy update: %v", err)
+	}
+	if got.ActiveThreshold != 300 || got.LowFrequencyThreshold != 90 {
+		t.Fatalf("legacy row want active=300 low=90, got %+v", got)
+	}
+	if n := countSettingRows(t, db); n != 1 {
+		t.Fatalf("want exactly 1 setting row after update, got %d", n)
+	}
+}
+
+func countSettingRows(t *testing.T, db *gorm.DB) int {
+	t.Helper()
+	var n int64
+	if err := db.Model(&domain.DimensionSetting{}).Count(&n).Error; err != nil {
+		t.Fatalf("count settings: %v", err)
+	}
+	return int(n)
+}
+
+// TestSoftDeleteWithVersion_CodePlaceholder 软删后 code 改写为占位码（原code__D<id>），
+// 原释放的 code 可被新行复用（uk_dimension_code 唯一索引下软删行不占码）。
+func TestSoftDeleteWithVersion_CodePlaceholder(t *testing.T) {
+	db := newDimensionTestDB(t)
+	d := seedDimension(t, db, "ACT_REUSE", "甲", domain.ModuleActivity, false)
+
+	repo := repository.NewDimensionRepository(db)
+	rows, err := repo.SoftDeleteWithVersion(context.Background(), d.ID, 1)
+	if err != nil {
+		t.Fatalf("SoftDeleteWithVersion: %v", err)
+	}
+	if rows != 1 {
+		t.Fatalf("rows want 1, got %d", rows)
+	}
+	// 底层 code 已改写为占位码。
+	var raw struct {
+		Code      string
+		DeletedAt gorm.DeletedAt
+	}
+	if err := db.Unscoped().Model(&domain.Dimension{}).Select("code, deleted_at").Where("id = ?", d.ID).Scan(&raw).Error; err != nil {
+		t.Fatalf("scan raw row: %v", err)
+	}
+	if raw.DeletedAt.Valid != true {
+		t.Fatalf("deleted_at want valid, got %+v", raw.DeletedAt)
+	}
+	if want := "ACT_REUSE__D" + fmtInt64(d.ID); raw.Code != want {
+		t.Fatalf("placeholder code want %s, got %s", want, raw.Code)
+	}
+	// 原释放的 code 可被新行复用（唯一索引下不冲突）。
+	seedDimension(t, db, "ACT_REUSE", "甲复用", domain.ModuleActivity, true)
+}
+
+// TestDimensionCreate_DuplicateCodeRejected 并发同名 TOCTOU 兜底：唯一索引拦截重复 code，
+// Create 返回冲突错误（service 层映射 1202）。
+func TestDimensionCreate_DuplicateCodeRejected(t *testing.T) {
+	db := newDimensionTestDB(t)
+	seedDimension(t, db, "ACT_DUP", "甲", domain.ModuleActivity, true)
+
+	repo := repository.NewDimensionRepository(db)
+	d := &domain.Dimension{
+		Code: "ACT_DUP", Name: "乙", ModuleCode: domain.ModuleActivity,
+		DataSource: domain.SourceRule, Anchor: "锚", Weight: 5, Enabled: true, Version: 1,
+	}
+	err := repo.Create(context.Background(), d)
+	if !dberr.UniqueViolation(err) {
+		t.Fatalf("duplicate code create want unique violation, got %v", err)
+	}
+}
+
+func fmtInt64(i int64) string { return strconv.FormatInt(i, 10) }
 // 只返回启用未删指定 source 行，且含 Prompt/Anchor 字段值（评分口径快照需要全字段）。
 func TestListEnabledFullByDataSource(t *testing.T) {
 	db := newDimensionTestDB(t)

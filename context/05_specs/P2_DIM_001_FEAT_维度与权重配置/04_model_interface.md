@@ -76,7 +76,7 @@ dimension_settings（系统级单例配置）
 // Dimension 能力模型叶子维度，四模块统一承载
 type Dimension struct {
     ID             int64          `gorm:"primaryKey" json:"id,string"`
-    Code           string         `gorm:"type:varchar(64);not null" json:"code"`                              // 维度编码，系统生成，全大写下划线，业务层校验唯一（排除软删除）
+    Code           string         `gorm:"type:varchar(64);not null;uniqueIndex:uk_dimension_code" json:"code"`   // 维度编码，系统生成，全大写下划线，UNIQUE 索引兜底查重 TOCTOU（软删改写占位码释放原 code，见规则文件 §1.10 兜底方案）
     Name           string         `gorm:"type:varchar(64);not null" json:"name"`                              // 维度名称，2~30 字符
     ModuleCode     string         `gorm:"type:varchar(32);not null;index:idx_module_group" json:"module_code"` // 所属模块：ACTIVITY/AI_USAGE/AI_MGMT/ENNEAGRAM
     GroupCode      *string        `gorm:"type:varchar(32);index:idx_module_group" json:"group_code"`          // 所属分组，仅 AI_USAGE 非 nil：BASE/UPPER，其余模块为 nil
@@ -117,8 +117,8 @@ CREATE TABLE `dimensions` (
   `created_at` DATETIME NULL COMMENT '创建时间',
   `updated_at` DATETIME NULL COMMENT '更新时间',
   PRIMARY KEY (`id`),
+  UNIQUE INDEX `uk_dimension_code` (`code`),
   INDEX `idx_module_group` (`module_code`, `group_code`),
-  INDEX `idx_code` (`code`),
   INDEX `idx_deleted_at` (`deleted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='能力模型叶子维度表';
 ```
@@ -147,7 +147,7 @@ CREATE TABLE "dimensions" (
   CONSTRAINT "dimensions_pkey" PRIMARY KEY (id)
 );
 CREATE INDEX "idx_dimensions_module_group" ON "dimensions"("module_code", "group_code");
-CREATE INDEX "idx_dimensions_code" ON "dimensions"("code");
+CREATE UNIQUE INDEX "uk_dimension_code" ON "dimensions"("code");
 CREATE INDEX "idx_dimensions_deleted_at" ON "dimensions"("deleted_at");
 ```
 
@@ -158,7 +158,7 @@ CREATE INDEX "idx_dimensions_deleted_at" ON "dimensions"("deleted_at");
 | 字段名 | 类型（MySQL） | 类型（PostgreSQL） | 类型（SQLite） | 必填 | 默认值 | 说明 |
 |--------|------|------|------|------|--------|------|
 | id | BIGINT | BIGINT | INTEGER | 是 | 雪花生成 | 主键ID（雪花ID，应用层生成）[长度来源：规则文件 §1.2] |
-| code | VARCHAR(64) | VARCHAR(64) | TEXT | 是 | 系统生成 | 维度编码，模块前缀加名称拼音全大写下划线，≤40 字符（specs 规则4），列宽留余量取 64。业务层校验唯一排除软删除 [长度来源：specs/规则文件 §1.6] |
+| code | VARCHAR(64) | VARCHAR(64) | TEXT | 是 | 系统生成 | 维度编码，模块前缀加名称拼音全大写下划线，≤40 字符（specs 规则4），列宽留余量取 64。UNIQUE 索引兜底查重 TOCTOU，软删改写占位码（规则文件 §1.10 兜底方案）[长度来源：specs/规则文件 §1.6] |
 | name | VARCHAR(64) | VARCHAR(64) | TEXT | 是 | 无 | 维度名称，2~30 字符（specs 4.1.2 B），列宽留余量取 64 [长度来源：specs/规则文件 §1.6] |
 | module_code | VARCHAR(32) | VARCHAR(32) | TEXT | 是 | 无 | 所属模块枚举：ACTIVITY（使用活跃度）/AI_USAGE（AI 使用能力）/AI_MGMT（AI 管理能力）/ENNEAGRAM（九型人格），提交后不可改 |
 | group_code | VARCHAR(32) | VARCHAR(32) | TEXT | 否 | NULL | 所属分组枚举：BASE（底层能力）/UPPER（上层能力）。仅 module_code=AI_USAGE 时非空，其余模块为 NULL |
@@ -181,12 +181,12 @@ CREATE INDEX "idx_dimensions_deleted_at" ON "dimensions"("deleted_at");
 |--------|------|------|------|
 | PRIMARY | PRIMARY KEY | id | 主键索引，雪花 ID |
 | idx_module_group | INDEX | (module_code, group_code) | 维度树按模块与分组聚合查询，覆盖四模块树渲染主路径 |
-| idx_code | INDEX | code | 维度编码查询与业务层唯一性校验（排除软删除）。不设 UNIQUE，遵循规则文件 §1.10 软删除协同 |
+| uk_dimension_code | UNIQUE | code | 维度编码查询与唯一性兜底：拦截查重与 Create 之间的 TOCTOU 并发窗口（规则文件 §1.10 兜底方案），软删时 repository 改写占位码释放原 code |
 | idx_deleted_at | INDEX | deleted_at | GORM 软删除自动查询过滤 |
 
 **业务规则：**
 
-- 编码唯一性（规则文件 §1.10）：`code` 不设 DB 层 UNIQUE 约束，改普通 INDEX，唯一性由业务层校验时排除软删除记录（`WHERE code = ? AND deleted_at IS NULL`）。编码由系统生成（specs 规则4），冲突时追加序号去重，理论上不冲突但保留业务层兜底。
+- 编码唯一性（规则文件 §1.10 兜底方案）：`code` 设 `uk_dimension_code` UNIQUE 索引兜底查重与 Create 之间的 TOCTOU 并发窗口，撞键映射 1202。软删时把 code 改写为占位码（`原code__D<id>`）释放原 code 供新建复用（MySQL 不支持 partial index，三库通吃只能走占位码改写）；索引落地前的存量数据（软删行、查重窗口期产生的重复行）由 migrateDB 的幂等收敛钩子统一改写。编码由系统生成（specs 规则4），冲突时追加序号去重，序号耗尽或超长返回 1209。
 - 布尔字段无 default tag（规则文件 §1.5）：`include_overview`/`enabled`/`is_reference` 三个布尔字段模型层不加 `default` tag，规避 MySQL 与 PostgreSQL 布尔默认值规范化差异导致 AutoMigrate 抖动，新建记录由 service 层按模块联动规则（specs 4.2.4 规则1）显式置值。
 - 软删除（规则文件 §1.3）：`deleted_at gorm.DeletedAt`，GORM 内建软删除，查询自动过滤，Delete 时自动赋值。承载 specs 6.1 已删除终态。
 - 乐观锁：`version` 字段配合 GORM 乐观锁机制，更新时 WHERE 附带 `version = ?`，更新成功自增；不一致则影响行数 0，service 层判定为并发冲突返 1104。
@@ -220,7 +220,7 @@ type DimensionSetting struct {
 
 ```sql
 CREATE TABLE `dimension_settings` (
-  `id` BIGINT NOT NULL COMMENT '主键ID（雪花ID），单行表固定一行',
+  `id` BIGINT NOT NULL COMMENT '主键ID，单行表固定 SingleRowID(=1)，首启 seed 写入',
   `active_threshold` INT NOT NULL COMMENT '活跃判定下限，1~999',
   `low_frequency_threshold` INT NOT NULL COMMENT '低频判定下限，1~999，须小于活跃下限',
   `created_at` DATETIME NULL COMMENT '创建时间',
@@ -248,7 +248,7 @@ CREATE TABLE "dimension_settings" (
 
 | 字段名 | 类型（MySQL） | 类型（PostgreSQL） | 类型（SQLite） | 必填 | 默认值 | 说明 |
 |--------|------|------|------|------|--------|------|
-| id | BIGINT | BIGINT | INTEGER | 是 | 雪花生成 | 主键ID（雪花ID）。单行表，首启 seed 写入一条记录 |
+| id | BIGINT | BIGINT | INTEGER | 是 | 固定 SingleRowID(=1) | 主键ID。单行表固定主键防 seed 重入（并发双 seed 撞主键由 UniqueViolation 容错），存量库主键为雪花值的已 seed 行兼容保留 |
 | active_threshold | INT | INTEGER | INTEGER | 是 | 10（seed） | 活跃判定下限，1~999 整数。本评估区间有效对话达此值判为活跃（specs 4.1.2 C） |
 | low_frequency_threshold | INT | INTEGER | INTEGER | 是 | 5（seed） | 低频判定下限，1~999 整数，须 < active_threshold。达此值且低于活跃下限判低频，低于此值判未使用 |
 | created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoCreateTime | 创建时间 |
@@ -262,7 +262,7 @@ CREATE TABLE "dimension_settings" (
 
 **业务规则：**
 
-- 单行约束：表设计为仅一行系统级配置，service 层读取固定取首行，保存即 UPDATE 该行。无软删除需求（配置永不可删），不引入 `deleted_at`。
+- 单行约束：表设计为仅一行系统级配置，seed 与自愈补行都以固定主键 `domain.SingleRowID`(=1) 写入，service 层读取固定取首行，保存即 UPDATE 该行。无软删除需求（配置永不可删），不引入 `deleted_at`。
 - 阈值校验（specs 4.1.2 C）：service 层校验 `1 ≤ low_frequency_threshold < active_threshold ≤ 999`，违反返 1108。
 - 无乐观锁：运营体量小，阈值变更低频，最后写入覆盖可接受，不引入 version 字段。
 - 统计区间不落本表：specs 4.1.2 C 明确统计区间跟随系统配置页评估区间，由 config 域 Feature 承载，本表不存区间值。
@@ -277,12 +277,16 @@ CREATE TABLE "dimension_settings" (
 
 ```go
 // 首启 seed，表为空时写入默认活跃度阈值（specs 4.1.2 C 默认值）
-if err := db.Where("1 = 1").First(&DimensionSetting{}).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-    db.Create(&DimensionSetting{
-        ID:                    snowflake.NextID(),
-        ActiveThreshold:       10,
-        LowFrequencyThreshold: 5,
-    })
+// 单行表固定主键 SingleRowID(=1) 防重入：并发双 seed 撞主键由 UniqueViolation 容错收敛；
+// Where("1 = 1") 兼容存量库主键为雪花值的已 seed 行。
+var setting domain.DimensionSetting
+err := db.Where("1 = 1").Attrs(domain.DimensionSetting{
+    ID:                    domain.SingleRowID,
+    ActiveThreshold:       10,
+    LowFrequencyThreshold: 5,
+}).FirstOrCreate(&setting).Error
+if dberr.UniqueViolation(err) {
+    err = nil // 并发双 seed 对端胜出，行已落库
 }
 ```
 
@@ -319,7 +323,7 @@ if err := db.Where("1 = 1").First(&DimensionSetting{}).Error; errors.Is(err, gor
 
 ### 6.3 编码唯一性索引
 
-`idx_code (code)` 普通索引承载新增时的编码冲突检测与详情查询。不设 UNIQUE，软删除协同见规则文件 §1.10。
+`uk_dimension_code (code)` UNIQUE 索引承载新增时的编码冲突兜底（TOCTOU 并发窗口）与详情查询。软删除经占位码改写协同，见规则文件 §1.10 兜底方案。
 
 ### 6.4 分表分库
 
@@ -372,3 +376,4 @@ if err := db.Where("1 = 1").First(&DimensionSetting{}).Error; errors.Is(err, gor
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|---------|------|
 | v1.0 | 2026-08-11 | 初始版本，dimensions 与 dimension_settings 两表 | lixuetao |
+| v1.1 | 2026-09-09 | code 唯一性改 UNIQUE 索引 + 软删占位码方案（规则文件 §1.10 兜底方案）；seed 主键改固定 SingleRowID；同步 GORM struct 与 DDL | lixuetao |

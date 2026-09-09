@@ -83,9 +83,15 @@ snake_case。时间字段命名 `created_at`/`updated_at`/`deleted_at`，对应 
 
 ### 1.10 唯一性与软删除协同
 
-凡需软删除且业务键要求唯一的字段（如 `username`），数据库层不设单列 `UNIQUE` 约束，改普通 `INDEX`，唯一性由业务层校验时排除软删除记录（`WHERE username = ? AND deleted_at IS NULL`）。
+凡需软删除且业务键要求唯一的字段，按业务键来源二选一：
 
-理由：`gorm.DeletedAt` 的 `deleted_at` 在未删除时为 NULL，标准 SQL 中 NULL 不参与唯一性判定，多库（含 SQLite/MySQL/PostgreSQL）行为一致地无法拦截多条 `deleted_at IS NULL` 的同名记录，DB 强制唯一反而阻碍 specs 要求的"软删除后账号名可复用"。唯一性收敛到业务层是项目"外键约束不开，关联靠业务字段"思路的延伸。
+**默认方案（用户自选键，如 `username`）：** 数据库层不设单列 `UNIQUE` 约束，改普通 `INDEX`，唯一性由业务层校验时排除软删除记录（`WHERE username = ? AND deleted_at IS NULL`）。软删行保留原键值，历史引用可解释。样板：[repository/account.go](hr-backend/internal/repository/account.go)。
+
+**兜底方案（系统生成键，如 `dimensions.code`）：** 数据库层设 `UNIQUE` 索引拦截查重与写入之间的 TOCTOU 并发窗口，软删时把该行键值改写为占位码（`原值__D<id>`）释放原键供新建复用。适用于键由系统派生、消费方以快照值引用历史（改写软删行不影响历史数据）的场景；MySQL 不支持 partial index（`WHERE deleted_at IS NULL` 形态）三库通吃只能走占位码改写。样板：[domain/dimension.go](hr-backend/internal/domain/dimension.go) 的 `Code` + `DeletedCode`、[model/migrate.go](hr-backend/internal/model/migrate.go) 的存量数据收敛钩子。
+
+默认方案的理由（兜底方案以占位码改写消解同一问题）：`gorm.DeletedAt` 的 `deleted_at` 在未删除时为 NULL，标准 SQL 中 NULL 不参与唯一性判定，多库（含 SQLite/MySQL/PostgreSQL）行为一致地无法拦截多条 `deleted_at IS NULL` 的同名记录；且单列 UNIQUE 会把「软删行 + 同名新行」一并拦下，阻碍 specs 要求的"软删除后键值可复用"。唯一性判定收敛到一处是项目"外键约束不开，关联靠业务字段"思路的延伸。
+
+无软删除的表（如 `session_features.session_key`、`system_params.param_key`、各评分表的 person+period 组合）不在此约束内，直接用 UNIQUE 索引。
 
 ### 1.11 模糊查询（LIKE）通配符转义
 

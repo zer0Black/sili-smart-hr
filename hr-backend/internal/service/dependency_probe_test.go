@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/integration/llm"
@@ -73,31 +74,33 @@ func (p *fakePinger) Ping(_ context.Context, secret string) error {
 	return p.err
 }
 
-// anthropicMC 是探测用例的启用模型预设。
-var anthropicMC = llm.ModelConfig{Provider: "anthropic", ModelID: "claude-sonnet-4-5", APIKey: "sk-x"}
-
-func newProbe(p llm.EnabledModelProvider, c llm.Client, secret *domain.IntegrationSecret, pinger service.ConversationlogPinger) service.DependencyProbe {
-	return service.NewRealDependencyProbe(p, c, &fakeSecretRepo{getSecret: secret}, crypto.DeriveKey("test-key"), pinger)
+// newProbe 构造真实探测：探测内部不再前置 provider 查询，模型解析收敛在 llm.Client。
+// 需要 fakeEnabledProvider 驱动真实模型解析的用例经 realClientFor 包装注入。
+func newProbe(c llm.Client, secret *domain.IntegrationSecret, pinger service.ConversationlogPinger) service.DependencyProbe {
+	return service.NewRealDependencyProbe(c, &fakeSecretRepo{getSecret: secret}, crypto.DeriveKey("test-key"), pinger)
 }
 
-// TestProbeLLM_NotConfiguredModel：无启用模型 → not_configured_model，不发起 LLM 调用（specs 03 §3.4）。
+// realClientFor 包装 llm.New 真实客户端，探测经完整链路（模型解析→token 预检→适配器路由）。
+func realClientFor(t *testing.T, p llm.EnabledModelProvider) llm.Client {
+	t.Helper()
+	return llm.New(llm.Config{Timeout: 2 * time.Second, MaxRetries: 0}, p)
+}
+
+// TestProbeLLM_NotConfiguredModel：无启用模型 → not_configured_model。
+// 错误经真实 StreamChat 的 wrapProviderUnavailable 分类，验证 cause 链穿透仍可识别哨兵。
 func TestProbeLLM_NotConfiguredModel(t *testing.T) {
-	client := &fakeLLMClient{}
-	probe := newProbe(&fakeEnabledProvider{err: service.ErrLLMModelNotEnabled}, client,
-		&domain.IntegrationSecret{}, &fakePinger{})
+	client := realClientFor(t, &fakeEnabledProvider{err: service.ErrLLMModelNotEnabled})
+	probe := newProbe(client, &domain.IntegrationSecret{}, &fakePinger{})
 
 	if got := probe.ProbeLLM(context.Background()); got != service.StatusNotConfiguredModel {
 		t.Fatalf("want not_configured_model, got %q", got)
-	}
-	if client.reqSeen {
-		t.Fatal("llm client must not be called when no model enabled")
 	}
 }
 
 // TestProbeLLM_ResolveError：桥接非哨兵错误（如解密失败）→ unreachable。
 func TestProbeLLM_ResolveError(t *testing.T) {
-	probe := newProbe(&fakeEnabledProvider{err: errors.New("decrypt failed")}, &fakeLLMClient{},
-		&domain.IntegrationSecret{}, &fakePinger{})
+	client := realClientFor(t, &fakeEnabledProvider{err: errors.New("decrypt failed")})
+	probe := newProbe(client, &domain.IntegrationSecret{}, &fakePinger{})
 
 	if got := probe.ProbeLLM(context.Background()); got != service.StatusUnreachable {
 		t.Fatalf("want unreachable, got %q", got)
@@ -109,8 +112,7 @@ func TestProbeLLM_ResolveError(t *testing.T) {
 func TestProbeLLM_Reachable(t *testing.T) {
 	stream := &fakeLLMStream{chunks: []llm.StreamChunk{{Content: "pong"}}}
 	client := &fakeLLMClient{stream: stream}
-	probe := newProbe(&fakeEnabledProvider{mc: anthropicMC}, client,
-		&domain.IntegrationSecret{}, &fakePinger{})
+	probe := newProbe(client, &domain.IntegrationSecret{}, &fakePinger{})
 
 	if got := probe.ProbeLLM(context.Background()); got != service.StatusReachable {
 		t.Fatalf("want reachable, got %q", got)
@@ -133,8 +135,7 @@ func TestProbeLLM_Reachable(t *testing.T) {
 func TestProbeLLM_StreamError(t *testing.T) {
 	authErr := *llm.ErrAuth
 	client := &fakeLLMClient{err: &authErr}
-	probe := newProbe(&fakeEnabledProvider{mc: anthropicMC}, client,
-		&domain.IntegrationSecret{}, &fakePinger{})
+	probe := newProbe(client, &domain.IntegrationSecret{}, &fakePinger{})
 
 	if got := probe.ProbeLLM(context.Background()); got != service.StatusUnreachable {
 		t.Fatalf("want unreachable, got %q", got)
@@ -163,8 +164,7 @@ var _ llm.Client = (*streamOverridingClient)(nil)
 // TestProbeLLM_RecvDomainError：流读取中途收到 ErrAuth → unreachable，流仍被 Close。
 func TestProbeLLM_RecvDomainError(t *testing.T) {
 	es := &errRecvStream{}
-	probe := newProbe(&fakeEnabledProvider{mc: anthropicMC}, &streamOverridingClient{stream: es},
-		&domain.IntegrationSecret{}, &fakePinger{})
+	probe := newProbe(&streamOverridingClient{stream: es}, &domain.IntegrationSecret{}, &fakePinger{})
 
 	if got := probe.ProbeLLM(context.Background()); got != service.StatusUnreachable {
 		t.Fatalf("want unreachable, got %q", got)
@@ -176,7 +176,7 @@ func TestProbeLLM_RecvDomainError(t *testing.T) {
 
 // TestProbeIntegration_NotConfiguredKey：密钥未配置（cipher 空）→ not_configured_key。
 func TestProbeIntegration_NotConfiguredKey(t *testing.T) {
-	probe := newProbe(&fakeEnabledProvider{}, &fakeLLMClient{},
+	probe := newProbe(&fakeLLMClient{},
 		&domain.IntegrationSecret{SecretCipher: ""}, &fakePinger{})
 
 	if got := probe.ProbeIntegration(context.Background()); got != service.StatusNotConfiguredKey {
@@ -192,7 +192,7 @@ func TestProbeIntegration_Reachable(t *testing.T) {
 		t.Fatalf("encrypt: %v", err)
 	}
 	pinger := &fakePinger{}
-	probe := newProbe(&fakeEnabledProvider{}, &fakeLLMClient{},
+	probe := newProbe(&fakeLLMClient{},
 		&domain.IntegrationSecret{SecretCipher: cipher}, pinger)
 
 	if got := probe.ProbeIntegration(context.Background()); got != service.StatusReachable {
@@ -207,7 +207,7 @@ func TestProbeIntegration_Reachable(t *testing.T) {
 func TestProbeIntegration_Unreachable(t *testing.T) {
 	key := crypto.DeriveKey("test-key")
 	cipher, _ := crypto.Encrypt(key, "secret-plain")
-	probe := newProbe(&fakeEnabledProvider{}, &fakeLLMClient{},
+	probe := newProbe(&fakeLLMClient{},
 		&domain.IntegrationSecret{SecretCipher: cipher}, &fakePinger{err: errors.New("timeout")})
 
 	if got := probe.ProbeIntegration(context.Background()); got != service.StatusUnreachable {
@@ -217,7 +217,7 @@ func TestProbeIntegration_Unreachable(t *testing.T) {
 
 // TestProbeIntegration_DecryptFailed：密文损坏 → unreachable（而非 not_configured_key）。
 func TestProbeIntegration_DecryptFailed(t *testing.T) {
-	probe := newProbe(&fakeEnabledProvider{}, &fakeLLMClient{},
+	probe := newProbe(&fakeLLMClient{},
 		&domain.IntegrationSecret{SecretCipher: "broken"}, &fakePinger{})
 
 	if got := probe.ProbeIntegration(context.Background()); got != service.StatusUnreachable {

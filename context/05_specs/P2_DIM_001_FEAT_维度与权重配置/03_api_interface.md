@@ -367,13 +367,15 @@ GET /api/dimensions/1780000000000000010
 | name | string | 是 | 2~30 字符 | 维度名称 |
 | prompt | string | 条件必填 | `data_source=CONVERSATION` 时必填，≤2000 字符 | 评分提示词 |
 | anchor | string | 是 | ≤500 字符 | 评分锚点 |
-| weight | integer | 是 | 0~100 整数 | 聚合权重（受 specs 规则5 限制，前端禁用，后端兜底校验） |
-| include_overview | boolean | 是 | - | 是否参与总览分 |
-| enabled | boolean | 是 | - | 是否启用，承载启停切换 |
+| weight | integer | 否 | 0~100 整数 | 聚合权重。前端表单恒传值；服务端缺省（字段缺席）回退当前行存量值，防御 API 直调客户端（specs 规则5） |
+| include_overview | boolean | 否 | - | 是否参与总览分。服务端缺省回退当前行存量值，防御布尔零值把缺省当 false 落库致误停用 |
+| enabled | boolean | 否 | - | 是否启用，承载启停切换。服务端缺省回退当前行存量值，同上 |
 | description | string | 否 | ≤300 字符 | 维度说明 |
 | version | integer | 是 | 正整数 | 乐观锁版本号，取自详情响应 |
 
 **不可变字段：** `code`、`module_code`、`group_code`、`data_source` 提交后只读（specs 4.1.2 B、规则8），编辑请求不接收这些字段，服务端忽略任何尝试修改。
+
+**缺省回退语义：** `weight`/`include_overview`/`enabled` 三字段服务端以指针接收，字段缺席时回退当前行存量值。设计动机：布尔与整型零值无法区分「显式传 false/0」与「字段缺席」，必填校验会让省略字段的 API 直调请求误判，而按零值落库会把缺省 `enabled` 静默当 false 造成误停用。前端表单恒传全量三字段，不受此语义影响。
 
 **响应示例：**
 
@@ -551,6 +553,7 @@ GET /api/dimensions/activity-rule
 | 1206 | DimensionAnchorRequired | 评分锚点必填缺失 | anchor 为空（specs 规则7） |
 | 1207 | DimensionPromptRequired | 评分提示词必填缺失 | CONVERSATION 维度 prompt 为空（specs 规则6） |
 | 1208 | ActivityThresholdInvalid | 活跃度阈值校验失败 | 阈值越界或低频 ≥ 活跃下限 |
+| 1209 | DimensionCodeUnavailable | 维度编码不可用 | 同名维度编码去重候选耗尽，或追加序号后超 40 字符上限（specs 规则4） |
 
 ### 4.2 通用错误码（复用）
 
@@ -585,7 +588,7 @@ GET /api/dimensions/activity-rule
 |---------|--------|---------|
 | 表单校验失败 | 1205/1206/1207/1208/1400 | 字段内联报错，保留已填输入，不关闭弹窗、不切换面板 |
 | 并发冲突 | 1204 | toast「该维度配置已变更，请刷新后重试」，中止本次提交 |
-| 编码生成冲突 | 1202 | toast「操作失败，请稍后重试」，允许重新提交再次生成 |
+| 编码生成冲突 | 1202/1209 | toast「操作失败，请稍后重试」，允许重新提交再次生成 |
 | 网络或服务异常 | 1500 / 网络错误 | toast「操作失败，请稍后重试」，允许重试 |
 
 ---
@@ -638,3 +641,4 @@ GET /api/dimensions/activity-rule
 | 版本 | 日期 | 变更内容 | 作者 |
 |------|------|---------|------|
 | v1.0 | 2026-08-11 | 初始版本，7 个接口，错误码 11xx 段 | lixuetao |
+| v1.1 | 2026-09-09 | 补 1209 错误码；update 的 weight/include_overview/enabled 改服务端缺省回退存量值语义 | lixuetao |

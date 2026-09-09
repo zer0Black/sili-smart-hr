@@ -14,42 +14,36 @@ import {
   useDimensionDetail,
   useDimensionTree,
 } from '@/features/dimension/hooks';
+import { allLeafIds, findFirstEnabledLeafId, moduleLeaves } from '@/features/dimension/tree';
 import type { ModuleCode, SelectedNode } from '@/features/dimension/types';
-import { MODULE_ORDER } from '@/features/dimension/types';
-import type {
-  DimensionBrief,
-  DimensionModuleNode,
-  DimensionTreeNode,
-} from '@/lib/contracts';
+import type { DimensionBrief } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/system/dimension/')({
   component: DimensionConfigPage,
 });
 
-/**
- * 找树里首个 enabled 叶子维度 id（specs §3.2 流程说明 / BR1）。
- * 遍历顺序：MODULE_ORDER → 模块内按树原序（AI_USAGE 取各分组的第一个命中）。
- * 全部停用或空树返回 null，调用方据此回到空状态。
- */
-function findFirstEnabledLeafId(tree: DimensionTreeNode): string | null {
-  const byCode = new Map<string, DimensionModuleNode>();
-  for (const m of tree.modules) byCode.set(m.module_code, m);
-  for (const code of MODULE_ORDER) {
-    const m = byCode.get(code);
-    if (!m) continue;
-    // AI_USAGE 有 groups，其余直接挂 dimensions。
-    const list: DimensionBrief[] = m.groups
-      ? m.groups.flatMap((g) => g.dimensions)
-      : m.dimensions ?? [];
-    const hit = list.find((d) => d.enabled);
-    if (hit) return hit.id;
-  }
-  return null;
-}
-
 /** 树是否首次拿到数据（用于 BR1 effect 的单次触发判定）。 */
 const treeJustLoaded = (prev: boolean | undefined, cur: boolean | undefined): boolean =>
   prev !== true && cur === true;
+
+/** 查询失败态：错误提示 + 重试（specs §4.1.4 规则9）。样式仿 login 的 publicKeyError 行。 */
+function QueryErrorHint({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useTranslation('dimension');
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm">
+      <span className="text-destructive">{message}</span>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="h-auto shrink-0 px-0"
+        onClick={onRetry}
+      >
+        {t('retry', { ns: 'errorBoundary' })}
+      </Button>
+    </div>
+  );
+}
 
 /**
  * 维度与权重配置页（specs §3.1 页面 1）。
@@ -89,26 +83,15 @@ function DimensionConfigPage() {
         ? (detailQ.data.module_code as ModuleCode)
         : 'AI_USAGE';
 
-  // 删除/新增后的选中兜底（BR2）：
-  // - 当前选中叶子已不在新树里（被删除）→ 切到首个可用 enabled 叶子，无则回空态。
-  // effect 仅在 treeQ.data 引用变化时触发，不影响正常切换选中。
+  // 删除后的选中兜底（BR2）：当前选中叶子已不在新树里 → 切到首个可用 enabled 叶子，无则回空态。
+  // 依赖具体字段而非整个 selected，避免正常点击切换选中也重建 allIds。
+  const selectedLeafId = selected.kind === 'leaf' ? selected.dimensionId : null;
   useEffect(() => {
-    if (selected.kind !== 'leaf' || !treeQ.data) return;
-    const allIds = new Set<string>();
-    for (const m of treeQ.data.modules) {
-      if (m.groups) {
-        for (const g of m.groups) {
-          for (const d of g.dimensions) allIds.add(d.id);
-        }
-      } else if (m.dimensions) {
-        for (const d of m.dimensions) allIds.add(d.id);
-      }
-    }
-    if (!allIds.has(selected.dimensionId)) {
-      const next = findFirstEnabledLeafId(treeQ.data);
-      setSelected(next ? { kind: 'leaf', dimensionId: next } : { kind: 'empty' });
-    }
-  }, [treeQ.data, selected]);
+    if (!selectedLeafId || !treeQ.data) return;
+    if (allLeafIds(treeQ.data).has(selectedLeafId)) return;
+    const next = findFirstEnabledLeafId(treeQ.data);
+    setSelected(next ? { kind: 'leaf', dimensionId: next } : { kind: 'empty' });
+  }, [treeQ.data, selectedLeafId]);
 
   // 新增成功后选中新维度（specs §3.2 流程说明 3）。
   const onDimensionCreated = (newId: string) => {
@@ -118,6 +101,14 @@ function DimensionConfigPage() {
   // 右侧面板渲染（specs §4.1.5，ACTIVITY 优先于通用 module 判定）。
   const rightPanel = useMemo(() => {
     if (selected.kind === 'module' && selected.moduleCode === 'ACTIVITY') {
+      if (ruleQ.isError) {
+        return (
+          <QueryErrorHint
+            message={t('panel.loadError')}
+            onRetry={() => void ruleQ.refetch()}
+          />
+        );
+      }
       return ruleQ.data ? (
         <ActivityRulePanel rule={ruleQ.data} onSaved={() => ruleQ.refetch()} />
       ) : (
@@ -129,21 +120,25 @@ function DimensionConfigPage() {
       const mod = treeQ.data?.modules.find((m) => m.module_code === moduleCode);
       let dims: DimensionBrief[] = [];
       if (mod) {
-        if (mod.groups) {
-          if (selected.kind === 'group') {
-            const g = mod.groups.find((x) => x.group_code === selected.groupCode);
-            dims = g ? g.dimensions : [];
-          } else {
-            // module 级别（仅 AI_USAGE 有 groups）：聚合所有分组维度。
-            dims = mod.groups.flatMap((g) => g.dimensions);
-          }
+        if (mod.groups && selected.kind === 'group') {
+          const g = mod.groups.find((x) => x.group_code === selected.groupCode);
+          dims = g ? g.dimensions : [];
         } else {
-          dims = mod.dimensions ?? [];
+          // module 级别（含 AI_USAGE）：取模块全部叶子（AI_USAGE 由 helper 聚合各分组）。
+          dims = moduleLeaves(mod);
         }
       }
       return <ModuleSummary dimensions={dims} moduleCode={moduleCode} />;
     }
     if (selected.kind === 'leaf') {
+      if (detailQ.isError) {
+        return (
+          <QueryErrorHint
+            message={t('panel.loadError')}
+            onRetry={() => void detailQ.refetch()}
+          />
+        );
+      }
       if (detailQ.isLoading || !detailQ.data) {
         return (
           <div className="text-muted-foreground text-sm">{t('common:loading')}</div>
@@ -163,7 +158,7 @@ function DimensionConfigPage() {
         <Button onClick={() => setCreateOpen(true)}>{t('empty.createAction')}</Button>
       </div>
     );
-  }, [selected, ruleQ.data, ruleQ.refetch, detailQ.data, detailQ.isLoading, detailQ.refetch, treeQ.data, t]);
+  }, [selected, ruleQ.isError, ruleQ.data, ruleQ.refetch, detailQ.isError, detailQ.data, detailQ.isLoading, detailQ.refetch, treeQ.data, t]);
 
   return (
     <div className="flex flex-col gap-4">

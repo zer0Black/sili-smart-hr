@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -244,7 +245,78 @@ func TestSeedParamsIdempotent(t *testing.T) {
 	}
 }
 
-// TestMigrateInjectPrefixesAppendSemantics 替换语义存量行（param_value 为出厂
+// TestMigrateDimensionDeletedCode 存量库 code 唯一索引落地前的数据收敛：
+// 软删行改写占位码（原code__D<id>）、活跃重复 code 加 __DUP<id> 后缀（保首行）、
+// 幂等重跑不叠加后缀，收敛后建 uk_dimension_code 不再被脏数据卡死。
+func TestMigrateDimensionDeletedCode(t *testing.T) {
+	if err := snowflake.Init(1); err != nil {
+		t.Fatalf("snowflake init: %v", err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&domain.Dimension{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	// 先拆唯一索引模拟旧表结构（无 uk_dimension_code 的存量库），再插脏数据：
+	// 软删行与活跃行同 code + 两活跃行同 code（TOCTOU 时期脏数据）。
+	if err := db.Migrator().DropIndex(&domain.Dimension{}, "uk_dimension_code"); err != nil {
+		t.Fatalf("drop index: %v", err)
+	}
+	del := &domain.Dimension{Code: "ACT_X", Name: "旧", ModuleCode: domain.ModuleActivity,
+		DataSource: domain.SourceRule, Anchor: "a", Weight: 1, Enabled: false, Version: 1}
+	if err := db.Create(del).Error; err != nil {
+		t.Fatalf("seed del: %v", err)
+	}
+	if err := db.Delete(del).Error; err != nil { // GORM 软删
+		t.Fatalf("soft delete: %v", err)
+	}
+	a := &domain.Dimension{Code: "ACT_X", Name: "甲", ModuleCode: domain.ModuleActivity,
+		DataSource: domain.SourceRule, Anchor: "a", Weight: 1, Enabled: true, Version: 1}
+	b := &domain.Dimension{Code: "ACT_X", Name: "乙", ModuleCode: domain.ModuleActivity,
+		DataSource: domain.SourceRule, Anchor: "a", Weight: 1, Enabled: true, Version: 1}
+	if err := db.Create(a).Error; err != nil {
+		t.Fatalf("seed a: %v", err)
+	}
+	if err := db.Create(b).Error; err != nil {
+		t.Fatalf("seed b: %v", err)
+	}
+
+	// 钩子收敛后重建唯一索引成功，幂等重跑不叠加后缀。
+	if err := migrateDimensionDeletedCode(db); err != nil {
+		t.Fatalf("migrateDimensionDeletedCode: %v", err)
+	}
+	if err := migrateDimensionDeletedCode(db); err != nil {
+		t.Fatalf("idempotent rerun: %v", err)
+	}
+	if err := db.Migrator().CreateIndex(&domain.Dimension{}, "uk_dimension_code"); err != nil {
+		t.Fatalf("recreate unique index: %v", err)
+	}
+
+	var codes []string
+	if err := db.Unscoped().Model(&domain.Dimension{}).Order("id ASC").Pluck("code", &codes).Error; err != nil {
+		t.Fatalf("pluck codes: %v", err)
+	}
+	uniq := map[string]bool{}
+	for _, c := range codes {
+		if uniq[c] {
+			t.Fatalf("duplicate code after migration: %v", codes)
+		}
+		uniq[c] = true
+	}
+	// 期望形态：软删行占位码 ACT_X__D<delID>、活跃首行保留 ACT_X、重复活跃行 ACT_X__DUP<bID>。
+	wantB := "ACT_X__DUP" + strconv.FormatInt(b.ID, 10)
+	wantDel := "ACT_X__D" + strconv.FormatInt(del.ID, 10)
+	got := map[string]bool{}
+	for _, c := range codes {
+		got[c] = true
+	}
+	if !got["ACT_X"] || !got[wantB] || !got[wantDel] {
+		t.Fatalf("want codes {%s %s %s}, got %v", "ACT_X", wantB, wantDel, codes)
+	}
+}
+
 // 全集 JSON）一次性重置为空数组；运维改过的行（值偏离全集）不触碰；重置后
 // 重跑幂等。守护追加语义升级时参数页不呈现 59 条来历不明的追加条目。
 func TestMigrateInjectPrefixesAppendSemantics(t *testing.T) {

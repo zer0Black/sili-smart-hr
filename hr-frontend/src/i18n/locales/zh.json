@@ -139,8 +139,11 @@
     "checksTitle": "环境自检",
     "checkDatabase": "数据库",
     "checkRedis": "缓存",
+    "checkJwtSecret": "JWT 密钥",
     "checkPass": "已就绪",
     "checkFail": "未通过",
+    "checkJwtPass": "已加固",
+    "checkJwtInsecure": "使用默认公开密钥，存在伪造风险",
     "envBlockedHint": "环境自检未通过，无法完成初始化",
     "username": "账号",
     "usernamePlaceholder": "3-30 位字母数字下划线",
@@ -209,6 +212,9 @@
       "title": "未选中维度",
       "desc": "从左侧维度树选择一个节点，或新增一个维度开始配置。",
       "createAction": "新增维度"
+    },
+    "panel": {
+      "loadError": "数据加载失败，请重试"
     },
     "module": {
       "ACTIVITY": "使用活跃度",

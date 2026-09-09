@@ -280,10 +280,15 @@ func TestClientProviderRouting(t *testing.T) {
 func TestClientNoProvider(t *testing.T) {
 	fa := &fakeAdapter{}
 	installProbe(t, fa)
-	c := New(fastCfg(), &fakeProvider{err: errors.New("no enabled model")})
+	causeErr := errors.New("no enabled model")
+	c := New(fastCfg(), &fakeProvider{err: causeErr})
 	_, err := c.StreamChat(context.Background(), userReq())
 	if !errors.Is(err, ErrProviderUnavailable) {
 		t.Fatalf("err = %v, want ErrProviderUnavailable", err)
+	}
+	// cause 链穿透：调用方可同时识别领域码与底层哨兵（如 service.ErrLLMModelNotEnabled）。
+	if !errors.Is(err, causeErr) {
+		t.Fatalf("err = %v, want cause chain to reach %v", err, causeErr)
 	}
 	if n := fa.calls.Load(); n != 0 {
 		t.Errorf("adapter 调用 %d 次, want 0", n)

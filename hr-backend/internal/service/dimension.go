@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/pkg/dberr"
 	"sili-smart-hr/backend/internal/pkg/errcode"
 	"sili-smart-hr/backend/internal/pkg/snowflake"
 	"sili-smart-hr/backend/internal/repository"
@@ -47,6 +48,35 @@ var modulePresets = map[string]modulePreset{
 	domain.ModuleAIUsage:   {Name: "AI 使用能力", DataSource: domain.SourceConversation, Weight: 5, Include: true, IsReference: false},
 	domain.ModuleAIMgmt:    {Name: "AI 管理能力", DataSource: domain.SourceTest, Weight: 5, Include: true, IsReference: false},
 	domain.ModuleEnneagram: {Name: "九型人格", DataSource: domain.SourceTest, Weight: 0, Include: false, IsReference: true},
+}
+
+// moduleWeightLocked 报告模块的 weight/include_overview 是否锁死为 0/false（specs 规则5）：
+// ACTIVITY（基线分级）与 ENNEAGRAM（参考性维度）不参与聚合；未知模块按锁死从严兜底。
+func moduleWeightLocked(moduleCode string) bool {
+	p, ok := modulePresets[moduleCode]
+	return !ok || (p.Weight == 0 && !p.Include)
+}
+
+// resolveWeightInclude 联动归一 weight/include_overview（specs 规则5 + 03 §3.3），Create/Update 共用：
+// 锁死模块强制 0/false，显式传非默认值返 1400；自由模块显式传值校验 0~100，缺省回退 defW/defI。
+func resolveWeightInclude(moduleCode string, defW int, defI bool, weight *int, include *bool) (int, bool, error) {
+	if moduleWeightLocked(moduleCode) {
+		if (weight != nil && *weight != 0) || (include != nil && *include) {
+			return 0, false, NewError(errcode.BadRequest)
+		}
+		return 0, false, nil
+	}
+	w, i := defW, defI
+	if weight != nil {
+		if *weight < 0 || *weight > dimWeightMax {
+			return 0, false, NewError(errcode.BadRequest)
+		}
+		w = *weight
+	}
+	if include != nil {
+		i = *include
+	}
+	return w, i, nil
 }
 
 // moduleOrder 树响应模块固定顺序（specs §4.1.5）。
@@ -144,14 +174,15 @@ type CreateDimensionInput struct {
 }
 
 // UpdateDimensionInput 编辑请求体，不可变字段（code/module_code/group_code/data_source）不接收。
+// weight/include_overview/enabled 缺省与显式零值需区分（如 ACTIVITY 合法 weight=0），用指针承载。
 type UpdateDimensionInput struct {
 	ID              int64  `json:"id,string"`
 	Name            string `json:"name"`
 	Prompt          string `json:"prompt"`
 	Anchor          string `json:"anchor"`
-	Weight          int    `json:"weight"`
-	IncludeOverview bool   `json:"include_overview"`
-	Enabled         bool   `json:"enabled"`
+	Weight          *int   `json:"weight"`
+	IncludeOverview *bool  `json:"include_overview"`
+	Enabled         *bool  `json:"enabled"`
 	Description     string `json:"description"`
 	Version         int    `json:"version"`
 }
@@ -210,15 +241,9 @@ func NewDimensionService(repo repository.DimensionRepository) DimensionService {
 	return &dimensionService{repo: repo}
 }
 
-// GenerateDimensionCode 维度编码生成纯函数（specs 规则4）。
-// moduleCode→前缀 + name 全大写拼音（字间无分隔连写），与前缀用下划线连接，截断 ≤40 字符。
-// 不负责同名去重，由调用方 CreateDimension 在冲突时追加序号。
-//
-// 设计取舍：go-pinyin 按字返回拼音，不带分词。specs 规则4 未要求字间下划线，
-// 故各字拼音连写为一个连续大写串（如「需求澄清能力」→XUQIUCHENGQINGNENGLI），
-// 既满足 specs「全大写」与「前缀下划线连接」，又让核心断言的拼音段（XUQIU/CHENGQING 等）
-// 作为连续子串可被识别。子计划示例 AI_XUQIU_CHENGQING_NENGLI 是按词分隔的宽松示例，
-// 缺分词能力时连写是合理降级。
+// GenerateDimensionCode 维度编码生成纯函数（specs 规则4）：模块前缀 + 名称全大写拼音，
+// 各字拼音连写（如「需求澄清能力」→AI_XUQIUCHENGQINGNENGLI），无分词能力时不加字间下划线，
+// 截断 ≤40 字符；同名去重由调用方追加序号。
 func GenerateDimensionCode(moduleCode, name string) string {
 	prefix := codePrefix[moduleCode]
 	parts := pinyin.LazyPinyin(name, pinyin.NewArgs())
@@ -351,25 +376,37 @@ func toDetail(d *domain.Dimension) *DimensionDetail {
 	}
 }
 
+// validateDimensionMutableFields 编辑态共享字段校验（specs §4.1.2 B + 规则6/7 + 03 §5.2 逐项校验），Create/Update 共用。
+// prompt 判空仅 CONVERSATION，长度 ≤2000 对所有 data_source 生效；name 先 trim 再判空与 2~30 rune。
+func validateDimensionMutableFields(name, anchor, prompt, description, dataSource string) error {
+	n := strings.TrimSpace(name)
+	if n == "" || utf8.RuneCountInString(n) < dimNameMin || utf8.RuneCountInString(n) > dimNameMax {
+		return NewError(errcode.DimensionNameInvalid)
+	}
+	a := strings.TrimSpace(anchor)
+	if a == "" {
+		return NewError(errcode.DimensionAnchorRequired)
+	}
+	if utf8.RuneCountInString(a) > dimAnchorMax || utf8.RuneCountInString(description) > dimDescriptionMax {
+		return NewError(errcode.BadRequest)
+	}
+	if dataSource == domain.SourceConversation && strings.TrimSpace(prompt) == "" {
+		return NewError(errcode.DimensionPromptRequired)
+	}
+	if utf8.RuneCountInString(prompt) > dimPromptMax {
+		return NewError(errcode.BadRequest)
+	}
+	return nil
+}
+
 // CreateDimension 新增：校验 → 联动派生 → 编码生成（含冲突去重）→ 入库（specs §4.2 + 规则1~9）。
 func (s *dimensionService) CreateDimension(ctx context.Context, in CreateDimensionInput) (*DimensionMutationResult, error) {
-	// name/anchor/description 先 trim 再判空 + 长度，对齐 setup.go 口径，收敛纯空格脏数据（specs §4.1.2 B）。
+	if err := validateDimensionMutableFields(in.Name, in.Anchor, in.Prompt, in.Description, in.DataSource); err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(in.Name)
-	if name == "" || utf8.RuneCountInString(name) > dimNameMax || utf8.RuneCountInString(name) < dimNameMin {
-		return nil, NewError(errcode.DimensionNameInvalid)
-	}
-	// anchor 必填（specs 规则7）。
 	anchor := strings.TrimSpace(in.Anchor)
-	if anchor == "" {
-		return nil, NewError(errcode.DimensionAnchorRequired)
-	}
-	if utf8.RuneCountInString(anchor) > dimAnchorMax {
-		return nil, NewError(errcode.BadRequest)
-	}
 	description := strings.TrimSpace(in.Description)
-	if utf8.RuneCountInString(description) > dimDescriptionMax {
-		return nil, NewError(errcode.BadRequest)
-	}
 	// 模块存在性。
 	preset, ok := modulePresets[in.ModuleCode]
 	if !ok {
@@ -393,68 +430,46 @@ func (s *dimensionService) CreateDimension(ctx context.Context, in CreateDimensi
 		return nil, NewError(errcode.BadRequest)
 	}
 	ds := preset.DataSource
-	// CONVERSATION 维度 prompt 必填（specs 规则6）。
-	if ds == domain.SourceConversation {
-		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, NewError(errcode.DimensionPromptRequired)
-		}
-		if utf8.RuneCountInString(in.Prompt) > dimPromptMax {
-			return nil, NewError(errcode.BadRequest)
-		}
+	// prompt 必填校验依赖派生后的 ds（AI_USAGE 未显式传 data_source 时 in.DataSource 为空）。
+	if ds == domain.SourceConversation && strings.TrimSpace(in.Prompt) == "" {
+		return nil, NewError(errcode.DimensionPromptRequired)
 	}
-	// weight/include_overview 联动（specs §4.2.4 规则1 + 规则5）。
-	weight := preset.Weight
-	if in.Weight != nil {
-		if *in.Weight < 0 || *in.Weight > dimWeightMax {
-			return nil, NewError(errcode.BadRequest)
-		}
-		if *in.Weight != preset.Weight {
-			return nil, NewError(errcode.BadRequest)
-		}
-		weight = *in.Weight
-	}
-	include := preset.Include
-	if in.IncludeOverview != nil {
-		if *in.IncludeOverview != preset.Include {
-			return nil, NewError(errcode.BadRequest)
-		}
-		include = *in.IncludeOverview
+	// weight/include_overview 联动：锁死模块强制 0/false，自由模块缺省回退 preset（specs 规则5）。
+	weight, include, werr := resolveWeightInclude(in.ModuleCode, preset.Weight, preset.Include, in.Weight, in.IncludeOverview)
+	if werr != nil {
+		return nil, werr
 	}
 
-	// 编码生成 + 同名冲突去重（specs 规则4 + §4.2.4 规则2）。
-	// 按可用 code 在循环内 break（verified=true）即落库；循环耗尽（base_2..base_(max+1) 全冲突）则
-	// 最后一次 code 未在循环内验证过，需补查一次。用 verified 区分两条退出路径，消除 break 路径的冗余 SELECT。
+	// 编码生成 + 同名冲突去重（specs 规则4 + §4.2.4 规则2）：
+	// 候选依次取 base、base_2..base_N，查到可用即用；追加序号后超 40 字符或候选耗尽返 1209。
 	base := GenerateDimensionCode(in.ModuleCode, name)
-	code := base
-	verified := false
-	for i := 2; i <= dimCodeRetryMax+1; i++ {
+	code := ""
+	found := false
+	for i := 1; i <= dimCodeRetryMax+1; i++ {
+		if i == 1 {
+			code = base
+		} else {
+			code = fmt.Sprintf("%s_%d", base, i)
+			if utf8.RuneCountInString(code) > dimCodeMax {
+				break
+			}
+		}
 		exist, ferr := s.repo.FindByCodeExcludingDeleted(ctx, code)
 		if ferr != nil {
 			if !errors.Is(ferr, gorm.ErrRecordNotFound) {
 				return nil, fmt.Errorf("find by code: %w", ferr)
 			}
-			verified = true // NotFound → 当前 code 可用。
+			found = true
 			break
 		}
-		// ferr == nil 但 exist == nil：当前 GORM 不会发生，作为 repository 契约防御避免空转写冲突码。
+		// ferr == nil 且 exist != nil：编码冲突，换下一候选。
+		// exist == nil 且 err == nil 违反 repository 契约，防御上报避免空转写冲突码。
 		if exist == nil {
 			return nil, fmt.Errorf("find by code: repository returned nil without error")
 		}
-		// 仍冲突，追加序号。最后一次 i=max+1 追加后循环即退出，该 code 未在循环内查过。
-		code = fmt.Sprintf("%s_%d", base, i)
-		if utf8.RuneCountInString(code) > dimCodeMax {
-			return nil, NewError(errcode.DimensionCodeExists)
-		}
 	}
-	if !verified {
-		// 仅循环耗尽路径补查一次，确认最终 code 可用。
-		finalExist, ferr := s.repo.FindByCodeExcludingDeleted(ctx, code)
-		if ferr != nil && !errors.Is(ferr, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("find by code final: %w", ferr)
-		}
-		if finalExist != nil {
-			return nil, NewError(errcode.DimensionCodeExists)
-		}
+	if !found {
+		return nil, NewError(errcode.DimensionCodeUnavailable)
 	}
 
 	d := &domain.Dimension{
@@ -474,6 +489,10 @@ func (s *dimensionService) CreateDimension(ctx context.Context, in CreateDimensi
 		Version:         1, // specs §6.1 version 初始 1
 	}
 	if err := s.repo.Create(ctx, d); err != nil {
+		// 查重与 Create 间无锁，并发同名请求撞 uk_dimension_code 时由索引兜底，映射 1202。
+		if dberr.UniqueViolation(err) {
+			return nil, NewError(errcode.DimensionCodeExists)
+		}
 		return nil, fmt.Errorf("create dimension: %w", err)
 	}
 	return &DimensionMutationResult{
@@ -499,52 +518,31 @@ func (s *dimensionService) UpdateDimension(ctx context.Context, in UpdateDimensi
 		}
 		return nil, fmt.Errorf("find dimension by id: %w", err)
 	}
-	// name/anchor/description 先 trim 再判空 + 长度，对齐 setup.go 口径。
+	if err := validateDimensionMutableFields(in.Name, in.Anchor, in.Prompt, in.Description, cur.DataSource); err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(in.Name)
-	if name == "" || utf8.RuneCountInString(name) > dimNameMax || utf8.RuneCountInString(name) < dimNameMin {
-		return nil, NewError(errcode.DimensionNameInvalid)
-	}
-	// anchor 必填。
 	anchor := strings.TrimSpace(in.Anchor)
-	if anchor == "" {
-		return nil, NewError(errcode.DimensionAnchorRequired)
-	}
-	if utf8.RuneCountInString(anchor) > dimAnchorMax {
-		return nil, NewError(errcode.BadRequest)
-	}
 	description := strings.TrimSpace(in.Description)
-	if utf8.RuneCountInString(description) > dimDescriptionMax {
-		return nil, NewError(errcode.BadRequest)
+	// weight/include_overview 联动兜底（specs 规则5）：锁死模块强制 0/false，
+	// 自由模块缺省回退当前行存量值（specs §3.4 三字段必填，缺省仅防御 API 客户端）。
+	weight, include, werr := resolveWeightInclude(cur.ModuleCode, cur.Weight, cur.IncludeOverview, in.Weight, in.IncludeOverview)
+	if werr != nil {
+		return nil, werr
 	}
-	if in.Weight < 0 || in.Weight > dimWeightMax {
-		return nil, NewError(errcode.BadRequest)
-	}
-	// prompt 校验（CONVERSATION 必填）。
-	if cur.DataSource == domain.SourceConversation {
-		if strings.TrimSpace(in.Prompt) == "" {
-			return nil, NewError(errcode.DimensionPromptRequired)
-		}
-		if utf8.RuneCountInString(in.Prompt) > dimPromptMax {
-			return nil, NewError(errcode.BadRequest)
-		}
-	}
-	// 模块联动兜底（specs 规则5）：ACTIVITY/ENNEAGRAM 强制 weight=0 且 include_overview=false。
-	if cur.ModuleCode == domain.ModuleActivity || cur.ModuleCode == domain.ModuleEnneagram {
-		if in.Weight != 0 {
-			return nil, NewError(errcode.BadRequest)
-		}
-		if in.IncludeOverview {
-			return nil, NewError(errcode.BadRequest)
-		}
+	// enabled 缺省回退当前行存量值，避免省略字段被静默当作 false 落库。
+	enabled := cur.Enabled
+	if in.Enabled != nil {
+		enabled = *in.Enabled
 	}
 
 	updates := map[string]any{
 		"name":             name,
 		"prompt":           in.Prompt,
 		"anchor":           anchor,
-		"weight":           in.Weight,
-		"include_overview": in.IncludeOverview,
-		"enabled":          in.Enabled,
+		"weight":           weight,
+		"include_overview": include,
+		"enabled":          enabled,
 		"description":      description,
 	}
 	rows, err := s.repo.UpdateWithVersion(ctx, in.ID, in.Version, updates)

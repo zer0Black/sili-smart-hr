@@ -15,10 +15,7 @@ import type {
   ModuleMeta,
   SelectedNode,
 } from '@/features/dimension/types';
-import {
-  MODULE_META,
-  MODULE_ORDER,
-} from '@/features/dimension/types';
+import { MODULE_META } from '@/features/dimension/types';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -43,17 +40,7 @@ export function filterDimensionsByKeyword<T extends { name: string }>(
   return list.filter((d) => d.name.toLowerCase().includes(lower));
 }
 
-/** tree.modules 是后端顺序，前端按 MODULE_ORDER 重排后输出。 */
-function orderedModules(tree: DimensionTreeNode): DimensionModuleNode[] {
-  const byCode = new Map<string, DimensionModuleNode>();
-  for (const m of tree.modules) byCode.set(m.module_code, m);
-  const out: DimensionModuleNode[] = [];
-  for (const code of MODULE_ORDER) {
-    const node = byCode.get(code);
-    if (node) out.push(node);
-  }
-  return out;
-}
+// 后端树接口按 moduleOrder 固定顺序返回模块（dimension service），此处直接消费不再重排。
 
 /** 判断模块节点当前是否命中选中态。 */
 function isModuleSelected(selected: SelectedNode, moduleCode: string): boolean {
@@ -300,7 +287,7 @@ export function DimensionTree({
   searchKeyword,
 }: DimensionTreeProps) {
   const { t } = useTranslation('dimension');
-  const modules = orderedModules(tree);
+  const modules = tree.modules;
   if (modules.length === 0) {
     return (
       <div className="text-muted-foreground px-2 py-6 text-center text-sm">

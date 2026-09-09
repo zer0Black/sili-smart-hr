@@ -177,3 +177,34 @@ func TestHealthCheck_CustomProbe(t *testing.T) {
 		t.Fatalf("Integration want %q, got %q", service.StatusUnreachable, res.Integration)
 	}
 }
+
+// panicProbe 的 LLM 分支 panic、Integration 正常返回，验证单项 panic 不击穿健康接口。
+type panicProbe struct{ integ string }
+
+func (panicProbe) ProbeLLM(_ context.Context) string { panic("boom") }
+func (p panicProbe) ProbeIntegration(_ context.Context) string {
+	return p.integ
+}
+
+var _ service.DependencyProbe = panicProbe{}
+
+// TestHealthCheck_ProbePanic_Isolated：LLM 探测 panic → 该项降级 unreachable，
+// Integration 与 db/redis 项不受影响（specs §5.4.4 规则1 单项隔离）。
+func TestHealthCheck_ProbePanic_Isolated(t *testing.T) {
+	repo := &fakeSystemInitRepo{}
+	svc := service.NewSystemService(repo, constProbe(true), constProbe(true), panicProbe{integ: service.StatusReachable})
+
+	res, err := svc.HealthCheck(context.Background())
+	if err != nil {
+		t.Fatalf("HealthCheck should survive probe panic, got %v", err)
+	}
+	if res.LLM != service.StatusUnreachable {
+		t.Fatalf("LLM want unreachable on panic, got %q", res.LLM)
+	}
+	if res.Integration != service.StatusReachable {
+		t.Fatalf("Integration want %q (unaffected by llm panic), got %q", service.StatusReachable, res.Integration)
+	}
+	if res.Database != service.StatusConnected || res.Redis != service.StatusConnected {
+		t.Fatalf("db/redis want connected, got %q/%q", res.Database, res.Redis)
+	}
+}

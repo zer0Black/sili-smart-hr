@@ -25,21 +25,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { WeightField } from '@/features/dimension/components/weight-field';
+import { handleDimensionSubmitError } from '@/features/dimension/form-errors';
 import { useCreateDimension } from '@/features/dimension/hooks';
 import {
-  GROUP_META,
+  GROUP_ORDER,
   MODULE_DEFAULTS,
   MODULE_META,
   MODULE_ORDER,
 } from '@/features/dimension/types';
 import type { DataSource, GroupCode, ModuleCode } from '@/features/dimension/types';
-import { DIM_FIELD_LIMITS } from '@/features/dimension/validation';
+import {
+  DIM_FIELD_LIMITS,
+  runeLengthAtLeast,
+  runeLengthAtMost,
+} from '@/features/dimension/validation';
 import type { CreateDimensionPayload } from '@/lib/contracts';
-import { ErrCode } from '@/lib/contracts';
-import { ApiError } from '@/lib/http-client';
 
 export interface CreateDimensionDialogProps {
   open: boolean;
@@ -82,6 +85,7 @@ export function applyModuleReset(moduleCode: ModuleCode): {
 /**
  * Zod schema 工厂。prompt 是否必填取决于 data_source（specs §4.1.4 规则6 + §4.2.5）。
  * 校验消息经 t() 国际化，组件内 useMemo 重建（仿 account form 样板）。
+ * 长度校验按码点计数（countRunes），对齐后端 utf8.RuneCountInString 口径。
  */
 export function createCreateFormSchema(
   opts: { dataSource: DataSource },
@@ -91,29 +95,31 @@ export function createCreateFormSchema(
   return z.object({
     name: z
       .string()
-      .min(DIM_FIELD_LIMITS.nameMin, t('create.nameMinLength'))
-      .max(DIM_FIELD_LIMITS.nameMax, t('create.nameMaxLength')),
+      .refine(runeLengthAtLeast(DIM_FIELD_LIMITS.nameMin), t('create.nameMinLength'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.nameMax), t('create.nameMaxLength')),
     module_code: z.enum(MODULE_ORDER),
     group_code: z.union([z.enum(['BASE', 'UPPER']), z.null()]),
     data_source: z.enum(['RULE', 'CONVERSATION', 'TEST']),
     prompt: z
       .string()
-      .max(DIM_FIELD_LIMITS.promptMax, t('create.promptMaxLength'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.promptMax), t('create.promptMaxLength'))
       .refine(
         (v) => !promptRequired || v.trim().length > 0,
         t('create.promptRequired'),
       ),
     anchor: z
       .string()
-      .min(DIM_FIELD_LIMITS.anchorMin, t('create.anchorRequired'))
-      .max(DIM_FIELD_LIMITS.anchorMax, t('create.anchorMaxLength')),
+      .refine(runeLengthAtLeast(DIM_FIELD_LIMITS.anchorMin), t('create.anchorRequired'))
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.anchorMax), t('create.anchorMaxLength')),
     weight: z
       .number()
       .int(t('create.weightInteger'))
       .min(DIM_FIELD_LIMITS.weightMin, t('create.weightMin'))
       .max(DIM_FIELD_LIMITS.weightMax, t('create.weightMax')),
     include_overview: z.boolean(),
-    description: z.string().max(DIM_FIELD_LIMITS.descriptionMax, t('create.descriptionMaxLength')),
+    description: z
+      .string()
+      .refine(runeLengthAtMost(DIM_FIELD_LIMITS.descriptionMax), t('create.descriptionMaxLength')),
   });
 }
 
@@ -233,27 +239,19 @@ export function CreateDimensionDialog({
         onCreated(res.id);
       },
       onError: (err) => {
-        const code = err instanceof ApiError ? err.code : undefined;
         // 校验类错误（specs §4.1.4 规则9）：映射到字段内联报错，保留输入，不关闭弹窗。
-        if (code === ErrCode.DimensionNameInvalid) {
-          setError('name', { message: t('create.nameInvalid') });
-          return;
-        }
-        if (code === ErrCode.DimensionAnchorRequired) {
-          setError('anchor', { message: t('create.anchorRequired') });
-          return;
-        }
-        if (code === ErrCode.DimensionPromptRequired) {
-          setError('prompt', { message: t('create.promptRequired') });
-          return;
-        }
-        if (code === ErrCode.BadRequest) {
-          toast.error(t('create.toastBadRequest'));
-          return;
-        }
-        // 1202 编码冲突（specs §4.2.4 规则2）：toast 允许重新提交。
-        // 1500 / 网络 / 其他：toast 重试。
-        toast.error(t('create.toastGeneric'));
+        // 编码不可用（1209，同名去重耗尽或追加序号后超长，specs §4.2.4 规则2）：toast 允许重新提交。
+        handleDimensionSubmitError(
+          err,
+          (f, msg) => setError(f, { message: msg }),
+          {
+            nameInvalid: t('create.nameInvalid'),
+            anchorRequired: t('create.anchorRequired'),
+            promptRequired: t('create.promptRequired'),
+            toastBadRequest: t('create.toastBadRequest'),
+            toastGeneric: t('create.toastGeneric'),
+          },
+        );
       },
     });
   };
@@ -330,7 +328,7 @@ export function CreateDimensionDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {(Object.keys(GROUP_META) as GroupCode[]).map((gc) => (
+                      {GROUP_ORDER.map((gc) => (
                         <SelectItem key={gc} value={gc}>
                           {t(`group.${gc}`)}
                         </SelectItem>
@@ -407,50 +405,20 @@ export function CreateDimensionDialog({
           </div>
 
           {/* 聚合权重：数字 Input + Slider 双向联动，ACTIVITY/ENNEAGRAM 禁用 */}
-          <div className="flex flex-col gap-2">
-            <Label>{t('create.weight')}</Label>
-            <Controller
-              control={control}
-              name="weight"
-              render={({ field }) => (
-                <div className="flex items-center gap-4">
-                  <Slider
-                    value={[field.value]}
-                    min={0}
-                    max={100}
-                    step={1}
-                    disabled={weightDisabled}
-                    onValueChange={(v) => field.onChange(v[0])}
-                    className="flex-1"
-                  />
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    step={1}
-                    value={field.value}
-                    disabled={weightDisabled}
-                    onChange={(e) => {
-                      // 清空时不写值，保留上一个合法值，避免空串被 Number() 钳成 0 静默改写默认权重。
-                      if (e.target.value === '') return;
-                      const n = Number(e.target.value);
-                      if (Number.isFinite(n)) {
-                        field.onChange(Math.max(0, Math.min(100, Math.trunc(n))));
-                      }
-                    }}
-                    className="w-20"
-                  />
-                  <span className="text-muted-foreground text-sm">%</span>
-                </div>
-              )}
-            />
-            {weightDisabled && (
-              <p className="text-muted-foreground text-xs">{weightHint}</p>
+          <Controller
+            control={control}
+            name="weight"
+            render={({ field }) => (
+              <WeightField
+                label={t('create.weight')}
+                value={field.value}
+                onChange={field.onChange}
+                disabled={weightDisabled}
+                hint={weightHint}
+                error={errors.weight?.message}
+              />
             )}
-            {errors.weight && (
-              <p className="text-destructive text-sm">{errors.weight.message}</p>
-            )}
-          </div>
+          />
 
           {/* 参与总览分 */}
           <div className="flex items-center justify-between rounded-md border p-3">

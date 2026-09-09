@@ -333,6 +333,53 @@ func TestCreateDimension_ModuleWeightViolation(t *testing.T) {
 	wantDimCode(t, err, errcode.BadRequest)
 }
 
+// TestCreateDimension_CustomWeightAccepted 自由模块显式传自定义权重（AI_USAGE 权重 25）通过（specs 03 §3.3）。
+func TestCreateDimension_CustomWeightAccepted(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByCodeResults: []findByCodeResult{{err: gorm.ErrRecordNotFound}},
+	}
+	in := service.CreateDimensionInput{
+		Name: "需求澄清能力", ModuleCode: domain.ModuleAIUsage, GroupCode: strPtr(domain.GroupBase),
+		DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a",
+		Weight: intPtr(25), IncludeOverview: boolPtr(false),
+	}
+	res, err := newDimSvc(repo).CreateDimension(context.Background(), in)
+	if err != nil {
+		t.Fatalf("custom weight 25 should pass: %v", err)
+	}
+	if res.Weight != 25 || res.IncludeOverview {
+		t.Fatalf("want w25/include=false, got w%d/include%v", res.Weight, res.IncludeOverview)
+	}
+}
+
+// TestCreateDimension_LockedModuleExplicitDefault 锁死模块显式传 weight=0/include=false 通过。
+func TestCreateDimension_LockedModuleExplicitDefault(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByCodeResults: []findByCodeResult{{err: gorm.ErrRecordNotFound}},
+	}
+	in := service.CreateDimensionInput{
+		Name: "会话深度", ModuleCode: domain.ModuleActivity, Anchor: "a",
+		Weight: intPtr(0), IncludeOverview: boolPtr(false),
+	}
+	res, err := newDimSvc(repo).CreateDimension(context.Background(), in)
+	if err != nil {
+		t.Fatalf("explicit locked defaults should pass: %v", err)
+	}
+	if res.Weight != 0 || res.IncludeOverview {
+		t.Fatalf("want w0/include=false, got w%d/include%v", res.Weight, res.IncludeOverview)
+	}
+}
+
+// TestCreateDimension_PromptTooLongNonConversation 非 CONVERSATION 维度 prompt >2000 返 1400（specs 03 §5.2 逐项校验）。
+func TestCreateDimension_PromptTooLongNonConversation(t *testing.T) {
+	repo := &dimFakeRepo{}
+	_, err := newDimSvc(repo).CreateDimension(context.Background(), service.CreateDimensionInput{
+		Name: "完美型", ModuleCode: domain.ModuleEnneagram, Anchor: "a",
+		Prompt: stringRepeat("长", 2001),
+	})
+	wantDimCode(t, err, errcode.BadRequest)
+}
+
 // TestCreateDimension_ModuleIncludeViolation ACTIVITY 显式传 include_overview=true 返 1400。
 func TestCreateDimension_ModuleIncludeViolation(t *testing.T) {
 	repo := &dimFakeRepo{}
@@ -389,20 +436,21 @@ func TestCreateDimension_DataSourceMismatch(t *testing.T) {
 	_, err := newDimSvc(repo).CreateDimension(context.Background(), service.CreateDimensionInput{
 		Name: "测试维度", ModuleCode: domain.ModuleActivity, Anchor: "锚点",
 		DataSource: domain.SourceConversation, // ACTIVITY 应是 RULE
+		Prompt:     "p",
 	})
 	wantDimCode(t, err, errcode.BadRequest)
 }
 
-// TestCreateDimension_CodeConflict 核心断言 + specs §4.2.4 规则2：编码冲突且无法去重返 1202。
+// TestCreateDimension_CodeConflict 核心断言 + specs §4.2.4 规则2：编码冲突且无法去重返 1209。
 func TestCreateDimension_CodeConflict(t *testing.T) {
 	repo := &dimFakeRepo{
-		alwaysCodeConflict: true, // 所有查重恒命中存在行，最终触发 1202。
+		alwaysCodeConflict: true, // 所有查重恒命中存在行，最终触发 1209。
 	}
 	_, err := newDimSvc(repo).CreateDimension(context.Background(), service.CreateDimensionInput{
 		Name: "测试", ModuleCode: domain.ModuleAIUsage, GroupCode: strPtr(domain.GroupBase),
 		DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a",
 	})
-	wantDimCode(t, err, errcode.DimensionCodeExists)
+	wantDimCode(t, err, errcode.DimensionCodeUnavailable)
 }
 
 // TestCreateDimension_CodeDedupOK 编码冲突一次后追加 _2 成功。
@@ -442,6 +490,19 @@ func TestCreateDimension_CreateRepoError(t *testing.T) {
 	}
 }
 
+// TestCreateDimension_CreateUniqueViolation Create 撞 uk_dimension_code（查重与写入间
+// 并发同名落库）由唯一索引兜底，映射 1202 而非 1500。
+func TestCreateDimension_CreateUniqueViolation(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByCodeResults: []findByCodeResult{{err: gorm.ErrRecordNotFound}},
+		createErr:         gorm.ErrDuplicatedKey,
+	}
+	_, err := newDimSvc(repo).CreateDimension(context.Background(), service.CreateDimensionInput{
+		Name: "测试", ModuleCode: domain.ModuleActivity, Anchor: "a",
+	})
+	wantDimCode(t, err, errcode.DimensionCodeExists)
+}
+
 // === UpdateDimension ===
 
 // TestUpdateDimension_NotFound 目标不存在返 1201。
@@ -459,7 +520,7 @@ func TestUpdateDimension_VersionConflict(t *testing.T) {
 			DataSource: domain.SourceConversation, Weight: 5, Version: 5},
 		updateRows: 0, // 版本不一致
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Anchor: "a", Weight: 5, IncludeOverview: true, Enabled: true, Version: 3, Prompt: "p"}
+	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Anchor: "a", Weight: intPtr(5), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 3, Prompt: "p"}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.DimensionVersionConflict)
 }
@@ -478,7 +539,7 @@ func TestUpdateDimension_Success(t *testing.T) {
 	}
 	// 模拟回读：第二次 FindByID 返回 updatedSnapshot。
 	repo.findByIDDim = repo.updatedSnapshot
-	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Anchor: "a", Weight: 25, IncludeOverview: true, Enabled: true, Version: 3, Prompt: "p"}
+	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Anchor: "a", Weight: intPtr(25), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 3, Prompt: "p"}
 	res, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	if err != nil {
 		t.Fatalf("update: %v", err)
@@ -491,12 +552,51 @@ func TestUpdateDimension_Success(t *testing.T) {
 	}
 }
 
+// TestUpdateDimension_CustomWeightSpecs03 自由模块（AI_USAGE）显式传自定义权重 25 通过（specs 03 §3.3/§3.4）。
+func TestUpdateDimension_CustomWeightSpecs03(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage,
+			DataSource: domain.SourceConversation, Weight: 5, IncludeOverview: true, Enabled: true, Version: 3},
+		updateRows: 1,
+	}
+	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "a", Weight: intPtr(25), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 3, Prompt: "p"}
+	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
+	if err != nil {
+		t.Fatalf("custom weight 25 should pass: %v", err)
+	}
+}
+
+// TestUpdateDimension_OmittedFieldsFallback weight/include_overview/enabled 缺省时回退当前行存量值，不清零。
+func TestUpdateDimension_OmittedFieldsFallback(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage,
+			DataSource: domain.SourceConversation, Weight: 25, IncludeOverview: true, Enabled: true, Version: 3},
+		updateRows: 1,
+	}
+	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Anchor: "a", Version: 3, Prompt: "p"}
+	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
+	if err != nil {
+		t.Fatalf("omitted fields should fall back to current row: %v", err)
+	}
+}
+
+// TestUpdateDimension_WeightOutOfRange 自由模块显式传 weight=101 返 1400。
+func TestUpdateDimension_WeightOutOfRange(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage,
+			DataSource: domain.SourceConversation, Weight: 5, Version: 1},
+	}
+	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "a", Weight: intPtr(101), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1, Prompt: "p"}
+	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
+	wantDimCode(t, err, errcode.BadRequest)
+}
+
 // TestUpdateDimension_ActivityWeightGuard ACTIVITY weight≠0 返 1400（specs 规则5）。
 func TestUpdateDimension_ActivityWeightGuard(t *testing.T) {
 	repo := &dimFakeRepo{
 		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleActivity, DataSource: domain.SourceRule, Version: 1},
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "活跃", Anchor: "a", Weight: 10, IncludeOverview: false, Enabled: true, Version: 1}
+	in := service.UpdateDimensionInput{ID: 1, Name: "活跃", Anchor: "a", Weight: intPtr(10), IncludeOverview: boolPtr(false), Enabled: boolPtr(true), Version: 1}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.BadRequest)
 }
@@ -506,7 +606,7 @@ func TestUpdateDimension_EnneagramIncludeGuard(t *testing.T) {
 	repo := &dimFakeRepo{
 		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleEnneagram, DataSource: domain.SourceTest, Version: 1},
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "完美型", Anchor: "a", Weight: 0, IncludeOverview: true, Enabled: true, Version: 1}
+	in := service.UpdateDimensionInput{ID: 1, Name: "完美型", Anchor: "a", Weight: intPtr(0), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.BadRequest)
 }
@@ -516,7 +616,7 @@ func TestUpdateDimension_NameInvalid(t *testing.T) {
 	repo := &dimFakeRepo{
 		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage, DataSource: domain.SourceConversation, Version: 1},
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "x", Anchor: "a", Weight: 5, IncludeOverview: true, Enabled: true, Version: 1, Prompt: "p"}
+	in := service.UpdateDimensionInput{ID: 1, Name: "x", Anchor: "a", Weight: intPtr(5), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1, Prompt: "p"}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.DimensionNameInvalid)
 }
@@ -526,7 +626,7 @@ func TestUpdateDimension_AnchorRequired(t *testing.T) {
 	repo := &dimFakeRepo{
 		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage, DataSource: domain.SourceConversation, Version: 1},
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "", Weight: 5, IncludeOverview: true, Enabled: true, Version: 1, Prompt: "p"}
+	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "", Weight: intPtr(5), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1, Prompt: "p"}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.DimensionAnchorRequired)
 }
@@ -536,9 +636,20 @@ func TestUpdateDimension_PromptRequired(t *testing.T) {
 	repo := &dimFakeRepo{
 		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleAIUsage, DataSource: domain.SourceConversation, Version: 1},
 	}
-	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "a", Weight: 5, IncludeOverview: true, Enabled: true, Version: 1, Prompt: ""}
+	in := service.UpdateDimensionInput{ID: 1, Name: "测试", Anchor: "a", Weight: intPtr(5), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1, Prompt: ""}
 	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
 	wantDimCode(t, err, errcode.DimensionPromptRequired)
+}
+
+// TestUpdateDimension_PromptTooLongNonConversation 非 CONVERSATION 维度 prompt >2000 返 1400（specs 03 §5.2 逐项校验）。
+func TestUpdateDimension_PromptTooLongNonConversation(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, ModuleCode: domain.ModuleEnneagram, DataSource: domain.SourceTest, Version: 1},
+	}
+	in := service.UpdateDimensionInput{ID: 1, Name: "完美型", Anchor: "a", Weight: intPtr(0), IncludeOverview: boolPtr(false), Enabled: boolPtr(true), Version: 1,
+		Prompt: stringRepeat("长", 2001)}
+	_, err := newDimSvc(repo).UpdateDimension(context.Background(), in)
+	wantDimCode(t, err, errcode.BadRequest)
 }
 
 // === DeleteDimension ===

@@ -35,14 +35,16 @@ type createDimensionRequest struct {
 }
 
 // updateDimensionRequest：id 为 string（雪花 ID JSON string 化）经 parseID，version 乐观锁。
+// weight/include_overview/enabled 用指针区分缺省与显式零值（如 ACTIVITY 合法 weight=0），
+// 与 service.UpdateDimensionInput 对齐。
 type updateDimensionRequest struct {
 	ID              string `json:"id" binding:"required"`
 	Name            string `json:"name" binding:"required"`
 	Prompt          string `json:"prompt"`
 	Anchor          string `json:"anchor" binding:"required"`
-	Weight          int    `json:"weight"`
-	IncludeOverview bool   `json:"include_overview"`
-	Enabled         bool   `json:"enabled"`
+	Weight          *int   `json:"weight"`
+	IncludeOverview *bool  `json:"include_overview"`
+	Enabled         *bool  `json:"enabled"`
 	Description     string `json:"description"`
 	Version         int    `json:"version" binding:"required"`
 }
@@ -159,7 +161,7 @@ func (h *DimensionHandler) Delete(c *gin.Context) {
 		handleServiceError(c, err)
 		return
 	}
-	response.OKWithData(c, gin.H{"id": req.ID})
+	response.OK(c)
 }
 
 // ActivityRule 处理 GET /api/dimensions/activity-rule。

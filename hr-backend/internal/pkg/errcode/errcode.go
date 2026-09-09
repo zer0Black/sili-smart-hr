@@ -2,7 +2,7 @@
 package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
-// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1208，config 1301-1309，通用 1400/1500。
+// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500。
 // 百位区分域：0=account，1=system，2=dimension，3=config。dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
@@ -23,6 +23,7 @@ const (
 	DimensionAnchorRequired          = 1206 // 行为锚点必填
 	DimensionPromptRequired          = 1207 // 评分提示词必填
 	ActivityThresholdInvalid         = 1208 // 活跃度阈值非法
+	DimensionCodeUnavailable         = 1209 // 维度编码不可用（同名去重耗尽或追加序号后超长）
 	LLMConfigNotFound                = 1301 // 大模型不存在
 	LastLLMConfig                    = 1302 // 至少保留一个大模型
 	IntegrationSecretNotConfigured   = 1303 // 集成密钥未配置
@@ -55,6 +56,7 @@ var messages = map[int]string{
 	DimensionAnchorRequired:          "dimension anchor required",
 	DimensionPromptRequired:          "dimension prompt required",
 	ActivityThresholdInvalid:         "activity threshold invalid",
+	DimensionCodeUnavailable:         "dimension code unavailable",
 	LLMConfigNotFound:                "llm config not found",
 	LastLLMConfig:                    "last llm config",
 	IntegrationSecretNotConfigured:   "integration secret not configured",

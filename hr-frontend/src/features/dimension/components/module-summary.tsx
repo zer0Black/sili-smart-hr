@@ -60,18 +60,18 @@ function WeightTotal({
         <span
           className={cn(
             'font-medium',
-            isComplete ? 'text-green-600' : 'text-yellow-600',
+            isComplete ? 'text-success' : 'text-warning',
           )}
         >
           {total}%
         </span>
         {isComplete ? (
-          <span className="inline-flex items-center gap-1 text-green-600">
+          <span className="inline-flex items-center gap-1 text-success">
             <Check className="h-4 w-4" />
             <span className="text-sm">{t('summary.aligned')}</span>
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1 text-yellow-600">
+          <span className="inline-flex items-center gap-1 text-warning">
             <TriangleAlert className="h-4 w-4" />
             <span className="text-sm">
               {t('summary.deviation', { delta: delta > 0 ? `+${delta}` : `${delta}` })}
@@ -89,7 +89,7 @@ function WeightTotal({
         <div
           className={cn(
             'h-full rounded-xs transition-all',
-            isComplete ? 'bg-green-600' : 'bg-yellow-500',
+            isComplete ? 'bg-success' : 'bg-warning',
           )}
           style={{ width: `${clamped}%` }}
         />

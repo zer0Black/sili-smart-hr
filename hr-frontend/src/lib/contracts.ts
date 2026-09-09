@@ -35,6 +35,7 @@ export const ErrCode = {
   DimensionAnchorRequired: 1206,
   DimensionPromptRequired: 1207,
   ActivityThresholdInvalid: 1208,
+  DimensionCodeUnavailable: 1209,
   LLMConfigNotFound: 1301,
   LastLLMConfig: 1302,
   IntegrationSecretNotConfigured: 1303,
@@ -135,6 +136,8 @@ export interface SetupStatus {
   checks: {
     database: { connected: boolean };
     redis: { connected: boolean };
+    /** JWT 密钥安全性：secure=false 为默认公开密钥（仅信息项，不阻断提交）。 */
+    jwt_secret: { secure: boolean };
   };
   block_submit: boolean;
 }

@@ -102,6 +102,16 @@ func ProvideRedisProbe(rdb *redis.Client) RedisProbe {
 	})
 }
 
+// JWTSecretSecure 用命名类型承载 JWT 密钥安全态，供 SetupService 环境自检输出
+// checks.jwt_secret.secure（specs 03 §3.1）。SQLite 开发态默认密钥为 false 仅提示不阻断。
+type JWTSecretSecure bool
+
+// NewJWTSecretSecure 以 !IsDefaultJWTSecret 求值：密钥经 JWT_SECRET 覆盖即为安全态，
+// 与 main.go「生产非 SQLite 仍默认密钥拒绝启动」共用同一判定源。
+func NewJWTSecretSecure(cfg *config.Config) JWTSecretSecure {
+	return JWTSecretSecure(!cfg.IsDefaultJWTSecret())
+}
+
 // NewSetupServiceAdapter 是 Wire 装配适配器：接收命名类型 probe，
 // 内部转裸 func 调 service.NewSetupService，让 Wire 类型表唯一可注入。
 func NewSetupServiceAdapter(
@@ -111,20 +121,21 @@ func NewSetupServiceAdapter(
 	decryptor service.PasswordDecryptor,
 	dbProbe DBProbe,
 	redisProbe RedisProbe,
+	jwtSecure JWTSecretSecure,
 ) service.SetupService {
-	return service.NewSetupService(db, systemInitRepo, accountRepo, decryptor, (func(context.Context) bool)(dbProbe), (func(context.Context) bool)(redisProbe))
+	return service.NewSetupService(db, systemInitRepo, accountRepo, decryptor, (func(context.Context) bool)(dbProbe), (func(context.Context) bool)(redisProbe), bool(jwtSecure))
 }
 
 // NewRealDependencyProbeProvider 返回 config 落地后的真实外部依赖探测（LLM 最小流式请求 +
 // 会话日志鉴权探测），替换 NoopDependencyProbe。用 provider 返回接口类型让 Wire 类型表唯一可注入。
+// 启用模型解析收敛在 llm.Client 内部，此处无需 EnabledModelProvider。
 func NewRealDependencyProbeProvider(
-	provider llm.EnabledModelProvider,
 	llmClient llm.Client,
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	convLog service.ConversationlogPinger,
 ) service.DependencyProbe {
-	return service.NewRealDependencyProbe(provider, llmClient, secretRepo, encKey, convLog)
+	return service.NewRealDependencyProbe(llmClient, secretRepo, encKey, convLog)
 }
 
 // NewLLMClient 构造全局 LLM 底座客户端，零值 Config 由 llm.New 内部 applyDefaults

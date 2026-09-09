@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/extractor"
@@ -24,6 +25,11 @@ func migrateDB(db *gorm.DB) error {
 	if err := migrateAggregateScoreFloatToDouble(db); err != nil {
 		return err
 	}
+	// 存量软删维度行 code 改写占位码：须在 AutoMigrate 之前，否则 uk_dimension_code
+	// 建索引时旧语义的「软删行与活跃行同 code」存量数据会让建索引直接失败。
+	if err := migrateDimensionDeletedCode(db); err != nil {
+		return err
+	}
 
 	// 全部 domain 模型
 	if err := db.AutoMigrate(allModels()...); err != nil {
@@ -31,42 +37,54 @@ func migrateDB(db *gorm.DB) error {
 	}
 
 	// dimension_settings 首启 seed：系统级单例，空表时写入默认活跃度阈值（specs 4.1.2 C 默认值：活跃下限 10、低频下限 5）。
-	// FirstOrCreate 在事务内 First 未命中即 Create，收敛查写窗口抗并发。Where("1 = 1") 让 First 命中任意已存在行；
-	// Attrs 提供"未命中时用于 Create 的初始属性"，绝不能放进 FirstOrCreate 的第二参数（会被当 where 条件，
-	// 且 snowflake.NextID() 每次新值会让 where id=<新雪花> 永远查不到，导致重复写入）。任何真实 DB 错误
-	// （连接抖动等非 ErrRecordNotFound）经 .Error 向上冒泡，不被静默吞。
+	// 单行表防重入：固定主键 SingleRowID，双实例同窗空库并发 seed 撞主键，UniqueViolation
+	// 视为对端胜出（FirstOrCreate 本身无跨进程互斥，事务只保证单实例内原子）。Where("1 = 1")
+	// 兼容存量库主键为雪花值的已 seed 行（First 命中即跳过 Create）。Attrs 提供"未命中时用于
+	// Create 的初始属性"，绝不能放进 FirstOrCreate 的第二参数（会被当 where 条件）。
+	// 任何真实 DB 错误（连接抖动等非冲突态）经 .Error 向上冒泡，不被静默吞。
 	var setting domain.DimensionSetting
-	if err := db.Where("1 = 1").Attrs(&domain.DimensionSetting{
-		ID:                    snowflake.NextID(),
+	err := db.Where("1 = 1").Attrs(domain.DimensionSetting{
+		ID:                    domain.SingleRowID,
 		ActiveThreshold:       10,
 		LowFrequencyThreshold: 5,
-	}).FirstOrCreate(&setting).Error; err != nil {
+	}).FirstOrCreate(&setting).Error
+	if dberr.UniqueViolation(err) {
+		err = nil // 并发双 seed 对端胜出，行已落库
+	}
+	if err != nil {
 		return fmt.Errorf("seed dimension_settings: %w", err)
 	}
 
 	// assessment_configs 首启 seed：系统级单例，空表时写入默认周期参数（specs §4：weekly/23:00/all/version=1）。
-	// 与 dimension_settings seed 同范式：Where("1 = 1") 命中任意已存在行，Attrs 提供未命中时的初始值（含显式雪花 ID），
-	// 真实 DB 错误经 .Error 向上冒泡。
+	// 与 dimension_settings seed 同范式：固定主键 + 撞键容错；Where("1 = 1") 兼容存量雪花主键行。
 	var assessCfg domain.AssessmentConfig
-	if err := db.Where("1 = 1").Attrs(&domain.AssessmentConfig{
-		ID:          snowflake.NextID(),
+	err = db.Where("1 = 1").Attrs(domain.AssessmentConfig{
+		ID:          domain.SingleRowID,
 		Period:      "weekly",
 		TriggerTime: "23:00",
 		TargetMode:  "all",
 		Version:     1,
-	}).FirstOrCreate(&assessCfg).Error; err != nil {
+	}).FirstOrCreate(&assessCfg).Error
+	if dberr.UniqueViolation(err) {
+		err = nil
+	}
+	if err != nil {
 		return fmt.Errorf("seed assessment_configs: %w", err)
 	}
 
 	// integration_secrets 首启 seed：系统级单例，空表时写入空密钥行（specs §6.1 + 04 §4：未配置为默认态）。
 	// 配置状态由 SecretCipher 是否为空推导，首启空行表示未配置；与 assessment_configs seed 各自独立判空、互不影响。
 	var integrationSecret domain.IntegrationSecret
-	if err := db.Where("1 = 1").Attrs(&domain.IntegrationSecret{
-		ID:           snowflake.NextID(),
+	err = db.Where("1 = 1").Attrs(domain.IntegrationSecret{
+		ID:           domain.SingleRowID,
 		SecretCipher: "",
 		SecretMasked: "",
 		Version:      1,
-	}).FirstOrCreate(&integrationSecret).Error; err != nil {
+	}).FirstOrCreate(&integrationSecret).Error
+	if dberr.UniqueViolation(err) {
+		err = nil
+	}
+	if err != nil {
 		return fmt.Errorf("seed integration_secrets: %w", err)
 	}
 
@@ -196,6 +214,59 @@ func columnDataType(db *gorm.DB, model any, col string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("column %s not found", col)
+}
+
+// migrateDimensionDeletedCode 收敛 dimensions.code 唯一索引落地前的存量数据：
+// 软删行改写占位码（原code__D<id>）释放原 code，活跃重复 code 保留首行、其余加 __DUP<id> 后缀。
+// 须在 AutoMigrate 之前执行（重复数据会让建唯一索引直接失败）。幂等：已带后缀的行跳过。
+func migrateDimensionDeletedCode(db *gorm.DB) error {
+	m := db.Migrator()
+	if !m.HasTable(&domain.Dimension{}) || !m.HasColumn(&domain.Dimension{}, "DeletedAt") {
+		return nil
+	}
+	var rows []struct {
+		ID        int64
+		Code      string
+		DeletedAt gorm.DeletedAt
+	}
+	if err := db.Model(&domain.Dimension{}).Unscoped().
+		Select("id, code, deleted_at").
+		Order("code ASC, id ASC").
+		Find(&rows).Error; err != nil {
+		return fmt.Errorf("scan dimensions for code rewrite: %w", err)
+	}
+	seenActive := map[string]bool{}
+	for _, row := range rows {
+		var code string
+		if row.DeletedAt.Valid {
+			if strings.HasSuffix(row.Code, fmt.Sprintf("__D%d", row.ID)) {
+				continue
+			}
+			code = suffixedCode(row.Code, fmt.Sprintf("__D%d", row.ID))
+		} else {
+			if seenActive[row.Code] {
+				code = suffixedCode(row.Code, fmt.Sprintf("__DUP%d", row.ID))
+			} else {
+				seenActive[row.Code] = true
+				continue
+			}
+		}
+		if err := db.Unscoped().Model(&domain.Dimension{}).
+			Where("id = ?", row.ID).
+			Update("code", code).Error; err != nil {
+			return fmt.Errorf("rewrite dimension %d code: %w", row.ID, err)
+		}
+	}
+	return nil
+}
+
+// suffixedCode 截前缀再接后缀，保证结果 ≤64 rune（varchar(64)）且后缀完整可区分。
+func suffixedCode(code, suffix string) string {
+	room := 64 - utf8.RuneCountInString(suffix)
+	if utf8.RuneCountInString(code) > room {
+		return string([]rune(code)[:room]) + suffix
+	}
+	return code + suffix
 }
 
 // migrateSessionFeatureClient 给存量 session_features 补 client 列（幂等）：

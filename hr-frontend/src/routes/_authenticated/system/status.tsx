@@ -1,5 +1,4 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import dayjs from 'dayjs';
 import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
@@ -8,7 +7,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useHealthCheck, useSystemSummary } from '@/features/system/hooks';
-import type { ComponentStatus, HealthResult } from '@/lib/contracts';
+import type { ComponentStatus } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/system/status')({
   component: SystemStatusPage,
@@ -22,8 +21,8 @@ function SystemStatusPage() {
   const { t } = useTranslation('system');
   const summaryQ = useSystemSummary();
   const healthMut = useHealthCheck();
-  // null 表示尚未触发过探测，组件健康区显示空状态引导（BR24）。
-  const [health, setHealth] = useState<HealthResult | null>(null);
+  // useMutation data 语义等价于手动 setHealth：未触发为 null，成功为最近一次结果。
+  const health = healthMut.data ?? null;
 
   // ISO 字符串按 YYYY-MM-DD HH:mm:ss 本地格式化，与 users 页统一走 dayjs（保留非法输入兜底）。
   const formatStartedAt = (raw: string): string =>
@@ -78,10 +77,9 @@ function SystemStatusPage() {
             <Button
               size="sm"
               disabled={healthMut.isPending}
-              // 仅触发 POST 探测，不传任何修改参数（BR19）；失败弹 toast，health 保持 null 允许重试。
+              // 仅触发 POST 探测，不传任何修改参数（BR19）；失败弹 toast，data 保持 null 允许重试。
               onClick={() =>
                 healthMut.mutate(undefined, {
-                  onSuccess: setHealth,
                   onError: () => toast.error(t('healthCheckFailed')),
                 })
               }

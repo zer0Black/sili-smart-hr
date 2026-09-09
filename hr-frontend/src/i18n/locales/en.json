@@ -139,8 +139,11 @@
     "checksTitle": "Environment Checks",
     "checkDatabase": "Database",
     "checkRedis": "Cache",
+    "checkJwtSecret": "JWT Secret",
     "checkPass": "Ready",
     "checkFail": "Failed",
+    "checkJwtPass": "Hardened",
+    "checkJwtInsecure": "Default public key in use, token forgery risk",
     "envBlockedHint": "Environment checks failed; initialization blocked",
     "username": "Account",
     "usernamePlaceholder": "3-30 letters, digits or underscore",
@@ -209,6 +212,9 @@
       "title": "No dimension selected",
       "desc": "Pick a node from the dimension tree on the left, or create a new dimension to start.",
       "createAction": "New Dimension"
+    },
+    "panel": {
+      "loadError": "Failed to load data, please retry"
     },
     "module": {
       "ACTIVITY": "Activity",
@@ -320,7 +326,7 @@
     "summary": {
       "weightTotal": "Weight Total",
       "aligned": "Aligned",
-      "deviation": "Off by 100% ({{delta}}%)",
+      "deviation": "Deviation from 100%: {{delta}}%",
       "referenceHint": "Reference dimension, not part of hard aggregation at this stage",
       "empty": "No dimensions in this module",
       "colIndex": "Index",

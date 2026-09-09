@@ -42,8 +42,9 @@ func (h *SetupHandler) Status(c *gin.Context) {
 		"initialized": st.Initialized,
 		"db_type":     st.DBType,
 		"checks": gin.H{
-			"database": gin.H{"connected": st.DatabaseConnected},
-			"redis":    gin.H{"connected": st.RedisConnected},
+			"database":   gin.H{"connected": st.DatabaseConnected},
+			"redis":      gin.H{"connected": st.RedisConnected},
+			"jwt_secret": gin.H{"secure": st.JwtSecretSecure},
 		},
 		"block_submit": st.BlockSubmit,
 	})

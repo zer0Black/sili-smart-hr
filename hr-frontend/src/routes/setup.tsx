@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
@@ -168,6 +168,7 @@ function SetupPage() {
         dbType={statusQ.data?.db_type}
         dbConnected={statusQ.data?.checks.database.connected}
         redisConnected={statusQ.data?.checks.redis.connected}
+        jwtSecretSecure={statusQ.data?.checks.jwt_secret.secure}
         t={t}
       />
 
@@ -266,18 +267,21 @@ function SetupPage() {
   );
 }
 
-/** 环境就绪自检区：database/redis 阻断项，状态图标加说明文案。 */
+/** 环境就绪自检区：database/redis 阻断项 + JWT 密钥安全性信息项。 */
 function ChecksView({
   show,
   dbType,
   dbConnected,
   redisConnected,
+  jwtSecretSecure,
   t,
 }: {
   show: boolean;
   dbType?: string;
   dbConnected?: boolean;
   redisConnected?: boolean;
+  /** JWT 密钥安全性信息项，后端 GetStatus 恒下发。 */
+  jwtSecretSecure?: boolean;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (!show) return null;
@@ -296,6 +300,15 @@ function ChecksView({
       <ul className="flex flex-col gap-2.5 text-sm">
         <CheckItem ok={!!dbConnected} label={t('checkDatabase')} passText={t('checkPass')} failText={t('checkFail')} />
         <CheckItem ok={!!redisConnected} label={t('checkRedis')} passText={t('checkPass')} failText={t('checkFail')} />
+        {jwtSecretSecure !== undefined && (
+          <CheckItem
+            ok={jwtSecretSecure}
+            label={t('checkJwtSecret')}
+            passText={t('checkJwtPass')}
+            failText={t('checkJwtInsecure')}
+            failTone="warning"
+          />
+        )}
       </ul>
     </div>
   );
@@ -306,16 +319,21 @@ function CheckItem({
   label,
   passText,
   failText,
+  failTone = 'destructive',
 }: {
   ok: boolean;
   label: string;
   passText: string;
   failText: string;
+  /** 失败态色调：阻断项 destructive，非阻断风险项（如 JWT 密钥）warning。 */
+  failTone?: 'destructive' | 'warning';
 }) {
   return (
     <li className="flex items-center gap-2.5">
       {ok ? (
         <CheckCircle2 className="size-4 shrink-0 text-success" />
+      ) : failTone === 'warning' ? (
+        <AlertCircle className="size-4 shrink-0 text-warning" />
       ) : (
         <XCircle className="size-4 shrink-0 text-destructive" />
       )}
@@ -323,7 +341,7 @@ function CheckItem({
       <span
         className={cn(
           'ml-auto font-mono text-[11px] uppercase tracking-[0.14em]',
-          ok ? 'text-success' : 'text-destructive'
+          ok ? 'text-success' : failTone === 'warning' ? 'text-warning' : 'text-destructive'
         )}
       >
         {ok ? passText : failText}

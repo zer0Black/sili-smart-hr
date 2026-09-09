@@ -37,15 +37,17 @@ func constProbe(b bool) func(context.Context) bool {
 	return func(context.Context) bool { return b }
 }
 
+// newSetupSvc 统一构造被测 service，jwtSecure 默认 true（信息项不影响阻断判定）。
+func newSetupSvc(db *gorm.DB, sysRepo repository.SystemInitializationRepository, accRepo repository.AccountRepository, dec *fakeDecryptor, dbUp, redisUp bool) service.SetupService {
+	return service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(dbUp), constProbe(redisUp), true)
+}
+
 // TestGetStatus_NotInitialized_NoBlock：空库 + db/redis 通 → Initialized=false、BlockSubmit=false。
-// 注意：DBType 字段取自 model.Current() 进程级全局，package service_test 无法调私有 setCurrent 设置，
-// 故不断言 DBType 字面值（参见 [REPORT] DBType 断言说明）。
 func TestGetStatus_NotInitialized_NoBlock(t *testing.T) {
 	db := newSetupTestDB(t)
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
-	dec := &fakeDecryptor{}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, &fakeDecryptor{}, true, true)
 
 	status, err := svc.GetStatus(context.Background())
 	if err != nil {
@@ -60,6 +62,9 @@ func TestGetStatus_NotInitialized_NoBlock(t *testing.T) {
 	if !status.RedisConnected {
 		t.Fatal("RedisConnected want true")
 	}
+	if !status.JwtSecretSecure {
+		t.Fatal("JwtSecretSecure want true (injected true)")
+	}
 	if status.BlockSubmit {
 		t.Fatal("BlockSubmit want false when db+redis up")
 	}
@@ -71,8 +76,7 @@ func TestGetStatus_RedisDown_Block(t *testing.T) {
 	db := newSetupTestDB(t)
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
-	dec := &fakeDecryptor{}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(false))
+	svc := newSetupSvc(db, sysRepo, accRepo, &fakeDecryptor{}, true, false)
 
 	status, err := svc.GetStatus(context.Background())
 	if err != nil {
@@ -89,6 +93,53 @@ func TestGetStatus_RedisDown_Block(t *testing.T) {
 	}
 }
 
+// TestGetStatus_JwtSecretInsecure_NoBlock：jwtSecure 注入 false（SQLite 默认密钥姿态）→
+// JwtSecretSecure=false 但 block_submit 不受影响（specs 4.1.2：仅提示不阻断）。
+func TestGetStatus_JwtSecretInsecure_NoBlock(t *testing.T) {
+	db := newSetupTestDB(t)
+	sysRepo := repository.NewSystemInitializationRepository(db)
+	accRepo := repository.NewAccountRepository(db)
+	svc := service.NewSetupService(db, sysRepo, accRepo, &fakeDecryptor{}, constProbe(true), constProbe(true), false)
+
+	status, err := svc.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus: %v", err)
+	}
+	if status.JwtSecretSecure {
+		t.Fatal("JwtSecretSecure want false (injected false)")
+	}
+	if status.BlockSubmit {
+		t.Fatal("BlockSubmit must stay false: jwt_secret is informational only")
+	}
+}
+
+// TestGetStatus_ExistsError_AllChecksFail_Block：Drop 表令 Exists 查询报错 →
+// initialized=false 且 DatabaseConnected 强制 false 联动 block_submit=true（specs 5.1.5
+// 「自检全部未通过、阻断提交」；03 §3.1 异常处理同口径）。
+func TestGetStatus_ExistsError_AllChecksFail_Block(t *testing.T) {
+	db := newSetupTestDB(t)
+	if err := db.Migrator().DropTable(&domain.SystemInitialization{}); err != nil {
+		t.Fatalf("drop system_initializations: %v", err)
+	}
+	sysRepo := repository.NewSystemInitializationRepository(db)
+	accRepo := repository.NewAccountRepository(db)
+	svc := newSetupSvc(db, sysRepo, accRepo, &fakeDecryptor{}, true, true)
+
+	status, err := svc.GetStatus(context.Background())
+	if err != nil {
+		t.Fatalf("GetStatus should not return error, got %v", err)
+	}
+	if status.Initialized {
+		t.Fatal("Initialized want false when Exists errors")
+	}
+	if status.DatabaseConnected {
+		t.Fatal("DatabaseConnected want false when Exists errors (all checks fail)")
+	}
+	if !status.BlockSubmit {
+		t.Fatal("BlockSubmit want true when init-record query fails")
+	}
+}
+
 // TestInitialize_AlreadyInit_1101：预置一条初始化记录后再次 Initialize → 1101（specs §4.1.4 规则5）。
 // 验证 Initialize 前置查 system_initializations 存在性，存在即拒绝（specs 规则1、规则5）。
 func TestInitialize_AlreadyInit_1101(t *testing.T) {
@@ -99,7 +150,7 @@ func TestInitialize_AlreadyInit_1101(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.SystemAlreadyInitialized)
@@ -112,7 +163,7 @@ func TestInitialize_DBDown_1102(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(false), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, false, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.EnvironmentNotReady)
@@ -124,7 +175,7 @@ func TestInitialize_BadUsername_1400(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "ab", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.BadRequest)
@@ -137,7 +188,7 @@ func TestInitialize_BlankName_1400(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "   ", "cipher", "kid")
 	wantCode(t, err, errcode.BadRequest)
@@ -149,7 +200,7 @@ func TestInitialize_BadPassword_1007(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "short"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.PasswordInvalid)
@@ -161,7 +212,7 @@ func TestInitialize_DecryptFail_1400(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{err: errors.New("rsakey: key expired")}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.BadRequest)
@@ -176,7 +227,7 @@ func TestInitialize_UsernameExists_1005(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.UsernameExists)
@@ -193,7 +244,7 @@ func TestInitialize_ExistsError_1500(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	_, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	wantCode(t, err, errcode.Internal)
@@ -207,7 +258,7 @@ func TestInitialize_Success(t *testing.T) {
 	sysRepo := repository.NewSystemInitializationRepository(db)
 	accRepo := repository.NewAccountRepository(db)
 	dec := &fakeDecryptor{pw: "Admin123"}
-	svc := service.NewSetupService(db, sysRepo, accRepo, dec, constProbe(true), constProbe(true))
+	svc := newSetupSvc(db, sysRepo, accRepo, dec, true, true)
 
 	res, err := svc.Initialize(context.Background(), "admin", "管理员", "cipher", "kid")
 	if err != nil {

@@ -27,11 +27,13 @@ type SetupService interface {
 
 // SetupStatus 是 GET /api/setup/status 的业务返回结构，handler 转响应体。
 // DBType 取自 model.Current() 进程级常量（04 §5），仅作信息展示。
+// JwtSecretSecure 同为进程级常量，仅提示不参与 block_submit（specs 4.1.2 规则3）。
 type SetupStatus struct {
 	Initialized       bool
 	DBType            string
 	DatabaseConnected bool
 	RedisConnected    bool
+	JwtSecretSecure   bool
 	BlockSubmit       bool
 }
 
@@ -42,18 +44,20 @@ type SetupResult struct {
 }
 
 type setupService struct {
-	db             *gorm.DB
-	systemInitRepo repository.SystemInitializationRepository
-	accountRepo    repository.AccountRepository
-	decryptor      PasswordDecryptor
-	dbProbe        func(context.Context) bool
-	redisProbe     func(context.Context) bool
+	db              *gorm.DB
+	systemInitRepo  repository.SystemInitializationRepository
+	accountRepo     repository.AccountRepository
+	decryptor       PasswordDecryptor
+	dbProbe         func(context.Context) bool
+	redisProbe      func(context.Context) bool
+	jwtSecretSecure bool
 	// mu 串行化 Initialize 的「Exists + 查重 + 写入」临界区，避免并发提交绕过查重
 	// 产生重复账号与多行初始化记录。单进程内嵌架构下进程内锁有效，多实例部署需升级为 Redis 分布式锁。
 	mu sync.Mutex
 }
 
-// NewSetupService 注入 root db、两个 repository、密码解密器与 db/redis 探针。
+// NewSetupService 注入 root db、两个 repository、密码解密器、db/redis 探针与 JWT 密钥安全态
+// （进程级常量，由装配层以 !config.IsDefaultJWTSecret() 求值）。
 // Initialize 用 root db 开启事务，在事务内 tx.Create 直接写账号与初始化记录，
 // 不调 AccountService.CreateAccount（该方法自带独立事务，无法延伸到初始化记录）。
 func NewSetupService(
@@ -62,45 +66,44 @@ func NewSetupService(
 	accountRepo repository.AccountRepository,
 	decryptor PasswordDecryptor,
 	dbProbe, redisProbe func(context.Context) bool,
+	jwtSecretSecure bool,
 ) SetupService {
 	return &setupService{
-		db:             db,
-		systemInitRepo: systemInitRepo,
-		accountRepo:    accountRepo,
-		decryptor:      decryptor,
-		dbProbe:        dbProbe,
-		redisProbe:     redisProbe,
+		db:              db,
+		systemInitRepo:  systemInitRepo,
+		accountRepo:     accountRepo,
+		decryptor:       decryptor,
+		dbProbe:         dbProbe,
+		redisProbe:      redisProbe,
+		jwtSecretSecure: jwtSecretSecure,
 	}
 }
 
 // GetStatus 返回初始化状态与环境自检结果（specs §5.1.2，异常处理 §5.1.5）。
-//
-//	initialized 查 system_initializations 记录存在性判定就绪态（specs 规则1）。
-//	探测失败不影响响应结构，仅反映为对应自检项 false，block_submit 据连通性收敛。
-//	只读展示路径：Exists 出错降级为 false 不写库，无害。
+// Exists 查询失败按「自检全部未通过」处置：initialized=false 且 database.connected
+// 强制 false 联动 block_submit 阻断（specs 03 §3.1）；jwt_secret 仅提示不参与阻断。
 func (s *setupService) GetStatus(ctx context.Context) (*SetupStatus, error) {
 	initialized, err := s.systemInitRepo.Exists(ctx)
+	dbAvailable := err == nil
 	if err != nil {
 		slog.Error("query system initialization exists failed", "err", err)
 		initialized = false
 	}
-	databaseConnected := s.dbProbe(ctx)
+	databaseConnected := dbAvailable && s.dbProbe(ctx)
 	redisConnected := s.redisProbe(ctx)
 	return &SetupStatus{
 		Initialized:       initialized,
 		DBType:            string(model.Current()),
 		DatabaseConnected: databaseConnected,
 		RedisConnected:    redisConnected,
+		JwtSecretSecure:   s.jwtSecretSecure,
 		BlockSubmit:       !databaseConnected || !redisConnected,
 	}, nil
 }
 
 // Initialize 创建首个账号并写初始化记录锁定状态（specs §5.2.2，事务边界 03 §3.2）。
-//
-//	字段校验 → 自检阻断 → 临界区内 Exists + 查重 + 单事务 tx.Create。
-//	账号与初始化记录同事务写入，任一失败整体回滚，避免半状态（specs §5.2.4）。
-//	pure 计算（RSA 解密 / validatePassword / bcrypt）放锁外，mu 锁只串行化 Exists + 查重 + 事务写入，
-//	消除并发提交绕过查重的 TOCTOU（specs 规则1、规则5），锁粒度对齐 account.go CreateAccount 样板。
+// pure 计算放锁外，mu 锁只串行化 Exists + 查重 + 单事务写入（账号与初始化记录同事务，
+// 任一失败整体回滚），消除并发提交绕过查重的 TOCTOU。
 func (s *setupService) Initialize(ctx context.Context, username, name, passwordCipher, keyID string) (*SetupResult, error) {
 	// 字段校验（pure 计算，锁外）：username 格式（specs §03 4.1 / BR9）。
 	if !validateUsername(username) {

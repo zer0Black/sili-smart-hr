@@ -52,7 +52,7 @@ describe('ErrCode 13xx 段（SYS_001 三业务域错误码）', () => {
       'SystemAlreadyInitialized', 'EnvironmentNotReady',
       'DimensionNotFound', 'DimensionCodeExists', 'DimensionEnabledNotDeletable',
       'DimensionVersionConflict', 'DimensionNameInvalid', 'DimensionAnchorRequired',
-      'DimensionPromptRequired', 'ActivityThresholdInvalid',
+      'DimensionPromptRequired', 'ActivityThresholdInvalid', 'DimensionCodeUnavailable',
       'LLMConfigNotFound', 'LastLLMConfig', 'IntegrationSecretNotConfigured',
       'IntegrationSecretTestFailed', 'StaffListUnavailable', 'ConfigVersionConflict',
       'SecretDecryptFailed', 'BadRequest', 'Internal',

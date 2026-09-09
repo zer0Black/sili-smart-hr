@@ -301,10 +301,12 @@ func copyError(sentinel *Error, src error, statuses []int) *Error {
 	return &e
 }
 
-// wrapProviderUnavailable 包装 ErrProviderUnavailable，保留原始原因。
+// wrapProviderUnavailable 包装 ErrProviderUnavailable，保留原始原因并挂 cause 链，
+// 调用方 errors.Is 可同时识别本码与底层哨兵（如「无启用模型」）。
 func wrapProviderUnavailable(cause error) error {
 	e := *ErrProviderUnavailable
 	e.Msg = cause.Error()
+	e.cause = cause
 	return &e
 }
 

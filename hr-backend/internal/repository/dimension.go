@@ -3,8 +3,11 @@ package repository
 
 import (
 	"context"
+	"errors"
+	"time"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/pkg/dberr"
 
 	"gorm.io/gorm"
 )
@@ -28,7 +31,8 @@ type DimensionRepository interface {
 	SoftDeleteWithVersion(ctx context.Context, id int64, version int) (int64, error)
 	// GetActivitySetting 读 dimension_settings 单行表首行（系统级单例，固定取首行）。
 	GetActivitySetting(ctx context.Context) (*domain.DimensionSetting, error)
-	// UpdateActivitySetting UPDATE dimension_settings 单行（保存即覆盖，无乐观锁）。
+	// UpdateActivitySetting 覆盖更新单行（保存即覆盖，无乐观锁）。行缺失时自愈补行
+	//（migrateDB seed 缺失或存量库行丢失的兜底），语义与 seed 的 GetOrCreate 对齐。
 	UpdateActivitySetting(ctx context.Context, activeThreshold, lowFrequencyThreshold int) error
 	// ListEnabledFullByDataSource 取指定数据来源的启用未删维度全字段（含 prompt/anchor，
 	// 评分口径快照的数据来源），WHERE enabled AND data_source=? AND deleted_at IS NULL，
@@ -99,11 +103,25 @@ func (r *dimensionRepository) UpdateWithVersion(ctx context.Context, id int64, v
 }
 
 // SoftDeleteWithVersion 用 GORM Delete 配合 WHERE id/version 实现软删除带乐观锁。
-// Delete 对含 gorm.DeletedAt 的模型自动写 deleted_at，不再物理删除。
+// Delete 对含 gorm.DeletedAt 的模型自动写 deleted_at，不再物理删除；
+// 同时把 code 改写为占位码（原 code__D<id>），释放原 code 供新建复用
+//（uk_dimension_code 唯一索引下软删行与新行同 code 会冲突，三库通吃的占位方案）。
 func (r *dimensionRepository) SoftDeleteWithVersion(ctx context.Context, id int64, version int) (int64, error) {
-	res := r.db.WithContext(ctx).
+	var cur domain.Dimension
+	if err := r.db.WithContext(ctx).
 		Where("id = ? AND version = ?", id, version).
-		Delete(&domain.Dimension{})
+		First(&cur).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	res := r.db.WithContext(ctx).Model(&domain.Dimension{}).
+		Where("id = ? AND version = ?", id, version).
+		Updates(map[string]any{
+			"code":       domain.DeletedCode(cur.Code, id),
+			"deleted_at": time.Now(),
+		})
 	if res.Error != nil {
 		return 0, res.Error
 	}
@@ -121,14 +139,45 @@ func (r *dimensionRepository) GetActivitySetting(ctx context.Context) (*domain.D
 }
 
 // UpdateActivitySetting 单行覆盖更新，无乐观锁（系统级单例，保存即生效）。
-// Updates 只写两列，不动 ID 与时间戳（autoUpdateTime 自动刷新）。
+// 行缺失时自愈补行（默认值取入参，与 migrateDB seed 语义对齐），防保存静默 0 行、回读
+// NotFound 恒 1500。两次循环收敛并发：UPDATE id=1 → UPDATE 任意行（兜存量雪花主键行）
+// → 补行，补行撞 UniqueViolation 说明对端并发建行，重试 UPDATE 写入本端值。
 func (r *dimensionRepository) UpdateActivitySetting(ctx context.Context, activeThreshold, lowFrequencyThreshold int) error {
-	return r.db.WithContext(ctx).Model(&domain.DimensionSetting{}).
-		Where("1 = 1").
-		Updates(map[string]any{
-			"active_threshold":        activeThreshold,
-			"low_frequency_threshold": lowFrequencyThreshold,
+	updates := map[string]any{
+		"active_threshold":        activeThreshold,
+		"low_frequency_threshold": lowFrequencyThreshold,
+	}
+	db := r.db.WithContext(ctx)
+	for range 2 {
+		res := db.Model(&domain.DimensionSetting{}).Where("id = ?", domain.SingleRowID).Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected > 0 {
+			return nil
+		}
+		// 兜存量库主键为雪花值的已 seed 行。
+		res = db.Model(&domain.DimensionSetting{}).Where("1 = 1").Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected > 0 {
+			return nil
+		}
+		err := db.Create(&domain.DimensionSetting{
+			ID:                    domain.SingleRowID,
+			ActiveThreshold:       activeThreshold,
+			LowFrequencyThreshold: lowFrequencyThreshold,
 		}).Error
+		if err == nil {
+			return nil
+		}
+		if !dberr.UniqueViolation(err) {
+			return err
+		}
+		// 并发对端已建行，下一轮 UPDATE 命中写入本端值。
+	}
+	return nil
 }
 
 // ListEnabledFullByDataSource 取启用未删指定来源维度全字段。与 ListAll 的 brief 投影
