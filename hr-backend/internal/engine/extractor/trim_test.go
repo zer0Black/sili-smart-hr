@@ -120,19 +120,19 @@ func TestClassifyCommandArgs(t *testing.T) {
 	// <command-name> 打头三标签混排含非空 args（主流形态）。
 	main := "<command-name>/review</command-name>\n<command-message>review</command-message>\n<command-args>检查支付模块的并发安全问题</command-args>"
 	res := classifyMsg(mkMsg(main), nil, nil, nil)
-	if res.Class != classExtract || res.Payload != "检查支付模块的并发安全问题" {
+	if res.Class != classExtract || res.Payload != "调用技能 review：检查支付模块的并发安全问题" {
 		t.Errorf("主流形态 res.Class=%d res.Payload=%q, want extract/args内文", res.Class, res.Payload)
 	}
 	// <command-message> 打头（少数形态）。
 	minor := "<command-message>review</command-message>\n<command-name>/review</command-name>\n<command-args>检查并发</command-args>"
 	res = classifyMsg(mkMsg(minor), nil, nil, nil)
-	if res.Class != classExtract || res.Payload != "检查并发" {
+	if res.Class != classExtract || res.Payload != "调用技能 review：检查并发" {
 		t.Errorf("少数形态 res.Class=%d res.Payload=%q, want extract/args内文", res.Class, res.Payload)
 	}
 	// ARGUMENTS 重复段丢弃：res.Payload 只含 args 标签内文。
 	mixed := "<command-name>/review</command-name><command-message>review</command-message><command-args>真实指令</command-args>\nARGUMENTS 真实指令"
 	res = classifyMsg(mkMsg(mixed), nil, nil, nil)
-	if res.Class != classExtract || res.Payload != "真实指令" {
+	if res.Class != classExtract || res.Payload != "调用技能 review：真实指令" {
 		t.Errorf("ARGUMENTS 混排 res.Payload=%q, want 只含 args 内文", res.Payload)
 	}
 	// 无 args 纯壳 /clear → drop。
@@ -598,7 +598,7 @@ func TestTrimViewAssembly(t *testing.T) {
 		"[TOOL] Read args=111",
 		"[EVENT] [Request interrupted by user]",
 		"[USER] 先改成只读模式",
-		"[USER] 重点看并发安全",
+		"[USER] 调用技能 review：重点看并发安全",
 	}
 	if len(view.Lines) != len(wantLines) {
 		t.Fatalf("总行数=%d, want %d（指纹与噪音零进入）\n实得 %q", len(view.Lines), len(wantLines), view.Lines)
@@ -1306,11 +1306,11 @@ func TestClassifyCommandArgsDiscussion(t *testing.T) {
 	if res.Class != classKeep || res.Payload != discuss {
 		t.Errorf("讨论标签语法 res.Class=%d res.Payload=%q, want keep/原文", res.Class, res.Payload)
 	}
-	// 命令壳打头的真实回显仍走提取。
+	// 命令壳打头的真实回显仍走提取（含技能名前缀）。
 	echo := "<command-name>/review</command-name>\n<command-message>review</command-message>\n<command-args>重点看并发</command-args>"
 	res = classifyMsg(mkMsg(echo), nil, nil, nil)
-	if res.Class != classExtract || res.Payload != "重点看并发" {
-		t.Errorf("命令回显 res.Class=%d res.Payload=%q, want extract/args内文", res.Class, res.Payload)
+	if res.Class != classExtract || res.Payload != "调用技能 review：重点看并发" {
+		t.Errorf("命令回显 res.Class=%d res.Payload=%q, want extract/含技能名前缀", res.Class, res.Payload)
 	}
 	// 实测无参命令回显形态（User: 打头三标签混排）：Contains 命中但壳非打头，
 	// 落黑名单 User: 前缀丢弃，结果与提取通道的空 args drop 殊途同归。

@@ -55,6 +55,12 @@ func migrateDB(db *gorm.DB) error {
 		return fmt.Errorf("seed dimension_settings: %w", err)
 	}
 
+	// dimensions 首启 seed：默认对话分析维度（AI 使用能力 8 维），表非空即跳过
+	//（运营维护过的库不触碰，含软删行计数防重复灌入）。
+	if err := seedDefaultDimensions(db); err != nil {
+		return err
+	}
+
 	// assessment_configs 首启 seed：系统级单例，空表时写入默认周期参数（specs §4：weekly/23:00/all/version=1）。
 	// 与 dimension_settings seed 同范式：固定主键 + 撞键容错；Where("1 = 1") 兼容存量雪花主键行。
 	var assessCfg domain.AssessmentConfig

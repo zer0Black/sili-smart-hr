@@ -317,6 +317,7 @@ func TestMigrateDimensionDeletedCode(t *testing.T) {
 	}
 }
 
+// TestMigrateInjectPrefixesAppendSemantics 存量库 inject_prefixes 替换语义行（出厂
 // 全集 JSON）一次性重置为空数组；运维改过的行（值偏离全集）不触碰；重置后
 // 重跑幂等。守护追加语义升级时参数页不呈现 59 条来历不明的追加条目。
 func TestMigrateInjectPrefixesAppendSemantics(t *testing.T) {
@@ -365,5 +366,111 @@ func TestMigrateInjectPrefixesAppendSemantics(t *testing.T) {
 	}
 	if row.ParamValue != admin {
 		t.Fatalf("admin-edited value must be kept: got %s", row.ParamValue)
+	}
+}
+
+// TestSeedDefaultDimensions 验证默认对话分析维度首启 seed：全新库写入 8 维
+//（AI_USAGE 模块、CONVERSATION 来源、权重合计 100、底层/上层各 4 维）、
+// 重跑幂等不重复、已有任何行（含软删行）的库不灌入。
+func TestSeedDefaultDimensions(t *testing.T) {
+	if err := snowflake.Init(1); err != nil {
+		t.Fatalf("snowflake init: %v", err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := migrateDB(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	var dims []domain.Dimension
+	if err := db.Order("id ASC").Find(&dims).Error; err != nil {
+		t.Fatalf("load dimensions: %v", err)
+	}
+	if len(dims) != 8 {
+		t.Fatalf("expected 8 seeded dimensions, got %d", len(dims))
+	}
+	totalWeight := 0
+	base, upper := 0, 0
+	for _, d := range dims {
+		if d.ModuleCode != domain.ModuleAIUsage {
+			t.Errorf("%s module = %s, want AI_USAGE", d.Code, d.ModuleCode)
+		}
+		if d.DataSource != domain.SourceConversation {
+			t.Errorf("%s data_source = %s, want CONVERSATION", d.Code, d.DataSource)
+		}
+		if !d.Enabled || !d.IncludeOverview {
+			t.Errorf("%s enabled/include_overview not true", d.Code)
+		}
+		if d.Prompt == "" || d.Anchor == "" {
+			t.Errorf("%s prompt/anchor empty", d.Code)
+		}
+		totalWeight += d.Weight
+		if d.GroupCode != nil {
+			switch *d.GroupCode {
+			case domain.GroupBase:
+				base++
+			case domain.GroupUpper:
+				upper++
+			default:
+				t.Errorf("%s unexpected group %s", d.Code, *d.GroupCode)
+			}
+		} else {
+			t.Errorf("%s group_code nil, want BASE/UPPER", d.Code)
+		}
+	}
+	if totalWeight != 100 {
+		t.Errorf("total weight = %d, want 100", totalWeight)
+	}
+	if base != 4 || upper != 4 {
+		t.Errorf("group split base/upper = %d/%d, want 4/4", base, upper)
+	}
+
+	// 重跑幂等：仍是 8 行。
+	if err := migrateDB(db); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	var n int64
+	if err := db.Model(&domain.Dimension{}).Count(&n).Error; err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 8 {
+		t.Fatalf("expected 8 rows after rerun, got %d", n)
+	}
+}
+
+// TestSeedDefaultDimensionsSkipsNonEmpty 库内已有任何维度行（含软删行）时
+// seed 不灌入，防运营维护过的库被默认数据覆盖或混入。
+func TestSeedDefaultDimensionsSkipsNonEmpty(t *testing.T) {
+	if err := snowflake.Init(1); err != nil {
+		t.Fatalf("snowflake init: %v", err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&domain.Dimension{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+	// 仅一行软删维度（运营建过又删净的形态）即阻断 seed。
+	d := &domain.Dimension{Code: "AI_CUSTOM", Name: "自定义", ModuleCode: domain.ModuleAIUsage,
+		DataSource: domain.SourceConversation, Anchor: "a", Weight: 1, Enabled: true, Version: 1}
+	if err := db.Create(d).Error; err != nil {
+		t.Fatalf("seed custom: %v", err)
+	}
+	if err := db.Delete(d).Error; err != nil {
+		t.Fatalf("soft delete: %v", err)
+	}
+
+	if err := migrateDB(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	var n int64
+	if err := db.Model(&domain.Dimension{}).Count(&n).Error; err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("expected 0 active rows (seed skipped), got %d", n)
 	}
 }

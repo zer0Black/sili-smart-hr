@@ -78,8 +78,8 @@ func TestConstants(t *testing.T) {
 	if ScoreMin != 0 || ScoreMax != 100 {
 		t.Errorf("ScoreMin/ScoreMax = %d/%d, want 0/100", ScoreMin, ScoreMax)
 	}
-	if PromptVersion != "v2" {
-		t.Errorf("PromptVersion = %q, want v2", PromptVersion)
+	if PromptVersion != "v3" {
+		t.Errorf("PromptVersion = %q, want v3", PromptVersion)
 	}
 }
 

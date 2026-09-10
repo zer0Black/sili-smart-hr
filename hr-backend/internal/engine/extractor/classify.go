@@ -69,6 +69,8 @@ func (cm *classifiedMsg) redactedPayload(patterns []string) string {
 const (
 	srTagOpen           = "<system-reminder"
 	srTagClose          = "</system-reminder>"
+	cmdNameOpen         = "<command-name>"
+	cmdNameClose        = "</command-name>"
 	cmdArgsOpen         = "<command-args>"
 	cmdArgsClose        = "</command-args>"
 	baseDirMarker       = "Base directory for this skill"
@@ -111,7 +113,13 @@ func classifyMsg(m conversationlog.Message, userPrefixes, nonUserPrefixes, redac
 				interruptHits = n
 				args = strings.TrimSpace(stripInterruptMarkers(args))
 			}
-			return classifyResult{Class: classExtract, Payload: args}
+			// 技能名前缀拼回载荷（<command-name> 内文，剥首斜杠）：slash 命令是
+			// 用户主动调用技能的直接证据，剥离后评估侧只剩 args 会丢失调用事实。
+			payload := args
+			if name := strings.TrimSpace(extractTag(m.Text, cmdNameOpen, cmdNameClose)); name != "" {
+				payload = "调用技能 " + strings.TrimPrefix(name, "/") + "：" + args
+			}
+			return classifyResult{Class: classExtract, Payload: payload}
 		}
 		if n, _ := countInterrupts(m.Text); n > 0 {
 			interruptHits = n

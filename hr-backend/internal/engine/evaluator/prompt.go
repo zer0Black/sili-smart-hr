@@ -28,7 +28,8 @@ const dimensionTemplate = `维度编码：%s
 const evidenceHeaderTemplate = `以下为 %d/%d 个会话档案（按证据密度选取），仅此部分细粒度证据可见：`
 
 // statsGuidance 统计段承接指令（specs §2.2 组装规则表 C01-C07）：与汇总块标签
-// 语义呼应的判读纪律文本。
+// 语义呼应的判读纪律文本。C08 头部样本折算为实测新增（2026-09-10 真实会话验证：
+// 可见档案按证据密度取头部，单轮会话占绝对多数的人群在证据段不可见）。
 const statsGuidance = `【统计参考判读纪律】
 - zero_input_sessions 为零输入会话数（C01）：该部分会话指令证据稀薄，指令类维度证据稀薄时标 insufficient，禁止把证据不足判为低分。
 - narrative_absent_sessions 为零叙述会话数（C02）：价值产出与审查把关维度按占比作证据降权参考。
@@ -36,7 +37,8 @@ const statsGuidance = `【统计参考判读纪律】
 - cmd_reuse_groups 为同首指令命中组数（C04）：CmdReuseHashes 同首指令命中一律按重做/重试解读，不作知识沉淀复用证据计分，不设间隔条件。
 - 粘贴量按 paste_char_count、paste_msg_sessions、user_msg_count 三量联合判读（C05）：单一事件主导的粘贴量不读作持续高约束供给习惯。
 - failed_profiles 为抽取失败档案数（C06）：该部分会话仅统计块可用，证据缺失。
-- continuation_sessions 为续接会话数（C07）：续接推进会话的叙述混有上会话回顾，指令与价值判读须联合识别，防双重计数。`
+- continuation_sessions 为续接会话数（C07）：续接推进会话的叙述混有上会话回顾，指令与价值判读须联合识别，防双重计数。
+- 证据段为按证据密度选取的头部样本（C08）：user_msg_count 相对周期会话总量偏低、或 zero_input_sessions 占比高时，说明可见档案集中于少数富会话，多数会话证据稀薄，评分须向锚点中档保守折算，禁止按头部样本直接给高档。`
 
 // instructionTail 指令段（specs §2.4 能力1）：输出硬约束复述。空提示词维度
 // 不进维度段（specs §3.2 维度配置缺失：代码侧确定性 insufficient，不占 LLM 上下文）。

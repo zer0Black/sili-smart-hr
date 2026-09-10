@@ -53,7 +53,7 @@ func unionEquivalenceSamples() []unionEquivalenceSample {
 			name:          "command 壳+args 提取",
 			msg:           mkMsg("<command-name>/review</command-name>\n<command-message>review</command-message>\n<command-args>检查支付模块的并发安全问题</command-args>"),
 			wantClass:     classExtract,
-			wantPayload:   "检查支付模块的并发安全问题",
+			wantPayload:   "调用技能 review：检查支付模块的并发安全问题", // 含技能名前缀（调用事实进指令摘录）
 			wantInterrupt: 0,
 		},
 		{
@@ -293,8 +293,8 @@ func TestPriorityChainPreserved(t *testing.T) {
 	if got[0].Class != classExtract {
 		t.Fatalf("冲突样本 Class=%d, want classExtract（提取通道优先于黑名单）", got[0].Class)
 	}
-	if got[0].Payload != "TodoWrite 4 items" {
-		t.Errorf("冲突样本 Payload=%q, want 剥标后 args %q", got[0].Payload, "TodoWrite 4 items")
+	if got[0].Payload != "调用技能 review：TodoWrite 4 items" {
+		t.Errorf("冲突样本 Payload=%q, want 含技能名前缀的剥标 args %q", got[0].Payload, "调用技能 review：TodoWrite 4 items")
 	}
 	if got[0].InterruptCount != 1 {
 		t.Errorf("冲突样本 InterruptCount=%d, want 1（打断计数透出）", got[0].InterruptCount)

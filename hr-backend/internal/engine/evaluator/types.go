@@ -20,7 +20,7 @@ const (
 	MaxRationaleChars       = 200                     // 单维度评分理由字数约束，落库校验容差 2 倍
 	ScoreMin                = 0                       // 绝对分下界（0-100 整数分制）
 	ScoreMax                = 100                     // 绝对分上界
-	PromptVersion           = "v2"                    // prompt 模板版本（v2：空提示词维度分流不进 LLM 上下文），模板变更时 +1 同步本常量
+	PromptVersion           = "v3"                    // prompt 模板版本（v3：统计段补 C08 头部样本保守折算；v2：空提示词维度分流），模板变更时 +1 同步本常量
 )
 
 // DimensionSpec 评分维度口径快照（specs §2.2）：取数时快照落评分行 evidence_json，

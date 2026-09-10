@@ -290,9 +290,9 @@ if dberr.UniqueViolation(err) {
 }
 ```
 
-### 4.2 dimensions 初始维度
+### 4.2 dimensions 默认维度 seed
 
-本 Feature 仅提供维度配置的维护能力，不预置业务维度数据。PRD 4.8 提及的 AI 使用能力底层 4 维与上层 4 维属于对话分析评估（未建 Feature）的业务初始化范畴，由对应 Feature 或运营人员经新增维度弹窗录入。`dimensions` 表首启为空，seed 不写入维度记录。
+系统首启时由 `migrateDB` 编排 seed 写入默认对话分析维度：AI 使用能力 8 维（底层 4 维 + 上层 4 维），均为 AI_USAGE 模块、CONVERSATION 数据来源、启用态、参与总览分，权重合计 100（15/12/10/13 + 15/12/13/10）。锚点与提示词口径源自 UI 原型 dimension-config-list.html，2026-09-10 经 4 个真实会话（重工具/高互动/计划驱动/技能驱动四形态）全链实测后重写为证据锚定版：每维提示词给出指向评分员实际可见证据形态（逐会话块 summary/instruction/behavior 与统计段字段）的判读规则，锚点档位改为过程信号可判表述（去除团队复用、落地去向等日志不可见档），并内置人机边界规则（tool_top10 属 AI 侧行为仅作参考、AI 自主编排不计入用户能力、无创建证据一律 insufficient 禁止顺延推断）。`dimensions` 表存在任何行（含软删行，Unscoped 计数）即跳过 seed，运营维护过的库不触碰；整批写入包事务，并发双实例同窗空库撞 `uk_dimension_code` 由 UniqueViolation 容错收敛。AI 管理能力 5 维与九型人格维度不随本 seed 写入，分别由对应 Feature（F5/F7、量表引入）落地。实现见 [seed_dimensions.go](../../../hr-backend/internal/model/seed_dimensions.go)。
 
 ---
 
