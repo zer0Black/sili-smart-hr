@@ -11,7 +11,7 @@ dependencies:                                             # 直接依赖的featu
 feature_name: "LLM调用底座"
 creator: "lixuetao"
 created_at: "2026-08-14T01:43:56Z"
-updated_at: "2026-08-14T09:36:14Z"
+updated_at: "2026-09-10T12:30:00Z"
 stages:
   specs:
     status: "completed"
@@ -29,10 +29,10 @@ stages:
     completed_at: "2026-08-14T09:36:14Z"
     check_owner: "lixuetao"
   dev_exec:
-    status: "in_progress"
+    status: "completed"   # llm client 含评估专用 client 已交付并入 init 基线，按仓库现状补记置位
     started_at: "2026-08-14T09:36:14Z"
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-08-30T00:00:00Z"
+    check_owner: "lixuetao"
 rollback_history:
   - timestamp: "2026-08-14T02:50:58Z"
     from_stage: "interface"

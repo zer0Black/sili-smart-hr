@@ -11,7 +11,7 @@ dependencies:                                             # 直接依赖的featu
 feature_name: "会话日志集成"
 creator: "lixuetao"
 created_at: "2026-08-18T06:45:06Z"
-updated_at: "2026-08-18T14:39:27Z"
+updated_at: "2026-09-10T12:30:00Z"
 stages:
   specs:
     status: "completed"
@@ -24,15 +24,15 @@ stages:
     completed_at: null
     check_owner: "lixuetao"
   dev_plan:
-    status: "in_progress"
+    status: "completed"   # 按仓库现状补记置位
     started_at: "2026-08-18T14:39:27Z"
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-08-20T00:00:00Z"
+    check_owner: "lixuetao"
   dev_exec:
-    status: "pending"
-    started_at: null
-    completed_at: null
-    check_owner: null
+    status: "completed"   # conversationlog 客户端全量实现并入 init 基线（TECH_003 依赖已实际消费），按仓库现状补记置位
+    started_at: "2026-08-20T00:00:00Z"
+    completed_at: "2026-08-30T00:00:00Z"
+    check_owner: "lixuetao"
 rollback_history:
   - timestamp: "2026-08-18T14:39:27Z"
     from_stage: "interface"

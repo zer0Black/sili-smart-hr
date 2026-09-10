@@ -11,7 +11,7 @@ dependencies:                                       # 直接依赖的feature_id�
 feature_name: "维度与权重配置"
 creator: "lixuetao"
 created_at: "2026-08-11T11:38:05Z"
-updated_at: "2026-08-11T13:50:55Z"
+updated_at: "2026-09-10T12:30:00Z"
 stages:
   specs:
     status: "completed"
@@ -29,10 +29,10 @@ stages:
     completed_at: "2026-08-11T13:50:55Z"
     check_owner: "lixuetao"
   dev_exec:
-    status: "in_progress"
+    status: "completed"   # 维度配置页全链路（含 2026-09-10 默认维度 seed）已交付，按仓库现状补记置位
     started_at: "2026-08-11T13:50:55Z"
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-09-10T12:24:45Z"
+    check_owner: "lixuetao"
 rollback_history: []
   # - timestamp: "2026-01-01T00:00:00Z"
   #   from_stage: "dev_exec"

@@ -12,7 +12,7 @@ dependencies:
 feature_name: "会话特征抽取"
 creator: "lixuetao"
 created_at: "2026-08-20T10:31:34Z"
-updated_at: "2026-08-24T00:00:00Z"
+updated_at: "2026-09-10T12:30:00Z"
 stages:
   specs:
     status: "completed"
@@ -30,8 +30,8 @@ stages:
     completed_at: "2026-08-24T00:00:00Z"
     check_owner: "lixuetao"
   dev_exec:
-    status: "in_progress"
+    status: "completed"   # extractor 全链路与 Asynq 任务注册已交付并入 init 基线，按仓库现状补记置位
     started_at: "2026-08-24T00:00:00Z"
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-08-30T00:00:00Z"
+    check_owner: "lixuetao"
 rollback_history: []
