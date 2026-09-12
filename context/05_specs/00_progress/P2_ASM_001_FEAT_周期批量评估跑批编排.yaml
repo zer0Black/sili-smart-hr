@@ -14,16 +14,16 @@ dependencies:
 feature_name: "周期批量评估跑批编排"
 creator: "lixuetao"
 created_at: "2026-09-10T05:33:00Z"
-updated_at: "2026-09-10T05:33:00Z"
+updated_at: "2026-09-11T09:13:56Z"
 stages:
   specs:
-    status: "pending"
+    status: "completed"
     started_at: null
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-09-11T09:13:56Z"
+    check_owner: "lixuetao"
   interface:
-    status: "pending"
-    started_at: null
+    status: "in_progress"
+    started_at: "2026-09-11T09:13:56Z"
     completed_at: null
     check_owner: null
   dev_plan:
