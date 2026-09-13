@@ -1,4 +1,5 @@
-// assessment_batch 批次域查询侧业务层：批次列表（A1）、跑批态势统计（A2）、跑批计划（A3）。
+// assessment_batch 批次域查询侧业务层：批次列表（A1）、跑批态势统计（A2）、跑批计划（A3）、
+// 评估对象名单（A4）、失败明细（A5）。
 //
 // 业务规则（specs P2_ASM_001）：
 //   - §4.1.2A 统计卡三项指标以「本期跑批间隔」（上一次定时批次触发时点至下一次触发时点）
@@ -69,11 +70,40 @@ type BatchPlanDTO struct {
 	DimensionUpperCount int      `json:"dimension_upper_count"`
 }
 
+// BatchTargetsDTO 评估对象名单（03 A4）。
+type BatchTargetsDTO struct {
+	BatchID     int64    `json:"batch_id,string"`
+	TargetMode  string   `json:"target_mode"`
+	Names       []string `json:"names"`
+	Total       int      `json:"total"`
+	PeriodStart string   `json:"period_start"`
+	PeriodEnd   string   `json:"period_end"`
+}
+
+// BatchFailureItem 失败清单单行（03 A5）。
+type BatchFailureItem struct {
+	TokenName    string `json:"token_name"`
+	ErrorSummary string `json:"error_summary"`
+}
+
+// BatchFailuresDTO 失败明细（03 A5）。
+type BatchFailuresDTO struct {
+	BatchID     int64              `json:"batch_id,string"`
+	BatchNo     string             `json:"batch_no"`
+	FailedCount int                `json:"failed_count"`
+	TotalCount  int                `json:"total_count"`
+	PeriodStart string             `json:"period_start"`
+	PeriodEnd   string             `json:"period_end"`
+	List        []BatchFailureItem `json:"list"`
+}
+
 // AssessmentBatchService 是批次查询侧业务接口（创建侧归后续任务）。
 type AssessmentBatchService interface {
 	List(ctx context.Context, f BatchListFilter) ([]BatchListDTO, int64, error)
 	Stats(ctx context.Context) (*BatchStatsDTO, error)
 	Plan(ctx context.Context) (*BatchPlanDTO, error)
+	Targets(ctx context.Context, batchID int64) (*BatchTargetsDTO, error)
+	Failures(ctx context.Context, batchID int64) (*BatchFailuresDTO, error)
 }
 
 type assessmentBatchService struct {
@@ -269,6 +299,58 @@ func (s *assessmentBatchService) resolveBatchSecret(ctx context.Context) (string
 		return "", fmt.Errorf("resolve integration secret: %s", derr.Msg)
 	}
 	return plaintext, nil
+}
+
+// Targets 名单查询：返回创建时点完整名单快照与评估时段，供重新发起预填（specs §4.1.3）。
+func (s *assessmentBatchService) Targets(ctx context.Context, batchID int64) (*BatchTargetsDTO, error) {
+	b, err := s.batchRepo.GetByID(ctx, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("get batch: %w", err)
+	}
+	if b == nil {
+		return nil, NewError(errcode.BatchNotFound)
+	}
+	names := parseTargetNames(b.TargetNamesJSON)
+	return &BatchTargetsDTO{
+		BatchID:     b.ID,
+		TargetMode:  b.TargetMode,
+		Names:       names,
+		Total:       len(names),
+		PeriodStart: b.PeriodStartAt.Local().Format("2006-01-02"),
+		PeriodEnd:   b.PeriodEndAt.Local().Format("2006-01-02"),
+	}, nil
+}
+
+// Failures 失败明细：打开时刻只读快照（specs §4.3.4 规则1），FailedCount 取批次行值；
+// ErrorSummary 取人员行自身值（FailWholeBatch 已把批次级原因写入每行，不再重复覆盖）。
+func (s *assessmentBatchService) Failures(ctx context.Context, batchID int64) (*BatchFailuresDTO, error) {
+	b, err := s.batchRepo.GetByID(ctx, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("get batch: %w", err)
+	}
+	if b == nil {
+		return nil, NewError(errcode.BatchNotFound)
+	}
+	persons, err := s.batchRepo.ListFailedByBatch(ctx, batchID)
+	if err != nil {
+		return nil, fmt.Errorf("list failed persons: %w", err)
+	}
+	list := make([]BatchFailureItem, 0, len(persons))
+	for i := range persons {
+		list = append(list, BatchFailureItem{
+			TokenName:    persons[i].TokenName,
+			ErrorSummary: persons[i].ErrorSummary,
+		})
+	}
+	return &BatchFailuresDTO{
+		BatchID:     b.ID,
+		BatchNo:     b.BatchNo,
+		FailedCount: b.FailedCount,
+		TotalCount:  b.TotalCount,
+		PeriodStart: b.PeriodStartAt.Local().Format("2006-01-02"),
+		PeriodEnd:   b.PeriodEndAt.Local().Format("2006-01-02"),
+		List:        list,
+	}, nil
 }
 
 // periodLength 返回一个周期长度的 duration（daily/weekly 固定 24h*1/24h*7，

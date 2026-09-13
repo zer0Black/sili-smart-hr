@@ -30,6 +30,10 @@ type fakeBatchRepo struct {
 	listErr         error
 	latestScheduled *domain.AssessmentBatch
 	latestSchedErr  error
+	byID            *domain.AssessmentBatch
+	byIDErr         error
+	failedList      []domain.AssessmentBatchPerson
+	failedListErr   error
 	countInRange    int64
 	countInRangeErr error
 	idsBetween      []int64
@@ -40,6 +44,7 @@ type fakeBatchRepo struct {
 	countRunningErr error
 
 	lastFilter            repository.BatchFilter
+	failedListGotID       int64
 	countInRangeArgs      [2]time.Time
 	idsBetweenArgs        [2]time.Time
 	countSuccessGotIDs    []int64
@@ -51,7 +56,11 @@ func (f *fakeBatchRepo) CreatePersons(_ context.Context, _ []domain.AssessmentBa
 	return nil
 }
 func (f *fakeBatchRepo) GetByID(_ context.Context, _ int64) (*domain.AssessmentBatch, error) {
-	return nil, nil
+	return f.byID, f.byIDErr
+}
+func (f *fakeBatchRepo) ListFailedByBatch(_ context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
+	f.failedListGotID = batchID
+	return f.failedList, f.failedListErr
 }
 func (f *fakeBatchRepo) FindLatestRunningScheduled(_ context.Context) (*domain.AssessmentBatch, error) {
 	return nil, nil
@@ -518,5 +527,163 @@ func TestPlanConfigError(t *testing.T) {
 	svc := newBatchSvc(&fakeBatchRepo{}, &fakeAssessmentConfigRepo{cfgErr: fmt.Errorf("db down")}, &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 	if _, err := svc.Plan(context.Background()); err == nil {
 		t.Error("配置读取错误未上抛")
+	}
+}
+
+// targetsBatchFixture 构造带名单快照与评估时段的批次行，供 Targets/Failures 用例共享。
+func targetsBatchFixture() *domain.AssessmentBatch {
+	return &domain.AssessmentBatch{
+		ID:              7,
+		BatchNo:         "B202609072300001",
+		TriggerType:     domain.BatchTriggerScheduled,
+		TargetMode:      domain.BatchTargetSpecified,
+		TargetNamesJSON: `["张敏","李芳","王强"]`,
+		TotalCount:      3,
+		FailedCount:     3,
+		Status:          domain.BatchStatusFailed,
+		PeriodStartAt:   time.Date(2026, 9, 7, 0, 0, 0, 0, time.Local),
+		PeriodEndAt:     time.Date(2026, 9, 13, 0, 0, 0, 0, time.Local),
+		TriggeredAt:     time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local),
+	}
+}
+
+// TestTargetsFullList：名单 [张敏,李芳,王强] 全量返回且 Total=3，PeriodStart/End 为 yyyy-MM-dd（03 A4）。
+func TestTargetsFullList(t *testing.T) {
+	batchRepo := &fakeBatchRepo{byID: targetsBatchFixture()}
+	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	dto, err := svc.Targets(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("Targets: %v", err)
+	}
+	if dto.BatchID != 7 || dto.TargetMode != domain.BatchTargetSpecified {
+		t.Errorf("BatchID/TargetMode = %d/%q", dto.BatchID, dto.TargetMode)
+	}
+	if len(dto.Names) != 3 || dto.Names[0] != "张敏" || dto.Names[1] != "李芳" || dto.Names[2] != "王强" {
+		t.Errorf("Names = %v, want [张敏 李芳 王强] 全量", dto.Names)
+	}
+	if dto.Total != 3 {
+		t.Errorf("Total = %d, want 3", dto.Total)
+	}
+	if dto.PeriodStart != "2026-09-07" || dto.PeriodEnd != "2026-09-13" {
+		t.Errorf("Period = %q/%q, want 2026-09-07/2026-09-13", dto.PeriodStart, dto.PeriodEnd)
+	}
+}
+
+// TestTargetsNotFound：GetByID 返 nil 时 Targets 返 *service.Error code==1601。
+func TestTargetsNotFound(t *testing.T) {
+	svc := newBatchSvc(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	_, err := svc.Targets(context.Background(), 999)
+	serr, ok := err.(*service.Error)
+	if !ok {
+		t.Fatalf("err 类型 %T, want *service.Error", err)
+	}
+	if serr.Code != errcode.BatchNotFound {
+		t.Errorf("code = %d, want %d", serr.Code, errcode.BatchNotFound)
+	}
+}
+
+// TestFailuresOrderAndCount：失败清单按仓储返回序（finished_at 升序）透传，
+// FailedCount 取批次行值，TotalCount/评估时段透传（specs §4.3.4 规则1）。
+func TestFailuresOrderAndCount(t *testing.T) {
+	batchRepo := &fakeBatchRepo{
+		byID: targetsBatchFixture(),
+		failedList: []domain.AssessmentBatchPerson{
+			{TokenName: "张敏", ErrorSummary: "评估执行失败：LLM 上游不可用（重试 3 次耗尽）"},
+			{TokenName: "李芳", ErrorSummary: "评估执行失败：LLM 上游不可用（重试 3 次耗尽）"},
+			{TokenName: "王强", ErrorSummary: "评估执行失败：LLM 上游不可用（重试 3 次耗尽）"},
+		},
+	}
+	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	dto, err := svc.Failures(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("Failures: %v", err)
+	}
+	if batchRepo.failedListGotID != 7 {
+		t.Errorf("ListFailedByBatch batchID = %d, want 7", batchRepo.failedListGotID)
+	}
+	if dto.FailedCount != 3 {
+		t.Errorf("FailedCount = %d, want 3（取批次行值）", dto.FailedCount)
+	}
+	if dto.TotalCount != 3 || dto.BatchNo != "B202609072300001" {
+		t.Errorf("TotalCount/BatchNo = %d/%q", dto.TotalCount, dto.BatchNo)
+	}
+	if dto.PeriodStart != "2026-09-07" || dto.PeriodEnd != "2026-09-13" {
+		t.Errorf("Period = %q/%q", dto.PeriodStart, dto.PeriodEnd)
+	}
+	wantOrder := []string{"张敏", "李芳", "王强"}
+	if len(dto.List) != 3 {
+		t.Fatalf("List 条数 = %d, want 3", len(dto.List))
+	}
+	for i, item := range dto.List {
+		if item.TokenName != wantOrder[i] {
+			t.Errorf("List[%d].TokenName = %q, want %q（按仓储序透传）", i, item.TokenName, wantOrder[i])
+		}
+		if item.ErrorSummary == "" {
+			t.Errorf("List[%d].ErrorSummary 为空", i)
+		}
+	}
+}
+
+// TestFailuresNotFound：GetByID 返 nil 时 Failures 返 *service.Error code==1601。
+func TestFailuresNotFound(t *testing.T) {
+	svc := newBatchSvc(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	_, err := svc.Failures(context.Background(), 999)
+	serr, ok := err.(*service.Error)
+	if !ok {
+		t.Fatalf("err 类型 %T, want *service.Error", err)
+	}
+	if serr.Code != errcode.BatchNotFound {
+		t.Errorf("code = %d, want %d", serr.Code, errcode.BatchNotFound)
+	}
+}
+
+// TestFailuresBatchLevelReason：批次级异常时每行 ErrorSummary 取人员行自身值
+//（FailWholeBatch 已把批次级原因写入每行，service 不重复覆盖批次行值）。
+func TestFailuresBatchLevelReason(t *testing.T) {
+	b := targetsBatchFixture()
+	b.ErrorSummary = "上游会话列表不可用"
+	batchRepo := &fakeBatchRepo{
+		byID: b,
+		failedList: []domain.AssessmentBatchPerson{
+			{TokenName: "张敏", ErrorSummary: "上游会话列表不可用"},
+			{TokenName: "李芳", ErrorSummary: "上游会话列表不可用"},
+			{TokenName: "王强", ErrorSummary: "上游会话列表不可用"},
+		},
+	}
+	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	dto, err := svc.Failures(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("Failures: %v", err)
+	}
+	for i, item := range dto.List {
+		if item.ErrorSummary != "上游会话列表不可用" {
+			t.Errorf("List[%d].ErrorSummary = %q, want 人员行自身值", i, item.ErrorSummary)
+		}
+	}
+}
+
+// TestTargetsRepoError：GetByID 仓储错误包装上抛（非业务错误）。
+func TestTargetsRepoError(t *testing.T) {
+	svc := newBatchSvc(&fakeBatchRepo{byIDErr: errors.New("db down")}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+	_, err := svc.Targets(context.Background(), 7)
+	var serr *service.Error
+	if err == nil || errors.As(err, &serr) {
+		t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
+	}
+}
+
+// TestFailuresRepoError：失败清单仓储错误包装上抛（非业务错误）。
+func TestFailuresRepoError(t *testing.T) {
+	batchRepo := &fakeBatchRepo{byID: targetsBatchFixture(), failedListErr: errors.New("db down")}
+	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+	_, err := svc.Failures(context.Background(), 7)
+	var serr *service.Error
+	if err == nil || errors.As(err, &serr) {
+		t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
 	}
 }

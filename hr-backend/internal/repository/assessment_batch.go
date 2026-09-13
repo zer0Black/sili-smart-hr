@@ -59,6 +59,9 @@ type AssessmentBatchRepository interface {
 	ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error)
 	// FindLatestScheduled 取最近触发的定时批次（不限状态，本期跑批间隔下界口径），无行返 (nil, nil)。
 	FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
+	// ListFailedByBatch 取批次内 status='failed' 人员行，按 finished_at ASC 升序
+	//（终态落库先后，走 idx_batch_status；specs §4.3.4 规则1）。
+	ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error)
 }
 
 type assessmentBatchRepository struct {
@@ -278,4 +281,14 @@ func truncateRunes(s string, max int) string {
 	}
 	runes := []rune(s)
 	return string(runes[:max])
+}
+
+// ListFailedByBatch 取批次内 failed 人员行，按 finished_at ASC（idx_batch_status 命中 batch_id+status）。
+func (r *assessmentBatchRepository) ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
+	var list []domain.AssessmentBatchPerson
+	err := r.db.WithContext(ctx).
+		Where("batch_id = ? AND status = ?", batchID, domain.PersonStatusFailed).
+		Order("finished_at ASC").
+		Find(&list).Error
+	return list, err
 }

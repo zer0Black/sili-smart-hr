@@ -174,6 +174,9 @@ func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(ctx context.Context, start,
 func (f *fakeBatchRepo) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
 	return nil, nil
 }
+func (f *fakeBatchRepo) ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
+	return nil, nil
+}
 
 // fakeAlertRepo 告警仓储 fake。
 type fakeAlertRepo struct {
