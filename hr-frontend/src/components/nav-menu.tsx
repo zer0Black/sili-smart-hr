@@ -47,7 +47,7 @@ export function NavMenu() {
     {
       label: t('nav.assessment'),
       children: [
-        { label: t('nav.assessmentConversation'), feature: 'F6' },
+        { label: t('nav.assessmentConversation'), to: '/assessment' },
         { label: t('nav.assessmentTest'), feature: 'F7' },
         { label: t('nav.questionbank'), feature: 'F5' },
       ],

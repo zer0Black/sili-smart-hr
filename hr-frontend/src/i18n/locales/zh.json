@@ -20,7 +20,7 @@
     "nav": {
       "workspace": "工作台",
       "assessment": "评估运营",
-      "assessmentConversation": "对话分析",
+      "assessmentConversation": "评测运营中心",
       "assessmentTest": "主动测试",
       "questionbank": "题库",
       "profile": "个人画像",
@@ -588,6 +588,120 @@
     "estimate": {
       "all": "评估对象为全员，请关注 LLM 调用量与节流策略",
       "count": "当前评估对象 {{count}} 人，调用量按人数线性增长，请关注 LLM 成本"
+    }
+  },
+  "assessment": {
+    "page": {
+      "title": "评测运营中心",
+      "subtitle": "查看跑批态势与计划、追溯批次记录、发起手动定向分析"
+    },
+    "tabs": {
+      "aiUsage": "AI 使用能力"
+    },
+    "stats": {
+      "evalCount": "本期评测次数",
+      "personCount": "已完成评估人次",
+      "runningCount": "进行中批次数",
+      "refresh": "刷新"
+    },
+    "plan": {
+      "title": "跑批计划",
+      "nextTrigger": "下次执行",
+      "period": "周期长度",
+      "periodValue": {
+        "daily": "每天",
+        "weekly": "每周",
+        "monthly": "每月"
+      },
+      "target": "评估对象",
+      "targetAll": "全员",
+      "targetSpecified": "指定人员",
+      "targetSummary": "{{first}}、{{second}} 等 {{count}} 人",
+      "dimensions": "评估维度",
+      "dimensionsValue": "底层 {{base}} 维 + 上层 {{upper}} 维",
+      "goPeriod": "评估周期",
+      "goDimension": "维度权重"
+    },
+    "table": {
+      "title": "批次记录",
+      "createAction": "发起评测",
+      "filterTrigger": "触发方式",
+      "filterTriggerAll": "全部",
+      "triggerScheduled": "定时评估",
+      "triggerManual": "手动发起",
+      "filterStatus": "状态",
+      "filterStatusAll": "全部",
+      "status": {
+        "running": "进行中",
+        "success": "成功",
+        "partial_failed": "部分失败",
+        "failed": "失败"
+      },
+      "stalled": "已停滞",
+      "colBatchNo": "批次号",
+      "colTriggerType": "触发方式",
+      "colTarget": "评估对象",
+      "colPeriod": "评估时段",
+      "colStatus": "状态",
+      "colProgress": "进度",
+      "colSessions": "覆盖会话",
+      "colFailed": "失败人数",
+      "colTriggeredAt": "触发时间",
+      "colActions": "操作",
+      "actionFailures": "失败明细",
+      "actionRestart": "重新发起",
+      "actionViewResult": "查看结果",
+      "empty": "暂无评测记录，点击右上角发起评测或等待周期自动跑批",
+      "total": "共 {{total}} 条",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageSize10": "10 条/页",
+      "pageSize20": "20 条/页",
+      "pageSize50": "50 条/页",
+      "viewResultDisabled": "个人画像功能建设中",
+      "viewResultRunning": "本批次评估进行中，画像尚不完整",
+      "loading": "加载中…"
+    },
+    "create": {
+      "title": "发起评测",
+      "typeLabel": "评测类型",
+      "typeConversation": "对话分析",
+      "typeAiMgmt": "AI 管理能力",
+      "typeEnneagram": "九型人格",
+      "typeDisabled": "该评测类型将在后续版本开放",
+      "targetLabel": "评估对象",
+      "targetPlaceholder": "点击选择评估对象",
+      "targetSearchPlaceholder": "输入人名搜索",
+      "targetAll": "全员",
+      "targetEmpty": "未找到匹配的人员",
+      "targetLoading": "加载中…",
+      "targetError": "人员加载失败",
+      "targetRetry": "重试",
+      "targetRequired": "请至少选择一名评估对象",
+      "periodLabel": "评估时段",
+      "periodStartPlaceholder": "开始日期",
+      "periodEndPlaceholder": "结束日期",
+      "periodRequired": "请选择评估时段",
+      "periodInvalid": "开始日期不能晚于结束日期",
+      "periodFuture": "结束日期不能是今天或以后",
+      "submit": "提交",
+      "submitting": "提交中…",
+      "cancel": "取消",
+      "cancelConfirm": "已选择评估对象，确定放弃并关闭？",
+      "cancelConfirmOk": "放弃并关闭",
+      "toastCreated": "已发起评测，批次进入评估队列",
+      "toastGeneric": "发起失败，请稍后重试"
+    },
+    "failures": {
+      "title": "失败明细 · {{batchNo}}",
+      "summary": "失败 {{failed}} 人 / 共 {{total}} 人",
+      "colName": "姓名",
+      "colReason": "失败原因摘要",
+      "loading": "加载中…",
+      "loadError": "清单加载失败，请重试",
+      "retry": "重试",
+      "restartByFailures": "按失败对象重新发起",
+      "close": "关闭"
     }
   }
 }

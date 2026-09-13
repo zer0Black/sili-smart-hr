@@ -20,7 +20,7 @@
     "nav": {
       "workspace": "Workspace",
       "assessment": "Assessment",
-      "assessmentConversation": "Conversation Analysis",
+      "assessmentConversation": "Assessment Center",
       "assessmentTest": "Active Test",
       "questionbank": "Question Bank",
       "profile": "Profiles",
@@ -588,6 +588,120 @@
     "estimate": {
       "all": "Target is everyone; watch LLM call volume and throttling",
       "count": "Target is {{count}} people; cost grows linearly, watch LLM cost"
+    }
+  },
+  "assessment": {
+    "page": {
+      "title": "Assessment Center",
+      "subtitle": "Monitor batch runs and plans, trace batch history, launch targeted assessments"
+    },
+    "tabs": {
+      "aiUsage": "AI Usage"
+    },
+    "stats": {
+      "evalCount": "Assessments This Period",
+      "personCount": "Completed Person-Times",
+      "runningCount": "Running Batches",
+      "refresh": "Refresh"
+    },
+    "plan": {
+      "title": "Run Plan",
+      "nextTrigger": "Next Run",
+      "period": "Cycle",
+      "periodValue": {
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly"
+      },
+      "target": "Target",
+      "targetAll": "Everyone",
+      "targetSpecified": "Selected",
+      "targetSummary": "{{first}}, {{second}} and {{count}} people",
+      "dimensions": "Dimensions",
+      "dimensionsValue": "Base {{base}} + Upper {{upper}}",
+      "goPeriod": "Assessment Cycle",
+      "goDimension": "Dimensions & Weights"
+    },
+    "table": {
+      "title": "Batch Records",
+      "createAction": "Launch Assessment",
+      "filterTrigger": "Trigger",
+      "filterTriggerAll": "All",
+      "triggerScheduled": "Scheduled",
+      "triggerManual": "Manual",
+      "filterStatus": "Status",
+      "filterStatusAll": "All",
+      "status": {
+        "running": "Running",
+        "success": "Success",
+        "partial_failed": "Partially Failed",
+        "failed": "Failed"
+      },
+      "stalled": "Stalled",
+      "colBatchNo": "Batch No.",
+      "colTriggerType": "Trigger",
+      "colTarget": "Target",
+      "colPeriod": "Period",
+      "colStatus": "Status",
+      "colProgress": "Progress",
+      "colSessions": "Sessions",
+      "colFailed": "Failed",
+      "colTriggeredAt": "Triggered At",
+      "colActions": "Actions",
+      "actionFailures": "Failure Details",
+      "actionRestart": "Relaunch",
+      "actionViewResult": "View Results",
+      "empty": "No assessments yet. Launch one from the top-right or wait for the scheduled run",
+      "total": "{{total}} records",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageSize10": "10 / page",
+      "pageSize20": "20 / page",
+      "pageSize50": "50 / page",
+      "viewResultDisabled": "Profile feature is under construction",
+      "viewResultRunning": "This batch is still running; profiles are incomplete",
+      "loading": "Loading…"
+    },
+    "create": {
+      "title": "Launch Assessment",
+      "typeLabel": "Assessment Type",
+      "typeConversation": "Conversation Analysis",
+      "typeAiMgmt": "AI Management",
+      "typeEnneagram": "Enneagram",
+      "typeDisabled": "This assessment type will be available in a future version",
+      "targetLabel": "Target",
+      "targetPlaceholder": "Select people to assess",
+      "targetSearchPlaceholder": "Search by name",
+      "targetAll": "Everyone",
+      "targetEmpty": "No matching people",
+      "targetLoading": "Loading…",
+      "targetError": "Failed to load people",
+      "targetRetry": "Retry",
+      "targetRequired": "Select at least one person",
+      "periodLabel": "Assessment Period",
+      "periodStartPlaceholder": "Start date",
+      "periodEndPlaceholder": "End date",
+      "periodRequired": "Select an assessment period",
+      "periodInvalid": "Start date must not be later than end date",
+      "periodFuture": "End date must be before today",
+      "submit": "Submit",
+      "submitting": "Submitting…",
+      "cancel": "Cancel",
+      "cancelConfirm": "People are selected. Discard and close?",
+      "cancelConfirmOk": "Discard and close",
+      "toastCreated": "Assessment launched; the batch is queued",
+      "toastGeneric": "Launch failed, please retry later"
+    },
+    "failures": {
+      "title": "Failure Details · {{batchNo}}",
+      "summary": "{{failed}} failed of {{total}}",
+      "colName": "Name",
+      "colReason": "Failure Reason",
+      "loading": "Loading…",
+      "loadError": "Failed to load the list, please retry",
+      "retry": "Retry",
+      "restartByFailures": "Relaunch for Failed",
+      "close": "Close"
     }
   }
 }
