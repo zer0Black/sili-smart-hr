@@ -47,6 +47,9 @@ export const ErrCode = {
   IntegrationSecretVersionConflict: 1309,
   BadRequest: 1400,
   Internal: 1500,
+  BatchNotFound: 1601,
+  BatchPeriodInvalid: 1602,
+  BatchTargetInvalid: 1603,
 } as const;
 
 /** 脱敏账号。id 为雪花 ID，后端以 JSON string 传输规避前端 JS 精度坑。 */
@@ -424,4 +427,61 @@ export interface UpdateSecretPayload {
 /** 连通性测试结果。 */
 export interface SecretTestResult {
   connected: boolean;
+}
+
+// 批次跑批域契约（与后端 batch service DTO 同构，03_api_interface §3 A1-A3）
+
+/** 批次列表项。id 为雪花 ID JSON string 化；target_names 为全量名单快照（悬浮展示，specs §4.1.5）。 */
+export interface BatchListItem {
+  id: string;
+  batch_no: string;
+  trigger_type: 'scheduled' | 'manual';
+  target_mode: 'all' | 'specified';
+  target_brief: string[];
+  target_names: string[];
+  /** 评估时段起点（含），yyyy-MM-dd。 */
+  period_start: string;
+  /** 评估时段终点（含），yyyy-MM-dd。 */
+  period_end: string;
+  status: 'running' | 'success' | 'partial_failed' | 'failed';
+  /** 停滞标识：running 且距触发超过一个周期长度，查询期派生不落库。 */
+  stalled: boolean;
+  evaluated_count: number;
+  total_count: number;
+  /** 进度百分比，后端向下取整；total_count=0 时为 0。 */
+  progress_percent: number;
+  covered_session_count: number;
+  failed_count: number;
+  /** 触发时间，yyyy-MM-dd HH:mm。 */
+  triggered_at: string;
+}
+
+export type BatchListPage = Page<BatchListItem>;
+
+/** 跑批态势统计卡。三项均以「本期跑批间隔」为时间归属区间。 */
+export interface BatchStats {
+  eval_count: number;
+  evaluated_person_count: number;
+  /** 进行中批次数，剔除停滞批次。 */
+  running_batch_count: number;
+}
+
+/** 跑批计划卡。按当前评估周期配置推算下次触发时点与评估对象。 */
+export interface BatchPlan {
+  next_trigger_at: string;
+  period: 'daily' | 'weekly' | 'monthly';
+  target_mode: 'all' | 'specified';
+  target_brief: string[];
+  target_names: string[];
+  target_count: number;
+  dimension_base_count: number;
+  dimension_upper_count: number;
+}
+
+/** POST /api/assessment/batches/create 响应 data。status 创建后恒为 running。 */
+export interface CreateBatchResult {
+  id: string;
+  batch_no: string;
+  status: 'running' | 'success' | 'partial_failed' | 'failed';
+  total_count: number;
 }
