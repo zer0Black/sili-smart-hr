@@ -79,7 +79,7 @@ func TestAssessmentTablesMigrated(t *testing.T) {
 		}
 	}
 
-	// 比例列可空：session_fail_ratio 未终态为 NULL，failed_ratio 建表亦须可空（04 §3.1/§3.3 字段说明）。
+	// 比例列可空：session_fail_ratio 未终态为 NULL（04 §3.1 字段说明）。
 	colTypes, err := db.Migrator().ColumnTypes(&domain.AssessmentBatch{})
 	if err != nil {
 		t.Fatalf("column types: %v", err)

@@ -44,6 +44,10 @@ func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	return f.rows, nil
 }
 
+func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
+	return 0, nil
+}
+
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
 
 var weekBase = time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC).Unix()

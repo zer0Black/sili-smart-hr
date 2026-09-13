@@ -73,6 +73,10 @@ func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	return f.rows, nil
 }
 
+func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
+	return 0, nil
+}
+
 // 编译期断言 fake 满足仓储接口。
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
 

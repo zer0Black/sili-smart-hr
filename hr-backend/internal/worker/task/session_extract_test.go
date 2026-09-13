@@ -50,6 +50,9 @@ func (r *stubRepo) Save(ctx context.Context, rec *domain.SessionFeature) (bool, 
 func (r *stubRepo) ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error) {
 	return nil, nil
 }
+func (r *stubRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
+	return 0, nil
+}
 
 // stubParams 空集参数源：ReadStringArray 恒返回空（Trim/Redact 走出厂分支）。
 type stubParams struct{}

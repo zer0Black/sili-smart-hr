@@ -114,6 +114,9 @@ func (r *evalFeatureRepo) Save(ctx context.Context, rec *domain.SessionFeature) 
 func (r *evalFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error) {
 	return nil, nil
 }
+func (r *evalFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
+	return 0, nil
+}
 
 // evalSpecReader 维度口径 fake。
 type evalSpecReader struct {
