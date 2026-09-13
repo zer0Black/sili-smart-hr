@@ -306,5 +306,8 @@ func allModels() []any {
 		&domain.AggregateScore{},
 		&domain.ActivityStat{},
 		&domain.SystemParam{},
+		&domain.AssessmentBatch{},
+		&domain.AssessmentBatchPerson{},
+		&domain.AssessmentAlert{},
 	}
 }
