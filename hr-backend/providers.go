@@ -359,6 +359,33 @@ type BatchTickHandler func(context.Context, *asynq.Task) error
 // BatchRunHandler batch-run handler 命名类型（同上）。
 type BatchRunHandler func(context.Context, *asynq.Task) error
 
+// NowFunc 是批次 service 的时钟注入命名类型（DBProbe 范式）：裸 func() time.Time
+// 在 Wire 类型表无法与其他同型参数区分，命名类型各占一格。
+type NowFunc func() time.Time
+
+// ProvideNowFunc 提供生产时钟（time.Local 口径由 service 层消费端自行对齐）。
+func ProvideNowFunc() NowFunc {
+	return NowFunc(time.Now)
+}
+
+// NewAssessmentBatchServiceAdapter 是 Wire 装配适配器：接收 NowFunc 命名类型，
+// 内部转裸 func 调 service.NewAssessmentBatchService（八参，userapiClient 经
+// service.ProvideUserapiClient 绑定）。
+func NewAssessmentBatchServiceAdapter(
+	batchRepo repository.AssessmentBatchRepository,
+	configRepo repository.AssessmentConfigRepository,
+	dimRepo repository.DimensionRepository,
+	staffs *userapi.Client,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	now NowFunc,
+	submitter *pipeline.Orchestrator,
+) service.AssessmentBatchService {
+	return service.NewAssessmentBatchService(batchRepo, configRepo, dimRepo,
+		service.ProvideUserapiClient(staffs), secretRepo, encKey,
+		(func() time.Time)(now), submitter)
+}
+
 // NewBatchTickHandlerTyped 构造 batch-tick handler（命名类型透出）。
 func NewBatchTickHandlerTyped(orch *pipeline.Orchestrator) BatchTickHandler {
 	return BatchTickHandler(task.NewBatchTickHandler(orch))

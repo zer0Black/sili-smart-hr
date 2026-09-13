@@ -28,6 +28,7 @@ func NewRouter(
 	systemHandler *handler.SystemHandler,
 	dimensionHandler *handler.DimensionHandler,
 	assessmentConfigHandler *handler.AssessmentConfigHandler,
+	assessmentBatchHandler *handler.AssessmentBatchHandler,
 	llmConfigHandler *handler.LLMConfigHandler,
 	integrationSecretHandler *handler.IntegrationSecretHandler,
 	rdb *redis.Client,
@@ -110,6 +111,13 @@ func NewRouter(
 	auth.GET("/integration-secret/detail", integrationSecretHandler.Detail)
 	auth.POST("/integration-secret/update", integrationSecretHandler.Update)
 	auth.POST("/integration-secret/test", integrationSecretHandler.Test)
+	// 批次域：六接口 JWT 鉴权挂 auth 组（specs §2.2 + 03 §3 A1-A5/B1），无角色差异。
+	auth.GET("/assessment/batches", assessmentBatchHandler.List)
+	auth.GET("/assessment/batches/stats", assessmentBatchHandler.Stats)
+	auth.GET("/assessment/batches/plan", assessmentBatchHandler.Plan)
+	auth.GET("/assessment/batches/targets", assessmentBatchHandler.Targets)
+	auth.GET("/assessment/batches/failures", assessmentBatchHandler.Failures)
+	auth.POST("/assessment/batches/create", assessmentBatchHandler.Create)
 
 	return r
 }
