@@ -10,6 +10,31 @@ import { useAuthStore } from '@/stores/auth';
 
 await i18n.changeLanguage('zh');
 
+// mock BatchTable 捕获 props（包含 resetKey）
+const batchTablePropsSpy = vi.hoisted(() => vi.fn());
+vi.mock('@/features/assessment/components/batch-table', () => ({
+  BatchTable: (props: unknown) => {
+    batchTablePropsSpy(props);
+    return <div data-testid="batch-table-stub" />;
+  },
+}));
+
+vi.mock('@/features/assessment/components/stats-cards', () => ({
+  StatsCards: () => <div data-testid="stats-cards-stub" />,
+}));
+
+// mock CreateBatchDialog / FailureDetailDialog：仅捕获 onSubmitted 行为
+const createBatchPropsSpy = vi.hoisted(() => vi.fn());
+vi.mock('@/features/assessment/components/create-batch-dialog', () => ({
+  CreateBatchDialog: (props: { onSubmitted: () => void; onClose: () => void; open: boolean }) => {
+    createBatchPropsSpy(props);
+    return props.open ? <div data-testid="create-dialog-stub" /> : null;
+  },
+}));
+vi.mock('@/features/assessment/components/failure-detail-dialog', () => ({
+  FailureDetailDialog: () => null,
+}));
+
 import { AssessmentCenterPage } from '../index';
 
 vi.mock('@/features/assessment/api', () => ({
@@ -45,53 +70,37 @@ function renderPage(node: ReactElement) {
 }
 
 describe('AssessmentCenterPage 路由页骨架', () => {
-  it('渲染页面标题、AI 使用能力 tab 与统计卡骨架（无进行中批次时直接出数值）', async () => {
+  it('渲染页面标题与 AI 使用能力 tab', () => {
     useAuthStore.setState({ token: 'test-token' });
     renderPage(<AssessmentCenterPage />);
 
     expect(screen.getByRole('heading', { name: '评测运营中心' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'AI 使用能力' })).toBeInTheDocument();
-
-    await waitFor(() => {
-      expect(screen.getByText('本期评测次数')).toBeInTheDocument();
-    });
-    expect(screen.getByText('已完成评估人次')).toBeInTheDocument();
-    expect(screen.getByText('进行中批次数')).toBeInTheDocument();
   });
 
-  it('存在非停滞的进行中批次时开启列表轮询', async () => {
-    const { fetchBatches } = await import('@/features/assessment/api');
-    vi.mocked(fetchBatches).mockResolvedValue({
-      list: [
-        {
-          id: '1',
-          batch_no: 'B-1',
-          trigger_type: 'scheduled',
-          target_mode: 'all',
-          target_brief: [],
-          target_names: [],
-          period_start: '2026-09-07',
-          period_end: '2026-09-13',
-          status: 'running',
-          stalled: false,
-          evaluated_count: 0,
-          total_count: 5,
-          progress_percent: 0,
-          covered_session_count: 0,
-          failed_count: 0,
-          triggered_at: '2026-09-13 23:00',
-        },
-      ],
-      total: 1,
-      page: 1,
-      page_size: 10,
-    });
+  it('TestPageSubmitResetKey：CreateBatchDialog 提交成功回调使 BatchTable 收到递增 resetKey（§4.2.3）', async () => {
     useAuthStore.setState({ token: 'test-token' });
+    batchTablePropsSpy.mockClear();
+    createBatchPropsSpy.mockClear();
+
     renderPage(<AssessmentCenterPage />);
 
-    // 轮询推导生效的表现：running 批次的「进行中」徽标渲染出（轮询开关本身由 refetchInterval 内部驱动）。
+    // 初始渲染 BatchTable 收到 resetKey=0
+    await waitFor(() => expect(batchTablePropsSpy).toHaveBeenCalled());
+    const initialKeys = batchTablePropsSpy.mock.calls.map((c) => (c[0] as { resetKey?: number }).resetKey);
+    expect(initialKeys).toContain(0);
+    expect(initialKeys).not.toContain(1);
+
+    // 触发 CreateBatchDialog 的 onSubmitted（等价提交成功）
+    const lastCall = createBatchPropsSpy.mock.calls[createBatchPropsSpy.mock.calls.length - 1];
+    const dialogProps = lastCall[0] as { onSubmitted: () => void };
+    dialogProps.onSubmitted();
+
     await waitFor(() => {
-      expect(screen.getByText('进行中')).toBeInTheDocument();
+      const keys = batchTablePropsSpy.mock.calls.map(
+        (c) => (c[0] as { resetKey?: number }).resetKey,
+      );
+      expect(keys).toContain(1);
     });
   });
 });

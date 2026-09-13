@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
 import type { TFunction } from 'i18next';
@@ -30,6 +30,8 @@ export interface BatchTableProps {
   onCreateOpen: () => void;
   onFailuresOpen: (batchId: string) => void;
   onReSubmit: (batch: BatchListItem) => void;
+  /** 外部重置信号：值变化时清空筛选并回第一页（§4.2.3 提交成功后重置入口）。 */
+  resetKey?: number;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -57,7 +59,7 @@ function statusVariant(status: BatchListItem['status']): 'default' | 'secondary'
 }
 
 /** 批次列表：筛选 + 九列 + 行操作 + 分页。行操作可见性见 specs §4.1.3。 */
-export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit }: BatchTableProps): JSX.Element {
+export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey }: BatchTableProps): JSX.Element {
   const { t } = useTranslation('assessment');
 
   const [draftTrigger, setDraftTrigger] = useState<string>(ALL);
@@ -65,6 +67,20 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit }: BatchTa
   const [filter, setFilter] = useState<BatchFilter>({ page: 1, page_size: DEFAULT_PAGE_SIZE });
 
   const query = useBatches(filter);
+
+  // 外部 resetKey 变化（跳过首挂载）时把筛选与页码重置为默认，由 filter 变化触发 refetch
+  const resetKeyRef = useRef<number | undefined>(resetKey);
+  useEffect(() => {
+    if (resetKey === undefined) {
+      resetKeyRef.current = resetKey;
+      return;
+    }
+    if (resetKeyRef.current === resetKey) return;
+    resetKeyRef.current = resetKey;
+    setDraftTrigger(ALL);
+    setDraftStatus(ALL);
+    setFilter({ page: 1, page_size: DEFAULT_PAGE_SIZE });
+  }, [resetKey]);
   const list = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / filter.page_size));

@@ -61,6 +61,10 @@ function renderTable(node?: ReactElement) {
   );
 }
 
+function renderTableWithClient(node: ReactElement, qc: QueryClient) {
+  return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>);
+}
+
 async function openSelect(trigger: HTMLElement, optionText: string) {
   const user = userEvent.setup();
   await user.click(trigger);
@@ -258,6 +262,47 @@ describe('BatchTable 批次列表', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '发起评测' }));
     expect(props.onCreateOpen).toHaveBeenCalledTimes(1);
+  });
+
+  it('TestBatchTableResetByKey：resetKey 变化后筛选回到全部并重新发起默认查询（§4.2.3 提交成功重置）', async () => {
+    vi.mocked(fetchBatches).mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    useAuthStore.setState({ token: 'test-token' });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const props = makeProps();
+
+    const { rerender } = renderTableWithClient(<BatchTable {...props} resetKey={0} />, qc);
+    await screen.findByText('暂无评测记录，点击右上角发起评测或等待周期自动跑批');
+
+    // 先选非默认筛选并查询，使筛选条件离开初始态
+    await openSelect(screen.getByRole('combobox', { name: '触发方式' }), '定时评估');
+    await openSelect(screen.getByRole('combobox', { name: '状态' }), '部分失败');
+    fireEvent.click(screen.getByRole('button', { name: '查询' }));
+    await waitFor(() => {
+      expect(fetchBatches).toHaveBeenCalledWith(
+        expect.objectContaining({ trigger_type: 'scheduled', status: 'partial_failed', page: 1 }),
+      );
+    });
+
+    // 外部 resetKey 递增 → 筛选回全部 + 页码归 1 + 重新拉默认查询
+    vi.mocked(fetchBatches).mockClear();
+    rerender(
+      <QueryClientProvider client={qc}>
+        <BatchTable {...props} resetKey={1} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(fetchBatches).toHaveBeenCalledWith({
+        trigger_type: undefined,
+        status: undefined,
+        page: 1,
+        page_size: 10,
+      });
+    });
+    // 两个筛选 Select 显示「全部」
+    const triggers = screen.getAllByRole('combobox');
+    expect(triggers[0]).toHaveTextContent('全部');
+    expect(triggers[1]).toHaveTextContent('全部');
   });
 
   it('TestBatchTablePagination：翻页与每页条数切换', async () => {
