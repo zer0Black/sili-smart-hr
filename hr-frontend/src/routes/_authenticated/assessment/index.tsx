@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useBatches, useBatchPlan, useBatchStats } from '@/features/assessment/hooks';
+import { StatsCards } from '@/features/assessment/components/stats-cards';
+import { useBatches } from '@/features/assessment/hooks';
 import type { BatchFilter } from '@/features/assessment/types';
 import type { StaffItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
@@ -66,8 +67,6 @@ export function AssessmentCenterPage() {
     (b) => b.status === 'running' && !b.stalled,
   );
   const batchesQ = useBatches(filter, { polling: hasActiveRunning });
-  const statsQ = useBatchStats({ polling: hasActiveRunning });
-  const planQ = useBatchPlan();
 
   // 双弹窗状态由 T5/T6 消费，骨架期防未用告警
   void createOpen;
@@ -95,13 +94,7 @@ export function AssessmentCenterPage() {
         </button>
       </div>
 
-      <StatsCardsSkeleton
-        stats={statsQ.data}
-        isLoading={statsQ.isLoading}
-        isError={statsQ.isError}
-        onRefresh={() => void statsQ.refetch()}
-      />
-      <PlanCardSkeleton plan={planQ.data} isLoading={planQ.isLoading} isError={planQ.isError} onRefresh={() => void planQ.refetch()} />
+      <StatsCards polling={hasActiveRunning} />
 
       {/* T4 BatchTable 接入位：筛选两下拉 + 九列列表 + 分页 + 空态/停滞标识 */}
       <BatchTableSkeleton
@@ -118,103 +111,6 @@ export function AssessmentCenterPage() {
       {/* T5 CreateBatchDialog 接入位：createOpen/createPreset/提交成功回调 onCreateSuccess */}
       {/* T6 FailureDetailDialog 接入位：failureBatchId/关闭/补跑回调 openCreateDialog */}
     </div>
-  );
-}
-
-/** T3 StatsCards 接入前的最小占位：三指标卡 + 加载骨架 + 失败刷新入口。 */
-function StatsCardsSkeleton(props: {
-  stats?: { eval_count: number; evaluated_person_count: number; running_batch_count: number };
-  isLoading: boolean;
-  isError: boolean;
-  onRefresh: () => void;
-}) {
-  const { t } = useTranslation('assessment');
-  const items = [
-    { key: 'evalCount', label: t('stats.evalCount'), value: props.stats?.eval_count },
-    { key: 'personCount', label: t('stats.personCount'), value: props.stats?.evaluated_person_count },
-    { key: 'runningCount', label: t('stats.runningCount'), value: props.stats?.running_batch_count },
-  ];
-  return (
-    <div className="grid grid-cols-3 gap-4">
-      {items.map((item) => (
-        <Card key={item.key}>
-          <CardHeader>
-            <CardTitle className="text-muted-foreground text-sm font-normal">
-              {item.label}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {props.isLoading ? (
-              <div className="bg-muted h-8 w-16 animate-pulse rounded-md" />
-            ) : props.isError ? (
-              <Button variant="outline" size="sm" onClick={props.onRefresh}>
-                {t('stats.refresh')}
-              </Button>
-            ) : (
-              <p className="text-2xl font-semibold">{item.value ?? '-'}</p>
-            )}
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-/** T3 计划卡占位：四字段（下次执行/周期长度/评估对象/评估维度）。 */
-function PlanCardSkeleton(props: {
-  plan?: {
-    next_trigger_at: string;
-    period: 'daily' | 'weekly' | 'monthly';
-    target_mode: 'all' | 'specified';
-    dimension_base_count: number;
-    dimension_upper_count: number;
-  };
-  isLoading: boolean;
-  isError: boolean;
-  onRefresh: () => void;
-}) {
-  const { t } = useTranslation('assessment');
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{t('plan.title')}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {props.isLoading ? (
-          <div className="bg-muted h-6 w-full animate-pulse rounded-md" />
-        ) : props.isError ? (
-          <Button variant="outline" size="sm" onClick={props.onRefresh}>
-            {t('stats.refresh')}
-          </Button>
-        ) : props.plan ? (
-          <dl className="grid grid-cols-4 gap-4 text-sm">
-            <div>
-              <dt className="text-muted-foreground">{t('plan.nextTrigger')}</dt>
-              <dd className="font-medium">{props.plan.next_trigger_at}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('plan.period')}</dt>
-              <dd>{t(`plan.periodValue.${props.plan.period}`)}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('plan.target')}</dt>
-              <dd>
-                {props.plan.target_mode === 'all' ? t('plan.targetAll') : t('plan.targetSpecified')}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">{t('plan.dimensions')}</dt>
-              <dd>
-                {t('plan.dimensionsValue', {
-                  base: props.plan.dimension_base_count,
-                  upper: props.plan.dimension_upper_count,
-                })}
-              </dd>
-            </div>
-          </dl>
-        ) : null}
-      </CardContent>
-    </Card>
   );
 }
 
