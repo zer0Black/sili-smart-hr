@@ -3,14 +3,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { BatchTable } from '@/features/assessment/components/batch-table';
 import { StatsCards } from '@/features/assessment/components/stats-cards';
+import { fetchBatchTargets } from '@/features/assessment/api';
 import { useBatches } from '@/features/assessment/hooks';
 import type { BatchFilter } from '@/features/assessment/types';
-import type { StaffItem } from '@/lib/contracts';
-import { cn } from '@/lib/utils';
+import type { BatchListItem, StaffItem } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/assessment/')({
   component: AssessmentCenterPage,
@@ -42,14 +40,11 @@ export function AssessmentCenterPage() {
     toast.success(t('create.toastCreated'));
   }
 
-  // specs §4.1.3 查询/重置：清空条件回第一页
-  function onFilterChange(next: Partial<BatchFilter>) {
-    setFilter({ ...next, page: 1, page_size: filter.page_size });
-  }
-
-  function onPageChange(page: number) {
-    setFilter((f) => ({ ...f, page }));
-  }
+  // 轮询推导：存在非停滞的进行中批次才轮询（specs §4.1.3 轮询触发时机）。
+  const batchesProbeQ = useBatches(filter);
+  const hasActiveRunning = (batchesProbeQ.data?.list ?? []).some(
+    (b) => b.status === 'running' && !b.stalled,
+  );
 
   function openCreateDialog(preset: CreateBatchPreset | null) {
     setCreatePreset(preset);
@@ -60,20 +55,25 @@ export function AssessmentCenterPage() {
     setFailureBatchId(batchId);
   }
 
-  // 轮询推导：存在非停滞的进行中批次才轮询（specs §4.1.3 轮询触发时机）。
-  // 首帧无数据时 hasActiveRunning=false 不轮询，首批数据到位后按最新结果重估。
-  const batchesProbeQ = useBatches(filter);
-  const hasActiveRunning = (batchesProbeQ.data?.list ?? []).some(
-    (b) => b.status === 'running' && !b.stalled,
-  );
-  const batchesQ = useBatches(filter, { polling: hasActiveRunning });
+  // 停滞批次重新发起：fetchBatchTargets 拿完整名单与时段，组装 preset 开弹窗（specs §4.1.3）
+  async function onReSubmit(batch: BatchListItem) {
+    try {
+      const targets = await fetchBatchTargets(batch.id);
+      openCreateDialog({
+        staffs: targets.names.map((n) => ({ staff_id: '', staff_name: n })),
+        period_start: targets.period_start,
+        period_end: targets.period_end,
+      });
+    } catch {
+      toast.error(t('table.toastGeneric'));
+    }
+  }
 
   // 双弹窗状态由 T5/T6 消费，骨架期防未用告警
   void createOpen;
   void createPreset;
   void failureBatchId;
   void onCreateSuccess;
-  void openFailureDialog;
 
   return (
     <div className="flex flex-col gap-6">
@@ -96,71 +96,14 @@ export function AssessmentCenterPage() {
 
       <StatsCards polling={hasActiveRunning} />
 
-      {/* T4 BatchTable 接入位：筛选两下拉 + 九列列表 + 分页 + 空态/停滞标识 */}
-      <BatchTableSkeleton
-        filter={filter}
-        page={batchesQ.data}
-        isLoading={batchesQ.isLoading}
-        isError={batchesQ.isError}
-        onFilterChange={onFilterChange}
-        onPageChange={onPageChange}
-        onCreate={() => openCreateDialog(null)}
-        onOpenFailures={openFailureDialog}
+      <BatchTable
+        onCreateOpen={() => openCreateDialog(null)}
+        onFailuresOpen={openFailureDialog}
+        onReSubmit={(batch) => void onReSubmit(batch)}
       />
 
       {/* T5 CreateBatchDialog 接入位：createOpen/createPreset/提交成功回调 onCreateSuccess */}
       {/* T6 FailureDetailDialog 接入位：failureBatchId/关闭/补跑回调 openCreateDialog */}
     </div>
-  );
-}
-
-/** T4 BatchTable 接入前的最小占位：空态引导 + 进行中/停滞徽标 + 发起评测入口。 */
-function BatchTableSkeleton(props: {
-  filter: BatchFilter;
-  page?: { list: { id: string; batch_no: string; status: string; stalled: boolean }[]; total: number };
-  isLoading: boolean;
-  isError: boolean;
-  onFilterChange: (next: Partial<BatchFilter>) => void;
-  onPageChange: (page: number) => void;
-  onCreate: () => void;
-  onOpenFailures: (batchId: string) => void;
-}) {
-  const { t } = useTranslation('assessment');
-  // 筛选/分页/失败明细回调由 T4 接入时消费，骨架期防未用告警
-  void props.filter;
-  void props.isError;
-  void props.onFilterChange;
-  void props.onPageChange;
-  void props.onOpenFailures;
-  const list = props.page?.list ?? [];
-  return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>{t('table.title')}</CardTitle>
-        <Button onClick={props.onCreate}>{t('table.createAction')}</Button>
-      </CardHeader>
-      <CardContent>
-        {props.isLoading ? (
-          <div className="bg-muted h-24 w-full animate-pulse rounded-md" />
-        ) : list.length === 0 ? (
-          <p className="text-muted-foreground py-8 text-center text-sm">{t('table.empty')}</p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {list.map((b) => (
-              <li key={b.id} className="flex items-center gap-2 text-sm">
-                <span className="font-mono">{b.batch_no}</span>
-                <Badge
-                  variant="secondary"
-                  className={cn(b.stalled && 'text-muted-foreground')}
-                >
-                  {t(`table.status.${b.status}`)}
-                </Badge>
-                {b.stalled && <Badge variant="outline">{t('table.stalled')}</Badge>}
-              </li>
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
   );
 }

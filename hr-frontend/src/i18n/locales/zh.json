@@ -658,6 +658,11 @@
       "pageSize10": "10 条/页",
       "pageSize20": "20 条/页",
       "pageSize50": "50 条/页",
+      "pageSizeLabel": "每页条数",
+      "query": "查询",
+      "reset": "重置",
+      "targetAll": "全员",
+      "toastGeneric": "操作失败，请稍后重试",
       "viewResultDisabled": "个人画像功能建设中",
       "viewResultRunning": "本批次评估进行中，画像尚不完整",
       "loading": "加载中…"

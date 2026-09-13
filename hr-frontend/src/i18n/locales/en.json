@@ -658,6 +658,11 @@
       "pageSize10": "10 / page",
       "pageSize20": "20 / page",
       "pageSize50": "50 / page",
+      "pageSizeLabel": "Page size",
+      "query": "Query",
+      "reset": "Reset",
+      "targetAll": "Everyone",
+      "toastGeneric": "Operation failed, please retry later",
       "viewResultDisabled": "Profile feature is under construction",
       "viewResultRunning": "This batch is still running; profiles are incomplete",
       "loading": "Loading…"
