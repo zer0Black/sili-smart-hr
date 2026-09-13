@@ -57,8 +57,6 @@ type AssessmentBatchRepository interface {
 	// ListBatchIDsTriggeredBetween 取 triggered_at ∈ [start, end) 的全部批次 ID（含终态，
 	// 供统计卡「已完成评估人次」按本期跑批间隔圈定批次范围）。
 	ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error)
-	// FindLatestScheduled 取最近触发的定时批次（不限状态，本期跑批间隔下界口径），无行返 (nil, nil)。
-	FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
 	// ListFailedByBatch 取批次内 status='failed' 人员行，按 finished_at ASC 升序
 	//（终态落库先后，走 idx_batch_status；specs §4.3.4 规则1）。
 	ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error)
@@ -257,21 +255,6 @@ func (r *assessmentBatchRepository) ListBatchIDsTriggeredBetween(ctx context.Con
 		Where("triggered_at >= ? AND triggered_at < ?", start, end).
 		Pluck("id", &ids).Error
 	return ids, err
-}
-
-func (r *assessmentBatchRepository) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
-	var b domain.AssessmentBatch
-	err := r.db.WithContext(ctx).
-		Where("trigger_type = ?", domain.BatchTriggerScheduled).
-		Order("triggered_at DESC").
-		First(&b).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return &b, nil
 }
 
 // truncateRunes 按字符截断至多 max 个 rune，避免多字节字符被腰斩。

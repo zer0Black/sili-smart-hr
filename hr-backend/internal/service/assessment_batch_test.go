@@ -4,7 +4,8 @@
 // 不依赖真实 DB / 外部 HTTP。覆盖：
 //   - List：停滞派生、进度向下取整与除零兜底、名单摘要（前 2 人）与全量快照、
 //     all 模式空 brief、枚举校验 1400
-//   - Stats：本期跑批间隔窗口口径（有/无历史定时批次）、人次计数批次圈定、进行中剔除停滞
+//   - Stats：本期跑批间隔恒为一个周期长度（与历史定时批次无关）、人次计数批次圈定、
+//     进行中剔除停滞
 //   - Plan：specified 名单摘要与全量、all 模式上游不可达降级 target_count=0、维度分组计数
 package service_test
 
@@ -29,8 +30,6 @@ type fakeBatchRepo struct {
 	list            []domain.AssessmentBatch
 	listTotal       int64
 	listErr         error
-	latestScheduled *domain.AssessmentBatch
-	latestSchedErr  error
 	byID            *domain.AssessmentBatch
 	byIDErr         error
 	failedList      []domain.AssessmentBatchPerson
@@ -95,9 +94,6 @@ func (f *fakeBatchRepo) CountSuccessSideInRanges(_ context.Context, ids []int64)
 func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(_ context.Context, start, end time.Time) ([]int64, error) {
 	f.idsBetweenArgs = [2]time.Time{start, end}
 	return f.idsBetween, f.idsBetweenErr
-}
-func (f *fakeBatchRepo) FindLatestScheduled(_ context.Context) (*domain.AssessmentBatch, error) {
-	return f.latestScheduled, f.latestSchedErr
 }
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
@@ -331,17 +327,16 @@ func TestListInvalidFilter(t *testing.T) {
 	}
 }
 
-// TestStatsWindow：最近定时批次 triggered=09-06 23:00、配置 weekly 23:00、now=09-12 10:00，
-// 断言 CountInRange 窗口为 [09-06 23:00, 09-13 23:00)（specs §4.1.2A 本期跑批间隔）。
+// TestStatsWindow：配置 weekly 23:00、now=09-12 10:00，断言窗口恒为一个周期长度
+// [09-06 23:00, 09-13 23:00)（specs §4.1.2A 本期跑批间隔，与历史定时批次无关）。
 func TestStatsWindow(t *testing.T) {
 	wantStart := time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local)
 	wantEnd := time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local)
 	batchRepo := &fakeBatchRepo{
-		latestScheduled: &domain.AssessmentBatch{ID: 9, TriggerType: "scheduled", TriggeredAt: wantStart},
-		countInRange:    2,
-		idsBetween:      []int64{9, 10},
-		countSuccess:    96,
-		countRunning:    1,
+		countInRange: 2,
+		idsBetween:   []int64{9, 10},
+		countSuccess: 96,
+		countRunning: 1,
 	}
 	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 
@@ -370,19 +365,26 @@ func TestStatsWindow(t *testing.T) {
 	}
 }
 
-// TestStatsWindow_NoHistoryScheduled：无历史定时批次时下界按 NextTriggerAt(now) 回推一个周期长度。
-func TestStatsWindow_NoHistoryScheduled(t *testing.T) {
-	batchRepo := &fakeBatchRepo{countInRange: 1, countRunning: 0}
-	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+// TestStatsWindow_MonthlyAfterPeriodChange：周期配置变更（weekly→monthly）后窗口恒按
+// 当前周期回推一个周期长度，不被历史批次拉宽（变更 A 守护用例）。
+func TestStatsWindow_MonthlyAfterPeriodChange(t *testing.T) {
+	cfgRepo := &fakeAssessmentConfigRepo{
+		cfg: &domain.AssessmentConfig{
+			ID: 1, Period: "monthly", TriggerTime: "23:00", TargetMode: "specified", Version: 4,
+		},
+	}
+	batchRepo := &fakeBatchRepo{countInRange: 1}
+	svc := newBatchSvc(batchRepo, cfgRepo, &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 
 	if _, err := svc.Stats(context.Background()); err != nil {
 		t.Fatalf("Stats: %v", err)
 	}
-	// NextTriggerAt(09-12 10:00, weekly, 23:00)=09-13 23:00，回推 7 天得 09-06 23:00。
-	wantStart := time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local)
-	wantEnd := time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local)
+	// NextTriggerAt(09-12 10:00, monthly, 23:00)=09-30 23:00（当月月末触发点），
+	// 回推一个月（9 月 30 天）得 08-31 23:00。
+	wantStart := time.Date(2026, 8, 31, 23, 0, 0, 0, time.Local)
+	wantEnd := time.Date(2026, 9, 30, 23, 0, 0, 0, time.Local)
 	if !batchRepo.countInRangeArgs[0].Equal(wantStart) || !batchRepo.countInRangeArgs[1].Equal(wantEnd) {
-		t.Errorf("窗口 = [%v, %v), want [%v, %v)",
+		t.Errorf("窗口 = [%v, %v), want [%v, %v)（恒为一个月长度）",
 			batchRepo.countInRangeArgs[0], batchRepo.countInRangeArgs[1], wantStart, wantEnd)
 	}
 }

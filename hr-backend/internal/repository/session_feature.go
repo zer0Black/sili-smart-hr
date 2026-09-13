@@ -29,6 +29,9 @@ type SessionFeatureRepository interface {
 	// CountFailedByTokenNames 统计一批人员在窗口内的 failed 档案数（会话级失败比例分子，
 	// 承接 T4 §6.2 extract_fail_ratio 分子口径）。tokenNames 为空直接返回 0。
 	CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error)
+	// CountExistingBySessionKeys 统计给定 session_key 集合已有档案行数（任意状态，含 failed 终态行）。
+	// 供编排器等待抽取落库用；sessionKeys 为空直接返回 0 不发 SQL。
+	CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error)
 }
 
 type sessionFeatureRepository struct {
@@ -176,6 +179,22 @@ func (r *sessionFeatureRepository) CountFailedByTokenNames(ctx context.Context, 
 	err := r.db.WithContext(ctx).Model(&domain.SessionFeature{}).
 		Where("token_name IN ? AND status = ? AND first_turn_at >= ? AND first_turn_at < ?",
 			tokenNames, domain.FeatureStatusFailed, time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC()).
+		Count(&n).Error
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// CountExistingBySessionKeys 按 session_key 集合计数，不限状态与时间窗（抽取任务落库
+// 即视为完成，failed 终态行同样视为已落库，等待屏障只关心行存在性）。
+func (r *sessionFeatureRepository) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	if len(sessionKeys) == 0 {
+		return 0, nil
+	}
+	var n int64
+	err := r.db.WithContext(ctx).Model(&domain.SessionFeature{}).
+		Where("session_key IN ?", sessionKeys).
 		Count(&n).Error
 	if err != nil {
 		return 0, err

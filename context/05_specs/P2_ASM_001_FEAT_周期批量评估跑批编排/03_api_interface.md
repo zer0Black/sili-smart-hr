@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_ASM_001_FEAT_周期批量评估跑批编排 |
 | 模块代号 | ASM（评估运营域） |
-| 文档版本 | v1.6 |
+| 文档版本 | v1.7（2026-09-13：§4.4 流程新增步骤6 抽取落库等待与「等待」参数段，原步骤6-8 顺延为 7-9，同步步骤引用；对应 specs v1.9） |
 | 创建日期 | 2026-09-11 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md)、[04_model_interface.md](04_model_interface.md) |
@@ -567,13 +567,21 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
           落批次人员明细的 session_count（各人窗口内会话数，无会话者为 0）；
           人员明细的 pending 行已在创建时写入，本步骤只回填会话数
        5. 逐会话投递 engine:session-extract（一会话一任务）
-       6. 逐人并发（上限 4 路）直调 evaluator.EvaluatePerson，
+       6. 等待抽取落库：按已投递会话的 session_key 集合轮询 session_features
+          落库进度（含 failed 终态行），达到投递数或超过等待上限（30 分钟、
+          轮询间隔 10 秒）即进入下一步；投递失败会话不参与等待；超时按已落库
+          档案继续评估，不中断批次（specs §5.2.2 步骤4 与 §5.2.5）
+       7. 逐人并发（上限 4 路）直调 evaluator.EvaluatePerson，
            以步骤3 分组结果中该人窗口内的会话列表作 sessions 入参
-       7. 每人返回即回写该人终态并原子推进批次计数（见 §4.6）
-       8. 全部终态后落批次终态、算会话级失败比例、按阈值写告警信号
+       8. 每人返回即回写该人终态并原子推进批次计数（见 §4.6）
+       9. 全部终态后落批次终态、算会话级失败比例、按阈值写告警信号
 返回:  err == nil → 成功（含批次已终态的幂等跳过、上游不可用导致的整批失败终态，
        两者均为终态不重试）
        err != nil → 交 Asynq 任务级重试
+等待:  抽取落库等待上限 30 分钟、轮询间隔 10 秒（pipeline 包 ExtractWaitTimeout
+       与 ExtractPollInterval）；上限按 worker 池并发度 10（batch-run 自占 1 个
+       slot，余 9 路跑抽取）与单会话抽取典型 10-60s 留充裕余量取定；超时按
+       已落库档案继续评估，不中断批次。
 超时:  任务级超时 24h（86400s），单点声明在 worker/task 的 batchRunTimeout。
        推导：4 路并发下，全员百人量级按单人单次尝试预算 1050s（T5 §3.3）计，
        100/4 × 1050s ≈ 7.3h；单人最坏含首次与 3 次重试（4 × 1050s = 4200s）时
@@ -581,14 +589,14 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
        的批次停留 running 并按停滞批次处置（specs §5.1.4 规则2 与 §5.2.5），
        不阻塞下个周期触发。正常路径（单人 30-90s）下全员百人约 15-40 分钟。
        24h 与日周期的停滞判定边界对齐，是兜底值而非运行期预期值。
-并发:  编排器自身的逐人并发上限 4（specs §5.2.2 步骤4：不超过评估专用 client 的
+并发:  编排器自身的逐人并发上限 4（specs §5.2.2 步骤5：不超过评估专用 client 的
        LLM 在飞 gate）。逐人评估占用评估通道 gate，与 T5 任务通道共享同一上限。
 日志:  只输出批次号、计数、人员归属与错误码，禁止输出档案内容与 prompt 文本
 ```
 
-**需求追溯：** specs §5.2.2 步骤1-7、§5.2.5 异常处理表 8 行。
+**需求追溯：** specs §5.2.2 步骤1-8、§5.2.5 异常处理表 8 行。
 
-**编排不改写评估侧数据：** 步骤5 的抽取任务投递与步骤6 的单人评估均为既有 T4/T5 契约的调用，本功能不新增评估侧写入路径；`session_features` 的落库仍归 T4。
+**编排不改写评估侧数据：** 步骤5 的抽取任务投递、步骤6 的等待与步骤7 的单人评估均为既有 T4/T5 契约的调用，本功能不新增评估侧写入路径；`session_features` 的落库仍归 T4。
 
 ### 4.5 停滞判定口径
 
@@ -623,7 +631,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 | 失败人数占比 = `100.00` | failed |
 | 上游会话列表不可用 | failed（整批，全员计入失败计数） |
 
-上表的占比与 §4.7 的 `batchAlertThreshold` 同口径：均按**百分比口径**计算并保留两位小数，取值范围 0 至 100（即 `failed_count / total_count × 100` 后保留两位小数，如 `12.50` 表示 12.5%），与告警阈值的比较按该精度判定（specs §5.2.2 步骤7）。阈值取 `10.00`，等价于比率式 `failed_count / total_count > 0.10`。失败人数占比超阈（`> 10.00`，含 `100.00`）写一条告警信号，每批次至多一条（`assessment_alerts.batch_id` 唯一索引兜底，重复判定幂等覆盖）。
+上表的占比与 §4.7 的 `batchAlertThreshold` 同口径：均按**百分比口径**计算并保留两位小数，取值范围 0 至 100（即 `failed_count / total_count × 100` 后保留两位小数，如 `12.50` 表示 12.5%），与告警阈值的比较按该精度判定（specs §5.2.2 步骤8）。阈值取 `10.00`，等价于比率式 `failed_count / total_count > 0.10`。失败人数占比超阈（`> 10.00`，含 `100.00`）写一条告警信号，每批次至多一条（`assessment_alerts.batch_id` 唯一索引兜底，重复判定幂等覆盖）。
 
 会话级失败比例（`assessment_batches.session_fail_ratio`）同用该百分比口径，但不参与阈值判定，仅随批次记录落库供 F11 工作台呈现。
 
@@ -649,7 +657,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 | 方法 | 签名（概念形，ctx 略） | 语义 | 需求追溯 |
 |------|----------------------|------|---------|
 | CreateBatch | (req CreateBatchRequest) → (*domain.AssessmentBatch, error) | 创建批次记录（定时或手动），生成批次号，解析名单快照（`specified` 取请求名单，`all` 经人员检索接口取全员名单），落 running 态、`target_names_json`、`total_count` 与批次人员明细 `pending` 行；两种来源共用 | specs §5.2.2 步骤1 |
-| RunBatch | (batchID int64) → error | 批次编排全流程：展开分组 → 回填会话总数与各人会话数 → 投递抽取 → 逐人评估 → 推进终态 → 写告警；非 running 批次幂等返回 | specs §5.2.2 步骤2-7 |
+| RunBatch | (batchID int64) → error | 批次编排全流程：展开分组 → 回填会话总数与各人会话数 → 投递抽取 → 等待抽取落库 → 逐人评估 → 推进终态 → 写告警；非 running 批次幂等返回 | specs §5.2.2 步骤2-8 |
 | SubmitManualBatch | (req CreateBatchRequest) → (*domain.AssessmentBatch, error) | 手动发起入口：调 CreateBatch 后投递 batch-run 任务；入队失败时把该批次落 `failed` 终态并记 `error_summary` 后返回错误，不留孤儿进行中批次 | specs §4.2.3 提交发起 |
 
 `CreateBatchRequest` 字段：`TriggerType`（scheduled/manual）、`TargetMode`（all/specified）、`TargetNames`（`specified` 名单的人名切片，按 `staff_name` 去重后作为批次名单与人员明细的写入源，与 `uk_batch_person` 的 (batch_id, token_name) 唯一键同键，同名同人收敛；`all` 模式为空由 CreateBatch 内部解析）、`PeriodStart`/`PeriodEnd`（`time.Time`，取含止日当日的零点，装配为 T5 入参时 `PeriodEnd` 加一天转半开区间）。`staff_id` 不进请求结构，仅 handler 侧记日志。

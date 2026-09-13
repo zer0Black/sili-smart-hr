@@ -2,9 +2,10 @@
 // 评估对象名单（A4）、失败明细（A5）、发起手动定向分析（B1）。
 //
 // 业务规则（specs P2_ASM_001）：
-//   - §4.1.2A 统计卡三项指标以「本期跑批间隔」（上一次定时批次触发时点至下一次触发时点）
-//     为时间归属区间，与周期窗口（评估数据区间）口径分离；本期跑批间隔下界无历史定时批次时
-//     按 NextTriggerAt(now) 回推一个周期长度（实现固定口径）
+//   - §4.1.2A 统计卡三项指标以「本期跑批间隔」为时间归属区间，与周期窗口（评估数据
+//     区间）口径分离；本期跑批间隔恒为按当前周期配置回推的一个周期长度
+//     [NextTriggerAt(now)-一个周期, NextTriggerAt(now))，与历史定时批次无关，
+//     周期配置变更不产生超宽间隔（实现固定口径）
 //   - §4.1.2B/§4.1.5 计划卡与列表评估对象超 2 人按「前两人名 等 N 人」摘要口径，
 //     brief 取前 2 人名、names 返全量名单快照供悬浮展示
 //   - §4.1.4 规则2 进度 = 已终态单人评估数 / 总人数，覆盖会话按终态累计
@@ -283,8 +284,9 @@ func (s *assessmentBatchService) toListDTO(ctx context.Context, b *domain.Assess
 	return dto
 }
 
-// Stats 统计卡：本期跑批间隔 = [上一次定时批次触发时点, 下一次触发时点)（specs §4.1.2A）。
-// 无历史定时批次时下界按 NextTriggerAt(now) 回推一个周期长度（实现固定口径，代码声明）。
+// Stats 统计卡：本期跑批间隔 = [NextTriggerAt(now)-一个周期, NextTriggerAt(now))
+//（specs §4.1.2A）。下界恒按当前周期配置回推一个周期长度，与历史定时批次无关，
+// 周期配置变更（如 weekly 改 monthly）不产生超宽间隔。
 func (s *assessmentBatchService) Stats(ctx context.Context) (*BatchStatsDTO, error) {
 	cfg, err := s.configRepo.Get(ctx)
 	if err != nil {
@@ -295,11 +297,6 @@ func (s *assessmentBatchService) Stats(ctx context.Context) (*BatchStatsDTO, err
 		return nil, fmt.Errorf("next trigger at: %w", err)
 	}
 	start := end.Add(-periodLength(cfg.Period, end))
-	if latest, lerr := s.batchRepo.FindLatestScheduled(ctx); lerr != nil {
-		return nil, fmt.Errorf("find latest scheduled batch: %w", lerr)
-	} else if latest != nil {
-		start = latest.TriggeredAt
-	}
 	evalCount, err := s.batchRepo.CountInRange(ctx, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("count batches in range: %w", err)

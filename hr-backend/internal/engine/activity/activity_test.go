@@ -77,6 +77,10 @@ func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 	return 0, nil
 }
 
+func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	return 0, nil
+}
+
 // 编译期断言 fake 满足仓储接口。
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
 

@@ -30,6 +30,14 @@ const (
 )
 
 const (
+	// ExtractWaitTimeout 抽取落库等待上限；ExtractPollInterval 轮询间隔。
+	// 上限推导：worker 池并发度 10，batch-run 自占 1 个 slot，剩余 9 路跑抽取；
+	// 单会话抽取典型 10-60s，取充裕余量后定 30 分钟，超时按已落库档案继续评估。
+	ExtractWaitTimeout  = 30 * time.Minute
+	ExtractPollInterval = 10 * time.Second
+)
+
+const (
 	// batchNoSeqMax 批次号 3 位序号上限（04 §3.1：B+yyyyMMddHHmm+3位序号）。
 	batchNoSeqMax = 999
 	// staffPageSize 全员名单分页页大小（上游 page_size 上限 100）。
@@ -78,6 +86,7 @@ type PersonEvaluator interface {
 // cl/featureRepo/configRepo/evaluator/sessionEnq 承载 RunBatch 与 TickTrigger 的
 // 依赖面，本任务只消费 repo/alertRepo/staffs/secrets/batchEnq/alerts。
 // retryBase 退避基准可经测试覆盖（默认 PersonEvalRetryBase），生产不动。
+// extractWaitTimeout/extractPollInterval 抽取落库等待参数同范式（默认上方常量）。
 type Orchestrator struct {
 	repo        repository.AssessmentBatchRepository
 	alertRepo   repository.AssessmentAlertRepository
@@ -91,6 +100,9 @@ type Orchestrator struct {
 	batchEnq    BatchEnqueuer
 	sessionEnq  SessionEnqueuer
 	retryBase   time.Duration
+
+	extractWaitTimeout  time.Duration
+	extractPollInterval time.Duration
 }
 
 // NewOrchestrator 组装批次编排器。
@@ -120,6 +132,9 @@ func NewOrchestrator(
 		batchEnq:    batchEnq,
 		sessionEnq:  sessionEnq,
 		retryBase:   PersonEvalRetryBase,
+
+		extractWaitTimeout:  ExtractWaitTimeout,
+		extractPollInterval: ExtractPollInterval,
 	}
 }
 
@@ -263,7 +278,8 @@ const (
 )
 
 // RunBatch 批次编排全流程（03 §4.4）：非 running 批次幂等返回 nil。
-// 展开分组 → 回填会话数 → 投递抽取 → 逐人评估（T3）→ 推进终态（T3）→ 告警（T3）。
+// 展开分组 → 回填会话数 → 投递抽取 → 等待抽取落库（投递成功集合计数到齐，
+// 超时按已落库档案继续）→ 逐人评估 → 推进终态 → 告警。
 func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	batch, err := o.repo.GetByID(ctx, batchID)
 	if err != nil {
@@ -317,11 +333,21 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	}
 
 	// 逐会话投递抽取任务（一会话一任务，specs §5.2.2 步骤3）。
+	// 只把投递成功的 session_key 收进等待集合：投递失败者无档案行，等待它永不达齐。
+	pendingKeys := make([]string, 0, len(sessions))
 	for _, s := range sessions {
 		if err := o.sessionEnq.EnqueueSessionExtract(ctx, s.SessionKey, s.TokenName); err != nil {
 			// 投递失败该会话无档案行，不计入失败比例分子（已知披露，§5.2.5），记日志继续。
 			slog.Error("session extract enqueue failed", "batch_id", batchID, "session_key", s.SessionKey, "err", err)
+			continue
 		}
+		pendingKeys = append(pendingKeys, s.SessionKey)
+	}
+
+	// 等待抽取落库（specs §5.2.2 步骤3 与步骤4 之间）：档案未落库时评估会走 skipped，
+	// 轮询计数到齐再评估；超时按已落库档案继续，不中断不上抛。
+	if err := o.waitExtractReady(ctx, batch, pendingKeys); err != nil {
+		return err
 	}
 
 	// 逐人评估（specs §5.2.2 步骤4-7）：名单快照全员入编排，不在分组内者为零会话
@@ -344,6 +370,42 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	wg.Wait()
 
 	return o.finalizeBatch(ctx, batchID, names, period)
+}
+
+// waitExtractReady 抽取落库等待屏障：轮询统计等待集合中已有档案行数（任意状态，
+// failed 终态行同样视为已落库），到齐返回 nil 进入评估；超时记 WARN 返回 nil 按
+// 已落库档案继续评估；ctx 取消返回 ctx.Err() 上抛。空集合直接跳过。计数查询本身
+// 失败记 WARN 后继续轮询（瞬时故障拖长等待，仍受超时上限约束）。
+func (o *Orchestrator) waitExtractReady(ctx context.Context, batch *domain.AssessmentBatch, sessionKeys []string) error {
+	if len(sessionKeys) == 0 {
+		return nil
+	}
+	want := int64(len(sessionKeys))
+	deadline := time.Now().Add(o.extractWaitTimeout)
+	for {
+		done, err := o.featureRepo.CountExistingBySessionKeys(ctx, sessionKeys)
+		if err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			slog.Warn("extract wait count failed, keep polling",
+				"batch_id", batch.ID, "batch_no", batch.BatchNo, "err", err)
+		} else if done >= want {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			slog.Warn("extract wait timeout, continue with landed profiles",
+				"batch_id", batch.ID, "batch_no", batch.BatchNo, "expected", want, "done", done)
+			return nil
+		}
+		timer := time.NewTimer(o.extractPollInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
 }
 
 // runOnePerson 单人评估与终态推进（specs §5.2.4 规则1：失败只影响自己）：

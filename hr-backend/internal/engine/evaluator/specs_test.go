@@ -48,6 +48,10 @@ func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 	return 0, nil
 }
 
+func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	return 0, nil
+}
+
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
 
 var weekBase = time.Date(2026, 8, 31, 0, 0, 0, 0, time.UTC).Unix()

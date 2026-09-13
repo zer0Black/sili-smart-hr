@@ -53,6 +53,9 @@ func (r *stubRepo) ListByPersonAndRange(ctx context.Context, tokenName string, s
 func (r *stubRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
 	return 0, nil
 }
+func (r *stubRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	return 0, nil
+}
 
 // stubParams 空集参数源：ReadStringArray 恒返回空（Trim/Redact 走出厂分支）。
 type stubParams struct{}

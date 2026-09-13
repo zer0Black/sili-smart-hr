@@ -180,6 +180,10 @@ func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 	return 0, nil
 }
 
+func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	return 0, nil
+}
+
 func (f *fakeFeatureRepo) rowCount() int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

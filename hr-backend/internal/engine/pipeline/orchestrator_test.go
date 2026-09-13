@@ -171,9 +171,6 @@ func (f *fakeBatchRepo) CountSuccessSideInRanges(ctx context.Context, batchIDs [
 func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error) {
 	return nil, nil
 }
-func (f *fakeBatchRepo) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
-	return nil, nil
-}
 func (f *fakeBatchRepo) ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
 	return nil, nil
 }
@@ -236,13 +233,19 @@ func (f *fakeBatchEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) 
 	return nil
 }
 
-// fakeFeatureRepo 特征档案仓储 fake：只承载 T3 消费面 CountFailedByTokenNames。
+// fakeFeatureRepo 特征档案仓储 fake：承载 CountFailedByTokenNames 与 CountExistingBySessionKeys。
 type fakeFeatureRepo struct {
+	mu     sync.Mutex
 	failed int64
 	names  []string
 	start  int64
 	end    int64
 	calls  int
+
+	counts    []int64 // 等待计数逐次消费
+	waitLast  int64
+	waitCalls int
+	gotKeys   []string
 }
 
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
@@ -261,6 +264,19 @@ func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 	f.names = tokenNames
 	f.start, f.end = start, end
 	return f.failed, nil
+}
+// CountExistingBySessionKeys 等待屏障探针：counts 逐次消费（耗尽保持末值），gotKeys 捕获入参。
+func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.waitCalls++
+	f.gotKeys = append([]string{}, sessionKeys...)
+	if len(f.counts) == 0 {
+		return f.waitLast, nil
+	}
+	f.waitLast = f.counts[0]
+	f.counts = f.counts[1:]
+	return f.waitLast, nil
 }
 
 // fakePersonEvaluator 单人评估 fake：perName 结果切片逐次消费（重试耗尽按次数
@@ -563,11 +579,23 @@ func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, session
 
 // newRunBatchOrch 组装 RunBatch 链路编排器（T2 段只到投递，评估器与特征仓储以
 // 零值 fake 承载防止 T3 逐人评估段空指针，断言面不涉及其计数）。
+// 等待屏障注入短超时：fakeFeatureRepo 恒返 0 计数时按超时放行，防测试被 30 分钟默认值拖住。
 func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, sessionEnq *fakeSessionEnqueuer) *pipeline.Orchestrator {
 	o := pipeline.NewOrchestrator(repo, alertRepo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
+	return o
+}
+
+// waitOrch 组装含等待屏障全链编排器：featureRepo 承载等待计数探针，注入短超时与轮询间隔。
+func waitOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, sessionEnq *fakeSessionEnqueuer, timeout, interval time.Duration) *pipeline.Orchestrator {
+	o := pipeline.NewOrchestrator(repo, alertRepo, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(timeout, interval)
 	return o
 }
 
@@ -852,11 +880,13 @@ func TestPersonTerminal(t *testing.T) {
 }
 
 // evalOrch 组装含评估器与特征仓储的 RunBatch 全链编排器（退避置 1ms 免测试等待）。
+// 等待屏障参数同时注入短值：featureRepo 恒返 0 计数时按超时放行，防测试被 30 分钟默认值拖住。
 func evalOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, pe *fakePersonEvaluator) *pipeline.Orchestrator {
 	o := pipeline.NewOrchestrator(repo, alertRepo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
 	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 	return o
 }
 
@@ -1057,5 +1087,139 @@ func TestRunBatchAdvanceFailLeavesRunning(t *testing.T) {
 	}
 	if len(alertRepo.alerts) != 0 {
 		t.Error("未终态批次不应写告警")
+	}
+}
+
+// ---- RunBatch 抽取落库等待屏障（specs §5.2.2 步骤3 与步骤4 之间） ----
+
+// TestRunBatchWaitExtractReady 等待到齐：投递 2 会话，计数 0→1→2 递增，
+// 断言轮询多次后进入评估（评估被调用），且等待入参为投递成功的 session_key 集合。
+func TestRunBatchWaitExtractReady(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+		},
+	}}
+	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1, 2}}
+	pe := &fakePersonEvaluator{}
+	sessionEnq := &fakeSessionEnqueuer{}
+	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		pe, nil, nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(5*time.Second, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if featureRepo.waitCalls < 3 {
+		t.Errorf("等待轮询 = %d 次, want >= 3（0→1→2 到齐）", featureRepo.waitCalls)
+	}
+	if len(featureRepo.gotKeys) != 2 {
+		t.Fatalf("等待集合 = %v, want [sk-a sk-b]", featureRepo.gotKeys)
+	}
+	got := map[string]bool{}
+	for _, k := range featureRepo.gotKeys {
+		got[k] = true
+	}
+	if !got["sk-a"] || !got["sk-b"] {
+		t.Errorf("等待集合 = %v, want 含 sk-a 与 sk-b", featureRepo.gotKeys)
+	}
+	if len(pe.calls) == 0 {
+		t.Error("到齐后应进入逐人评估，评估未被调用")
+	}
+}
+
+// TestRunBatchWaitExtractTimeout 超时路径：计数恒为部分值，注入 50ms 超时与 5ms 间隔，
+// 断言 RunBatch 返回 nil（不中断）且评估仍被调用。
+func TestRunBatchWaitExtractTimeout(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+		},
+	}}
+	featureRepo := &fakeFeatureRepo{counts: []int64{1}} // 恒为部分计数（耗尽保持末值 1 < 2）
+	pe := &fakePersonEvaluator{}
+	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		pe, nil, nil, &fakeSessionEnqueuer{})
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(50*time.Millisecond, 5*time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("等待超时不应中断编排，应返回 nil，得到 %v", err)
+	}
+	if featureRepo.waitCalls < 2 {
+		t.Errorf("等待轮询 = %d 次, want >= 2（超时前多轮）", featureRepo.waitCalls)
+	}
+	if len(pe.calls) != 3 {
+		t.Errorf("超时后应继续评估全员，评估人数 = %d, want 3", len(pe.calls))
+	}
+	if batch.Status == domain.BatchStatusRunning {
+		t.Errorf("Status = %q, want 已推进终态（评估假成功无失败）", batch.Status)
+	}
+}
+
+// TestRunBatchWaitExtractCtxCancel 等待期间取消 ctx，断言返回 context.Canceled。
+func TestRunBatchWaitExtractCtxCancel(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+		},
+	}}
+	featureRepo := &fakeFeatureRepo{counts: []int64{0}} // 恒为 0，永不达齐
+	o := waitOrch(repo, &fakeAlertRepo{}, fetcher, featureRepo, &fakeSessionEnqueuer{}, 30*time.Second, 5*time.Millisecond)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond) // 等待屏障进入轮询后取消
+		cancel()
+	}()
+	err := o.RunBatch(ctx, batch.ID)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, want context.Canceled", err)
+	}
+}
+
+// TestRunBatchWaitSkipsFailedEnqueue 投递失败的会话不进入等待集合：
+// sk-a 投递失败、sk-b 投递成功，断言等待入参只含 sk-b，且计数到齐后继续评估。
+func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+		},
+	}}
+	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1}} // 集合大小 1，第二轮到齐
+	sessionEnq := &fakeSessionEnqueuer{errs: []error{errFake, nil}}
+	pe := &fakePersonEvaluator{}
+	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		pe, nil, nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(5*time.Second, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if sessionEnq.calls != 2 {
+		t.Fatalf("投递调用 = %d, want 2", sessionEnq.calls)
+	}
+	if len(featureRepo.gotKeys) != 1 || featureRepo.gotKeys[0] != "sk-b" {
+		t.Errorf("等待集合 = %v, want [sk-b]（投递失败的 sk-a 不参与等待）", featureRepo.gotKeys)
+	}
+	if len(pe.calls) == 0 {
+		t.Error("到齐后应进入逐人评估，评估未被调用")
 	}
 }

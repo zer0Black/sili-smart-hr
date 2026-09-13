@@ -13,3 +13,9 @@ func PersonTerminal(res *evaluator.EvaluateResult) string { return personTermina
 
 // SetRetryBaseForTest 覆盖退避基准（测试用，默认 PersonEvalRetryBase）。
 func (o *Orchestrator) SetRetryBaseForTest(d time.Duration) { o.retryBase = d }
+
+// SetExtractWaitForTest 覆盖抽取落库等待参数（测试用，默认 ExtractWaitTimeout/ExtractPollInterval）。
+func (o *Orchestrator) SetExtractWaitForTest(timeout, interval time.Duration) {
+	o.extractWaitTimeout = timeout
+	o.extractPollInterval = interval
+}

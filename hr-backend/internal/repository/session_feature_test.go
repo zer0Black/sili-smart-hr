@@ -383,6 +383,75 @@ func TestCountFailedByTokenNames(t *testing.T) {
 	})
 }
 
+// TestCountExistingBySessionKeys 验证抽取落库等待计数口径（specs P2_ASM_001 §5.2.2 步骤3 后
+// 等待屏障）：按 session_key 集合计数，任意状态行（含 failed 终态）都计入，集合外 key 不计。
+func TestCountExistingBySessionKeys(t *testing.T) {
+	t.Run("任意状态行均计入且集合外不计", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+
+		seeds := []*domain.SessionFeature{
+			makeFeature("wk-1", "张三", domain.FeatureStatusSuccess, time.Unix(baseUnix, 0).UTC()),
+			makeFeature("wk-2", "李四", domain.FeatureStatusFailed, time.Unix(baseUnix, 0).UTC()),
+			makeFeature("wk-3", "王五", domain.FeatureStatusSkipped, time.Unix(baseUnix, 0).UTC()),
+			makeFeature("wk-4", "赵六", domain.FeatureStatusSuccess, time.Unix(baseUnix, 0).UTC()), // 集合外
+		}
+		for _, s := range seeds {
+			if err := db.Create(s).Error; err != nil {
+				t.Fatalf("seed %s: %v", s.SessionKey, err)
+			}
+		}
+
+		n, err := repo.CountExistingBySessionKeys(context.Background(), []string{"wk-1", "wk-2", "wk-3", "wk-absent"})
+		if err != nil {
+			t.Fatalf("CountExistingBySessionKeys: unexpected error: %v", err)
+		}
+		if n != int64(3) {
+			t.Fatalf("want 3（三态各 1，absent 与集合外不计）, got %d", n)
+		}
+	})
+
+	t.Run("空集合直接返回 0 且无错误", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		if err := db.Create(makeFeature("wk-x", "张三", domain.FeatureStatusSuccess, time.Unix(baseUnix, 0).UTC())).Error; err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		n, err := repo.CountExistingBySessionKeys(context.Background(), nil)
+		if err != nil {
+			t.Fatalf("nil 集合 want nil error, got %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("nil 集合 want 0, got %d", n)
+		}
+
+		n, err = repo.CountExistingBySessionKeys(context.Background(), []string{})
+		if err != nil {
+			t.Fatalf("空切片 want nil error, got %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("空切片 want 0, got %d", n)
+		}
+	})
+
+	t.Run("查询故障透传", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatalf("取底层连接: %v", err)
+		}
+		if err := sqlDB.Close(); err != nil {
+			t.Fatalf("关闭连接: %v", err)
+		}
+
+		if _, err := repo.CountExistingBySessionKeys(context.Background(), []string{"wk-1"}); err == nil {
+			t.Fatal("连接关闭后 CountExistingBySessionKeys want error, got nil")
+		}
+	})
+}
+
 // TestFindBySessionKey 验证 session_key 点查两态：命中返回该行，未命中返回 (nil, nil) 非 error。
 func TestFindBySessionKey(t *testing.T) {
 	db := newFeatureTestDB(t, true)
