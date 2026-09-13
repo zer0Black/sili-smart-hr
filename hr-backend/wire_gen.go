@@ -11,6 +11,8 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
+	"sili-smart-hr/backend/internal/engine/fallback"
+	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/model"
 	"sili-smart-hr/backend/internal/repository"
@@ -90,7 +92,14 @@ func InitializeApp(configPath string) (*App, error) {
 	scorerScorer := scorer.New(dimensionScoreRepository, aggregateScoreRepository)
 	evaluator := NewEvaluatorProvider(evaluatorLLMClient, enabledModelProvider, sessionFeatureRepository, dimensionSpecReaderAdapter, activityThresholdReader, dimensionScoreRepository, systemParamReader, activity, scorerScorer)
 	personEvaluateHandler := NewPersonEvaluateHandlerTyped(evaluator)
-	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler)
+	assessmentBatchRepository := repository.NewAssessmentBatchRepository(db)
+	assessmentAlertRepository := repository.NewAssessmentAlertRepository(db)
+	alertWriter := fallback.NewAlertWriter(assessmentAlertRepository)
+	asynqEnqueuer := pipeline.NewAsynqEnqueuer(asynqClient)
+	orchestrator := NewOrchestratorProvider(assessmentBatchRepository, assessmentAlertRepository, sessionFeatureRepository, assessmentConfigRepository, conversationlogClient, userapiClient, integrationSecretRepository, v, evaluator, alertWriter, asynqEnqueuer)
+	batchTickHandler := NewBatchTickHandlerTyped(orchestrator)
+	batchRunHandler := NewBatchRunHandlerTyped(orchestrator)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,

@@ -16,6 +16,8 @@ import (
 	"sili-smart-hr/backend/internal/engine/activity"
 	"sili-smart-hr/backend/internal/engine/evaluator"
 	"sili-smart-hr/backend/internal/engine/extractor"
+	"sili-smart-hr/backend/internal/engine/fallback"
+	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/llm"
@@ -350,10 +352,53 @@ func NewPersonEvaluateHandlerTyped(ev *evaluator.Evaluator) PersonEvaluateHandle
 	return PersonEvaluateHandler(task.NewPersonEvaluateHandler(ev))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收两个命名类型 handler，转调 task.NewMux
+// BatchTickHandler / BatchRunHandler 是批次任务 handler 命名类型
+//（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。
+type BatchTickHandler func(context.Context, *asynq.Task) error
+
+// BatchRunHandler batch-run handler 命名类型（同上）。
+type BatchRunHandler func(context.Context, *asynq.Task) error
+
+// NewBatchTickHandlerTyped 构造 batch-tick handler（命名类型透出）。
+func NewBatchTickHandlerTyped(orch *pipeline.Orchestrator) BatchTickHandler {
+	return BatchTickHandler(task.NewBatchTickHandler(orch))
+}
+
+// NewBatchRunHandlerTyped 构造 batch-run handler（命名类型透出）。
+func NewBatchRunHandlerTyped(orch *pipeline.Orchestrator) BatchRunHandler {
+	return BatchRunHandler(task.NewBatchRunHandler(orch))
+}
+
+// NewMuxAdapter Wire 装配适配器：接收四个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
-func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler) *asynq.ServeMux {
-	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate))
+func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
+	batchTick BatchTickHandler, batchRun BatchRunHandler) *asynq.ServeMux {
+	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
+		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun))
+}
+
+// NewOrchestratorProvider 装配批次编排器（十一参，specs §5.2.2）：配置读取复用
+// AssessmentConfigRepository，密钥走 service.ResolveIntegrationSecret 收敛点
+//（NewExtractorProvider 同款闭包），双任务投递由 *pipeline.AsynqEnqueuer 一物
+// 满足 BatchEnqueuer 与 SessionEnqueuer 两窄接口。
+func NewOrchestratorProvider(
+	batchRepo repository.AssessmentBatchRepository,
+	alertRepo repository.AssessmentAlertRepository,
+	featureRepo repository.SessionFeatureRepository,
+	configRepo repository.AssessmentConfigRepository,
+	cl *conversationlog.Client,
+	staffs *userapi.Client,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	ev *evaluator.Evaluator,
+	alertWriter *fallback.AlertWriter,
+	enqueuer *pipeline.AsynqEnqueuer,
+) *pipeline.Orchestrator {
+	secrets := pipeline.SecretResolver(func(ctx context.Context) (string, error) {
+		return service.ResolveIntegrationSecret(ctx, secretRepo, encKey)
+	})
+	return pipeline.NewOrchestrator(batchRepo, alertRepo, featureRepo, configRepo,
+		cl, staffs, secrets, ev, alertWriter, enqueuer, enqueuer)
 }
 
 // NewEvaluatorProvider 装配 evaluator（九参，03 §2.1 组合形）：act 传

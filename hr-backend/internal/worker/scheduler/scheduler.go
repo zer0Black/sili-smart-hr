@@ -9,14 +9,17 @@ import (
 	"sili-smart-hr/backend/internal/worker/task"
 )
 
-// healthCheckCron 是 no-op 健康任务的触发周期，每分钟一次。
+// healthCheckCron 是 no-op 健康任务与批次 tick 任务的触发周期，每分钟一次。
 const healthCheckCron = "*/1 * * * *"
 
-// NewScheduler 构造 Asynq scheduler 并注册 no-op 健康任务。
+// NewScheduler 构造 Asynq scheduler 并注册 no-op 健康任务与批次 tick 任务。
+// tick 每分钟触发后经 TickTrigger 读配置判定（specs §5.1.2 步骤1），重启后
+// 按持久化配置天然重新生效。
 func NewScheduler(opt asynq.RedisConnOpt) *asynq.Scheduler {
 	s := asynq.NewScheduler(opt, &asynq.SchedulerOpts{
 		Location: time.Local,
 	})
 	s.Register(healthCheckCron, asynq.NewTask(task.TypeHealthCheck, nil))
+	s.Register(healthCheckCron, asynq.NewTask(task.TypeBatchTick, nil))
 	return s
 }

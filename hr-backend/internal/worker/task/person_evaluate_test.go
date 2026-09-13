@@ -270,7 +270,7 @@ func TestPersonEvaluateTimeoutConst(t *testing.T) {
 func TestNewMuxRegistersPersonEvaluate(t *testing.T) {
 	f := newEvalFixture()
 	c := f.probe()
-	mux := NewMux(nil, NewPersonEvaluateHandler(f.evaluator()))
+	mux := NewMux(nil, NewPersonEvaluateHandler(f.evaluator()), nil, nil)
 	err := mux.ProcessTask(context.Background(),
 		asynq.NewTask(TypePersonEvaluate, []byte(`{"token_name":"赵六","period_start":100,"period_end":200}`)))
 	if err != nil {
@@ -293,7 +293,7 @@ func TestNewMuxPersonEvaluateTimeout(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(nil, inner)
+	mux := NewMux(nil, inner, nil, nil)
 	h, pattern := mux.Handler(asynq.NewTask(TypePersonEvaluate, []byte(`{}`)))
 	if pattern != TypePersonEvaluate {
 		t.Fatalf("pattern = %q, want %q", pattern, TypePersonEvaluate)
@@ -334,7 +334,7 @@ func TestPersonEvaluatePayloadJSON(t *testing.T) {
 // TestNewMuxSessionExtractStillRegistered 回归锚点：NewMux 二参化后
 // session-extract 路由仍可达。
 func TestNewMuxSessionExtractStillRegistered(t *testing.T) {
-	mux := NewMux(nil, nil)
+	mux := NewMux(nil, nil, nil, nil)
 	if _, pattern := mux.Handler(asynq.NewTask(TypeSessionExtract, []byte(`{}`))); pattern != TypeSessionExtract {
 		t.Errorf("session-extract 路由丢失: pattern = %q", pattern)
 	}

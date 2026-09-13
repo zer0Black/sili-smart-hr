@@ -11,6 +11,8 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
+	"sili-smart-hr/backend/internal/engine/fallback"
+	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/model"
@@ -81,6 +83,15 @@ func InitializeApp(configPath string) (*App, error) {
 		scorer.New,
 		NewEvaluatorProvider,
 		NewPersonEvaluateHandlerTyped,
+		// 批次编排装配（03 §4.8）：batch/alert 仓储 + 告警写入 + Asynq 双任务
+		// 投递适配器 + Orchestrator + 批次 handler 经参数注入 NewMux。
+		repository.NewAssessmentBatchRepository,
+		repository.NewAssessmentAlertRepository,
+		fallback.NewAlertWriter,
+		pipeline.NewAsynqEnqueuer,
+		NewOrchestratorProvider,
+		NewBatchTickHandlerTyped,
+		NewBatchRunHandlerTyped,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,
 		handler.NewSetupHandler,

@@ -13,7 +13,9 @@ import (
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/evaluator"
+	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/repository"
+	"sili-smart-hr/backend/internal/worker/task"
 )
 
 // fakeDimensionRepo DimensionRepository 最小 fake：仅适配器消费的两个读取方法
@@ -64,6 +66,16 @@ func (f *fakeDimensionRepo) UpdateActivitySetting(ctx context.Context, activeThr
 }
 
 var _ repository.DimensionRepository = (*fakeDimensionRepo)(nil)
+
+// 编译期断言（T5 核心锚点）：*pipeline.Orchestrator 满足 worker/task 侧
+// BatchTickRunner / BatchRunRunner 注入面；*pipeline.AsynqEnqueuer 一物两接口
+// 同时满足 BatchEnqueuer 与 SessionEnqueuer（03 §4.8 双任务投递收敛）。
+var (
+	_ task.BatchTickRunner     = (*pipeline.Orchestrator)(nil)
+	_ task.BatchRunRunner      = (*pipeline.Orchestrator)(nil)
+	_ pipeline.BatchEnqueuer   = (*pipeline.AsynqEnqueuer)(nil)
+	_ pipeline.SessionEnqueuer = (*pipeline.AsynqEnqueuer)(nil)
+)
 
 // mkSetting 构造阈值单行。
 func mkSetting(active, lowFreq int) *domain.DimensionSetting {
