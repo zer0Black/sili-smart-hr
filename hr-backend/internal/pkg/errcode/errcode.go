@@ -2,8 +2,8 @@
 package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
-// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500。
-// 百位区分域：0=account，1=system，2=dimension，3=config。dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
+// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，assessment batch 1601-1603。
+// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch。dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
 	InvalidCredentials               = 1001 // 账号不存在或密码错误
@@ -35,6 +35,10 @@ const (
 	IntegrationSecretVersionConflict = 1309 // 集成密钥版本冲突（并发更新）
 	BadRequest                       = 1400 // 请求参数错误
 	Internal                         = 1500 // 服务内部错误
+	// assessment batch 域 1601-1603（specs P2_ASM_001 03 §5 错误码表）。
+	BatchNotFound      = 1601 // 批次不存在
+	BatchPeriodInvalid = 1602 // 评估时段非法
+	BatchTargetInvalid = 1603 // 评估对象非法
 )
 
 var messages = map[int]string{
@@ -68,6 +72,9 @@ var messages = map[int]string{
 	IntegrationSecretVersionConflict: "integration secret version conflict",
 	BadRequest:                       "bad request",
 	Internal:                         "internal error",
+	BatchNotFound:                    "batch not found",
+	BatchPeriodInvalid:               "batch period invalid",
+	BatchTargetInvalid:               "batch target invalid",
 }
 
 // Message 返回错误码对应文案，未注册返回 "error"。

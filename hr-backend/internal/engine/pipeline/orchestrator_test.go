@@ -168,6 +168,12 @@ func (f *fakeBatchRepo) CountRunningNonStalled(ctx context.Context, stalledBefor
 func (f *fakeBatchRepo) CountSuccessSideInRanges(ctx context.Context, batchIDs []int64) (int64, error) {
 	return 0, nil
 }
+func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error) {
+	return nil, nil
+}
+func (f *fakeBatchRepo) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
+	return nil, nil
+}
 
 // fakeAlertRepo 告警仓储 fake。
 type fakeAlertRepo struct {
