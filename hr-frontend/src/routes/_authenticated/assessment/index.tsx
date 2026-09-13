@@ -30,9 +30,8 @@ export function AssessmentCenterPage() {
   // specs §4.2.3 提交成功后通知 BatchTable 重置筛选回第一页
   const [tableResetKey, setTableResetKey] = useState(0);
 
-  // specs §4.2.3 提交成功：toast 提示 + 弹窗自身 onClose 关闭 + BatchTable 清筛选回第一页
+  // specs §4.2.3 提交成功：toast 与关弹窗由弹窗自身处理，此处只通知 BatchTable 清筛选回第一页
   function onCreateSubmitted() {
-    toast.success(t('create.toastCreated'));
     setTableResetKey((k) => k + 1);
   }
 
