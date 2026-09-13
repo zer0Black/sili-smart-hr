@@ -9,7 +9,8 @@ import (
 // BatchAlertThreshold 失败人数占比告警阈值，百分比口径 0-100（03 §4.7）。
 const BatchAlertThreshold = 10.00
 
-// Retry 通用重试器：固定次数、基准倍增退避、每次尝试派生子 ctx。
+// Retry 通用重试器：固定次数、基准倍增退避；ctx 由调用方传入并原样透传给 fn，
+// 需要逐次独立预算时由 fn 内部自行派生子 ctx。
 // maxAttempts 含首次（如 4 = 首次 + 3 重试）。父 ctx 取消即终止返回 ctx.Err()。
 // 全部尝试失败返回最后一次错误。attempt 1 失败后不等待（首次立即执行）。
 func Retry(ctx context.Context, fn func(ctx context.Context) error, maxAttempts int, baseDelay time.Duration) error {
