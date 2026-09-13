@@ -26,6 +26,8 @@ type BatchFilter struct {
 // AssessmentBatchRepository 是批次域的数据访问接口（双重接口范式，account 样板）。
 type AssessmentBatchRepository interface {
 	Create(ctx context.Context, batch *domain.AssessmentBatch) error
+	// CreatePersons 批量落人员明细行（建批时名单快照，初值 pending/0/""）。
+	CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error
 	// GetByID 按主键点查，无行返 (nil, nil)。
 	GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error)
 	// FindLatestRunningScheduled 取最近触发的 running 定时批次（tick 同源阻塞判定），
@@ -65,6 +67,14 @@ func NewAssessmentBatchRepository(db *gorm.DB) AssessmentBatchRepository {
 
 func (r *assessmentBatchRepository) Create(ctx context.Context, batch *domain.AssessmentBatch) error {
 	return r.db.WithContext(ctx).Create(batch).Error
+}
+
+// CreatePersons 空切片直接返回 nil 不发 SQL。
+func (r *assessmentBatchRepository) CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error {
+	if len(persons) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).CreateInBatches(persons, 100).Error
 }
 
 func (r *assessmentBatchRepository) GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error) {

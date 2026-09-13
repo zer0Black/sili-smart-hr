@@ -471,3 +471,46 @@ func TestCreateDuplicateBatchNo(t *testing.T) {
 		t.Fatal("撞批次号 want error")
 	}
 }
+
+// TestCreatePersons 批量落人员明细：3 行落库、初值 pending/0/""、BatchID 关联正确。
+func TestCreatePersons(t *testing.T) {
+	db := newBatchTestDB(t)
+	repo := repository.NewAssessmentBatchRepository(db)
+	ctx := context.Background()
+	b := newBatch("B081", domain.BatchTriggerManual, 3)
+	if err := repo.Create(ctx, &b); err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+	persons := []domain.AssessmentBatchPerson{
+		{BatchID: b.ID, TokenName: "张三", Status: domain.PersonStatusPending},
+		{BatchID: b.ID, TokenName: "李四", Status: domain.PersonStatusPending},
+		{BatchID: b.ID, TokenName: "王五", Status: domain.PersonStatusPending},
+	}
+	if err := repo.CreatePersons(ctx, persons); err != nil {
+		t.Fatalf("CreatePersons: %v", err)
+	}
+	var rows []domain.AssessmentBatchPerson
+	if err := db.Where("batch_id = ?", b.ID).Find(&rows).Error; err != nil {
+		t.Fatalf("query persons: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("人员明细 = %d 行, want 3", len(rows))
+	}
+	for _, r := range rows {
+		if r.BatchID != b.ID {
+			t.Errorf("BatchID = %d, want %d", r.BatchID, b.ID)
+		}
+		if r.Status != domain.PersonStatusPending {
+			t.Errorf("Status = %q, want pending", r.Status)
+		}
+		if r.SessionCount != 0 {
+			t.Errorf("SessionCount = %d, want 0", r.SessionCount)
+		}
+		if r.ErrorSummary != "" {
+			t.Errorf("ErrorSummary = %q, want 空串", r.ErrorSummary)
+		}
+		if r.ID == 0 {
+			t.Error("雪花 ID 未被回调赋值")
+		}
+	}
+}
