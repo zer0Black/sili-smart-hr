@@ -5,6 +5,7 @@ package pipeline_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -220,6 +221,8 @@ func TestTickTriggerStaffFetchFail(t *testing.T) {
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
 		t.Fatal("全员名单拉取失败应上抛")
+	} else if !errors.Is(err, pipeline.ErrStaffFetchFailed) {
+		t.Errorf("err = %v, want errors.Is 命中 ErrStaffFetchFailed 哨兵", err)
 	}
 	if len(repo.created) != 0 {
 		t.Error("名单拉取失败不应建批")

@@ -1,5 +1,5 @@
-// assessment_batch 批次域查询侧业务层：批次列表（A1）、跑批态势统计（A2）、跑批计划（A3）、
-// 评估对象名单（A4）、失败明细（A5）。
+// assessment_batch 批次域业务层：批次列表（A1）、跑批态势统计（A2）、跑批计划（A3）、
+// 评估对象名单（A4）、失败明细（A5）、发起手动定向分析（B1）。
 //
 // 业务规则（specs P2_ASM_001）：
 //   - §4.1.2A 统计卡三项指标以「本期跑批间隔」（上一次定时批次触发时点至下一次触发时点）
@@ -14,8 +14,10 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -97,13 +99,35 @@ type BatchFailuresDTO struct {
 	List        []BatchFailureItem `json:"list"`
 }
 
-// AssessmentBatchService 是批次查询侧业务接口（创建侧归后续任务）。
+// AssessmentBatchService 是批次业务接口：查询侧（A1-A5）+ 创建侧（B1）。
 type AssessmentBatchService interface {
 	List(ctx context.Context, f BatchListFilter) ([]BatchListDTO, int64, error)
 	Stats(ctx context.Context) (*BatchStatsDTO, error)
 	Plan(ctx context.Context) (*BatchPlanDTO, error)
 	Targets(ctx context.Context, batchID int64) (*BatchTargetsDTO, error)
 	Failures(ctx context.Context, batchID int64) (*BatchFailuresDTO, error)
+	Create(ctx context.Context, p CreateBatchPayload) (*CreateBatchResult, error)
+}
+
+// CreateBatchPayload B1 请求体（service 侧）。
+type CreateBatchPayload struct {
+	TargetMode  string     // all / specified
+	Staffs      []StaffDTO // specified 模式必填非空，staff_name 必填
+	PeriodStart string     // yyyy-MM-dd
+	PeriodEnd   string     // yyyy-MM-dd
+}
+
+// CreateBatchResult B1 响应。
+type CreateBatchResult struct {
+	ID         int64  `json:"id,string"`
+	BatchNo    string `json:"batch_no"`
+	Status     string `json:"status"`
+	TotalCount int    `json:"total_count"`
+}
+
+// ManualBatchSubmitter 手动发起窄接口（*pipeline.Orchestrator 鸭子满足，测试注入 fake）。
+type ManualBatchSubmitter interface {
+	SubmitManualBatch(ctx context.Context, req pipeline.CreateBatchRequest) (*domain.AssessmentBatch, error)
 }
 
 type assessmentBatchService struct {
@@ -114,9 +138,11 @@ type assessmentBatchService struct {
 	secretRepo repository.IntegrationSecretRepository
 	encKey     []byte
 	now        func() time.Time
+	submitter  ManualBatchSubmitter
 }
 
-// NewAssessmentBatchService 构造批次查询侧 service。now 注入便于测试锚定时间。
+// NewAssessmentBatchService 构造批次 service。now 注入便于测试锚定时间；
+// submitter 为手动发起入口（B1），查询侧方法不消费。
 func NewAssessmentBatchService(
 	batchRepo repository.AssessmentBatchRepository,
 	configRepo repository.AssessmentConfigRepository,
@@ -125,6 +151,7 @@ func NewAssessmentBatchService(
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	now func() time.Time,
+	submitter ManualBatchSubmitter,
 ) AssessmentBatchService {
 	return &assessmentBatchService{
 		batchRepo:  batchRepo,
@@ -134,7 +161,73 @@ func NewAssessmentBatchService(
 		secretRepo: secretRepo,
 		encKey:     encKey,
 		now:        now,
+		submitter:  submitter,
 	}
+}
+
+// Create 发起手动定向分析（03 B1）：枚举与字段校验 → 时段边界校验（specs §4.2.4 规则2）
+// → 名单校验与去重 → 委托编排器建批入队，批次记录与名单快照同请求同步落库。
+func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayload) (*CreateBatchResult, error) {
+	if p.TargetMode != domain.BatchTargetAll && p.TargetMode != domain.BatchTargetSpecified {
+		return nil, NewError(errcode.BadRequest)
+	}
+	if p.PeriodStart == "" || p.PeriodEnd == "" {
+		return nil, NewError(errcode.BadRequest)
+	}
+	start, err := time.ParseInLocation("2006-01-02", p.PeriodStart, time.Local)
+	if err != nil {
+		return nil, NewError(errcode.BatchPeriodInvalid)
+	}
+	end, err := time.ParseInLocation("2006-01-02", p.PeriodEnd, time.Local)
+	if err != nil {
+		return nil, NewError(errcode.BatchPeriodInvalid)
+	}
+	today := time.Date(s.now().Year(), s.now().Month(), s.now().Day(), 0, 0, 0, 0, time.Local)
+	// 只评已沉淀完的对话：终点含今天及以后非法；两端均含止日可相等（评估单日）。
+	if end.Before(start) || !end.Before(today) {
+		return nil, NewError(errcode.BatchPeriodInvalid)
+	}
+	var names []string
+	if p.TargetMode == domain.BatchTargetSpecified {
+		if len(p.Staffs) == 0 {
+			return nil, NewError(errcode.BatchTargetInvalid)
+		}
+		names = make([]string, 0, len(p.Staffs))
+		seen := make(map[string]struct{}, len(p.Staffs))
+		for _, st := range p.Staffs {
+			name := strings.TrimSpace(st.StaffName)
+			if name == "" {
+				return nil, NewError(errcode.BatchTargetInvalid)
+			}
+			// staff_name 去重键与 uk_batch_person 同键收敛（同名同人）。
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			names = append(names, name)
+		}
+	}
+	batch, err := s.submitter.SubmitManualBatch(ctx, pipeline.CreateBatchRequest{
+		TriggerType: domain.BatchTriggerManual,
+		TargetMode:  p.TargetMode,
+		TargetNames: names,
+		PeriodStart: start,
+		PeriodEnd:   end,
+	})
+	if err != nil {
+		// all 模式名单拉取失败不落批次记录，映射 1305；其余错误（含入队失败，编排器
+		// 已落 failed 终态）统一 1500，前端 toast 留在弹窗（specs §4.2.3 提交发起）。
+		if errors.Is(err, pipeline.ErrStaffFetchFailed) {
+			return nil, NewError(errcode.StaffListUnavailable)
+		}
+		return nil, NewError(errcode.Internal)
+	}
+	return &CreateBatchResult{
+		ID:         batch.ID,
+		BatchNo:    batch.BatchNo,
+		Status:     batch.Status,
+		TotalCount: batch.TotalCount,
+	}, nil
 }
 
 // List 列表查询：枚举校验 → repo 分页 → 逐行组装 DTO（停滞派生 + 摘要 + 进度）。

@@ -42,6 +42,9 @@ const (
 	typeSessionExtract = "engine:session-extract"
 )
 
+// ErrStaffFetchFailed 全员名单拉取失败哨兵（service 层据此映射 1305，errors.Is 判定）。
+var ErrStaffFetchFailed = errors.New("pipeline: 全员名单拉取失败")
+
 // StaffFetcher 全员名单拉取窄接口（*userapi.Client 鸭子满足）。
 type StaffFetcher interface {
 	ListStaffs(ctx context.Context, secret, keyword string, page, pageSize int) ([]userapi.Staff, int64, error)
@@ -478,7 +481,7 @@ func (o *Orchestrator) resolveNames(ctx context.Context, req CreateBatchRequest)
 	for page := 1; ; page++ {
 		items, total, err := o.staffs.ListStaffs(ctx, secret, "", page, staffPageSize)
 		if err != nil {
-			return nil, fmt.Errorf("pipeline: 全员名单拉取: %w", err)
+			return nil, fmt.Errorf("%w: %v", ErrStaffFetchFailed, err)
 		}
 		for _, s := range items {
 			if _, ok := seen[s.StaffName]; !ok {

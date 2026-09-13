@@ -408,6 +408,9 @@ func TestCreateBatchAllFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("预期返回错误，得到 nil")
 	}
+	if !errors.Is(err, pipeline.ErrStaffFetchFailed) {
+		t.Errorf("err = %v, want errors.Is 命中 ErrStaffFetchFailed 哨兵", err)
+	}
 	if len(repo.created) != 0 {
 		t.Errorf("名单拉取失败不应落批次，已落 %d 条", len(repo.created))
 	}

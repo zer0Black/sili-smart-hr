@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/integration/userapi"
 	"sili-smart-hr/backend/internal/pkg/crypto"
 	"sili-smart-hr/backend/internal/pkg/errcode"
@@ -164,9 +165,31 @@ func encryptedSecret(t *testing.T, plain string) string {
 // batchFixedNow 固定本地时区时刻，窗口与停滞断言以此为锚。
 func batchFixedNow() time.Time { return time.Date(2026, 9, 12, 10, 0, 0, 0, time.Local) }
 
+// fakeManualSubmitter 是 service.ManualBatchSubmitter 的测试假实现，字段挂返回与探针。
+type fakeManualSubmitter struct {
+	batch *domain.AssessmentBatch
+	err   error
+
+	called bool
+	gotReq pipeline.CreateBatchRequest
+}
+
+func (f *fakeManualSubmitter) SubmitManualBatch(_ context.Context, req pipeline.CreateBatchRequest) (*domain.AssessmentBatch, error) {
+	f.called = true
+	f.gotReq = req
+	return f.batch, f.err
+}
+
+var _ service.ManualBatchSubmitter = (*fakeManualSubmitter)(nil)
+
 // newBatchSvc 组装 batch service 三查询侧实现；configRepo 与 dims 由调用方按场景注入。
 func newBatchSvc(batchRepo *fakeBatchRepo, cfgRepo repository.AssessmentConfigRepository, dimRepo *fakeDimRepo, ua *fakeUserapiClient, secretRepo repository.IntegrationSecretRepository) service.AssessmentBatchService {
-	return service.NewAssessmentBatchService(batchRepo, cfgRepo, dimRepo, ua, secretRepo, batchEncKey, batchFixedNow)
+	return newBatchSvcWithSubmitter(batchRepo, cfgRepo, dimRepo, ua, secretRepo, &fakeManualSubmitter{})
+}
+
+// newBatchSvcWithSubmitter 与 newBatchSvc 同源，允许调用方注入 submitter 探针。
+func newBatchSvcWithSubmitter(batchRepo *fakeBatchRepo, cfgRepo repository.AssessmentConfigRepository, dimRepo *fakeDimRepo, ua *fakeUserapiClient, secretRepo repository.IntegrationSecretRepository, sub service.ManualBatchSubmitter) service.AssessmentBatchService {
+	return service.NewAssessmentBatchService(batchRepo, cfgRepo, dimRepo, ua, secretRepo, batchEncKey, batchFixedNow, sub)
 }
 
 // cfgWeekly 返回 weekly/23:00/specified 配置 fake（List/Stats/Plan 共享）。
@@ -685,5 +708,236 @@ func TestFailuresRepoError(t *testing.T) {
 	var serr *service.Error
 	if err == nil || errors.As(err, &serr) {
 		t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
+	}
+}
+
+// createOKBatch 返回 running 态批次 fake 返回物，供 Create 成功路径用例共享。
+func createOKBatch() *domain.AssessmentBatch {
+	return &domain.AssessmentBatch{ID: 1001, BatchNo: "B202609121000001", Status: domain.BatchStatusRunning, TotalCount: 2}
+}
+
+// createValidPayload 返回通过全部校验的指定模式请求（period_end 锚定昨天规避日期边界）。
+func createValidPayload() service.CreateBatchPayload {
+	return service.CreateBatchPayload{
+		TargetMode:  domain.BatchTargetSpecified,
+		Staffs:      []service.StaffDTO{{StaffID: "u1", StaffName: "张敏"}},
+		PeriodStart: "2026-09-07",
+		PeriodEnd:   "2026-09-11",
+	}
+}
+
+// TestCreateValidation 表驱动覆盖校验序各错误分支（03 B1 错误码表），submitter 均不得被调。
+func TestCreateValidation(t *testing.T) {
+	cases := []struct {
+		name string
+		mod  func(*service.CreateBatchPayload)
+		code int
+	}{
+		{"mode 非枚举", func(p *service.CreateBatchPayload) { p.TargetMode = "foo" }, errcode.BadRequest},
+		{"mode 空", func(p *service.CreateBatchPayload) { p.TargetMode = "" }, errcode.BadRequest},
+		{"起点缺失", func(p *service.CreateBatchPayload) { p.PeriodStart = "" }, errcode.BadRequest},
+		{"终点缺失", func(p *service.CreateBatchPayload) { p.PeriodEnd = "" }, errcode.BadRequest},
+		{"终点早于起点", func(p *service.CreateBatchPayload) {
+			p.PeriodStart = "2026-09-11"
+			p.PeriodEnd = "2026-09-07"
+		}, errcode.BatchPeriodInvalid},
+		{"终点为今天", func(p *service.CreateBatchPayload) {
+			p.PeriodEnd = batchFixedNow().Format("2006-01-02")
+		}, errcode.BatchPeriodInvalid},
+		{"起点格式非法", func(p *service.CreateBatchPayload) { p.PeriodStart = "2026/09/07" }, errcode.BatchPeriodInvalid},
+		{"specified 空名单", func(p *service.CreateBatchPayload) { p.Staffs = nil }, errcode.BatchTargetInvalid},
+		{"staffs 项缺 staff_name", func(p *service.CreateBatchPayload) {
+			p.Staffs = []service.StaffDTO{{StaffID: "u1"}}
+		}, errcode.BatchTargetInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sub := &fakeManualSubmitter{batch: createOKBatch()}
+			svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+			p := createValidPayload()
+			tc.mod(&p)
+
+			_, err := svc.Create(context.Background(), p)
+			serr, ok := err.(*service.Error)
+			if !ok {
+				t.Fatalf("err 类型 %T, want *service.Error（err=%v）", err, err)
+			}
+			if serr.Code != tc.code {
+				t.Errorf("code = %d, want %d", serr.Code, tc.code)
+			}
+			if sub.called {
+				t.Error("校验失败时 submitter 不应被调用")
+			}
+		})
+	}
+}
+
+// TestCreateEndTodayBoundary：period_end=今天（本地时区当日）断言 1602；昨天断言通过且 submitter 收到请求。
+func TestCreateEndTodayBoundary(t *testing.T) {
+	today := batchFixedNow().Format("2006-01-02")
+	yesterday := batchFixedNow().AddDate(0, 0, -1).Format("2006-01-02")
+
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.PeriodEnd = today
+	_, err := svc.Create(context.Background(), p)
+	serr, ok := err.(*service.Error)
+	if !ok || serr.Code != errcode.BatchPeriodInvalid {
+		t.Fatalf("period_end=今天 err = %v, want *service.Error code=%d", err, errcode.BatchPeriodInvalid)
+	}
+
+	p.PeriodEnd = yesterday
+	res, err := svc.Create(context.Background(), p)
+	if err != nil {
+		t.Fatalf("period_end=昨天应通过: %v", err)
+	}
+	if !sub.called {
+		t.Fatal("submitter 未被调用")
+	}
+	if res.ID != 1001 || res.BatchNo != "B202609121000001" || res.Status != domain.BatchStatusRunning {
+		t.Errorf("result = %+v", res)
+	}
+	// 两端当日零点口径（04 §3.1 period 列：yyyy-MM-dd 按当日 00:00:00 写入）。
+	wantStart := time.Date(2026, 9, 7, 0, 0, 0, 0, time.Local)
+	wantEnd := time.Date(2026, 9, 11, 0, 0, 0, 0, time.Local)
+	if !sub.gotReq.PeriodStart.Equal(wantStart) || !sub.gotReq.PeriodEnd.Equal(wantEnd) {
+		t.Errorf("PeriodStart/End = %v/%v, want %v/%v", sub.gotReq.PeriodStart, sub.gotReq.PeriodEnd, wantStart, wantEnd)
+	}
+	if sub.gotReq.TriggerType != domain.BatchTriggerManual || sub.gotReq.TargetMode != domain.BatchTargetSpecified {
+		t.Errorf("TriggerType/TargetMode = %q/%q", sub.gotReq.TriggerType, sub.gotReq.TargetMode)
+	}
+}
+
+// TestCreateStaffsDedup：specified 传 [张敏,张敏,李芳] 断言 submitter 收到 TargetNames==[张敏,李芳]，
+// 且 staff_id 缺失项不拦（1603 表：staff_id 可选）。
+func TestCreateStaffsDedup(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.Staffs = []service.StaffDTO{
+		{StaffID: "u1", StaffName: "张敏"},
+		{StaffName: "张敏"},
+		{StaffID: "u2", StaffName: "李芳"},
+	}
+	res, err := svc.Create(context.Background(), p)
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(sub.gotReq.TargetNames) != 2 || sub.gotReq.TargetNames[0] != "张敏" || sub.gotReq.TargetNames[1] != "李芳" {
+		t.Errorf("TargetNames = %v, want [张敏 李芳]（staff_name 去重保持首现序）", sub.gotReq.TargetNames)
+	}
+	if res.TotalCount != 2 {
+		t.Errorf("TotalCount = %d, want 2", res.TotalCount)
+	}
+}
+
+// TestCreateAllStaffsFail：all 模式 submitter 返哨兵 wrap 的全员拉取错误，断言 *service.Error code==1305 且不落批次。
+func TestCreateAllStaffsFail(t *testing.T) {
+	sub := &fakeManualSubmitter{err: fmt.Errorf("wrap: %w", pipeline.ErrStaffFetchFailed)}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.TargetMode = domain.BatchTargetAll
+	p.Staffs = nil // all 模式忽略 Staffs
+	_, err := svc.Create(context.Background(), p)
+	serr, ok := err.(*service.Error)
+	if !ok {
+		t.Fatalf("err 类型 %T, want *service.Error", err)
+	}
+	if serr.Code != errcode.StaffListUnavailable {
+		t.Errorf("code = %d, want %d", serr.Code, errcode.StaffListUnavailable)
+	}
+	if len(sub.gotReq.TargetNames) != 0 {
+		t.Errorf("all 模式 TargetNames = %v, want 空", sub.gotReq.TargetNames)
+	}
+}
+
+// TestCreateAllPlainErrorInternal：all 模式 submitter 返普通 error（非哨兵），断言 1500（锁定 1305/1500 区分）。
+func TestCreateAllPlainErrorInternal(t *testing.T) {
+	sub := &fakeManualSubmitter{err: errors.New("pipeline: 批次落库: db down")}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.TargetMode = domain.BatchTargetAll
+	_, err := svc.Create(context.Background(), p)
+	serr, ok := err.(*service.Error)
+	if !ok || serr.Code != errcode.Internal {
+		t.Fatalf("err = %v, want *service.Error code=%d", err, errcode.Internal)
+	}
+}
+
+// TestCreateEnqueueFail：submitter 返入队失败错误（编排器已落 failed 终态），映射 1500。
+func TestCreateEnqueueFail(t *testing.T) {
+	sub := &fakeManualSubmitter{err: errors.New("pipeline: batch-run 入队失败: redis down")}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	_, err := svc.Create(context.Background(), createValidPayload())
+	serr, ok := err.(*service.Error)
+	if !ok || serr.Code != errcode.Internal {
+		t.Fatalf("err = %v, want *service.Error code=%d", err, errcode.Internal)
+	}
+}
+
+// TestCreateAllIgnoresStaffs：all 模式忽略 Staffs，TargetNames 恒空（03 B1 互斥口径）。
+func TestCreateAllIgnoresStaffs(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.TargetMode = domain.BatchTargetAll
+	p.Staffs = []service.StaffDTO{{StaffName: "张敏"}} // 应被忽略
+	if _, err := svc.Create(context.Background(), p); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(sub.gotReq.TargetNames) != 0 {
+		t.Errorf("all 模式 TargetNames = %v, want 空（Staffs 忽略）", sub.gotReq.TargetNames)
+	}
+}
+
+// TestCreatePeriodEqualSingleDay：两端相等表示评估单日，合法放行（04 §3.1 两端均含止日可相等）。
+func TestCreatePeriodEqualSingleDay(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.PeriodStart = "2026-09-11"
+	p.PeriodEnd = "2026-09-11"
+	if _, err := svc.Create(context.Background(), p); err != nil {
+		t.Fatalf("单日时段应合法: %v", err)
+	}
+	if !sub.gotReq.PeriodStart.Equal(sub.gotReq.PeriodEnd) {
+		t.Errorf("单日时段 PeriodStart/End 应相等: %v/%v", sub.gotReq.PeriodStart, sub.gotReq.PeriodEnd)
+	}
+}
+
+// TestCreateStaffNameWhitespace：staff_name 仅空白视为缺失，归 1603。
+func TestCreateStaffNameWhitespace(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.Staffs = []service.StaffDTO{{StaffName: "  "}}
+	_, err := svc.Create(context.Background(), p)
+	serr, ok := err.(*service.Error)
+	if !ok || serr.Code != errcode.BatchTargetInvalid {
+		t.Fatalf("err = %v, want *service.Error code=%d", err, errcode.BatchTargetInvalid)
+	}
+}
+
+// TestCreateStaffNameTrimmed：staff_name 两端空白裁剪后作为去重键（规避同名加空白绕过）。
+func TestCreateStaffNameTrimmed(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.Staffs = []service.StaffDTO{{StaffName: "张敏"}, {StaffName: " 张敏 "}}
+	if _, err := svc.Create(context.Background(), p); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if len(sub.gotReq.TargetNames) != 1 || sub.gotReq.TargetNames[0] != "张敏" {
+		t.Errorf("TargetNames = %v, want [张敏]（裁剪后去重）", sub.gotReq.TargetNames)
 	}
 }
