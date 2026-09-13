@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
+	"sync"
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -72,6 +74,7 @@ type PersonEvaluator interface {
 // Orchestrator 批次编排器：批次从创建到终态的状态机持有者（specs §5.2.1）。
 // cl/featureRepo/configRepo/evaluator/sessionEnq 承载 RunBatch 与 TickTrigger 的
 // 依赖面，本任务只消费 repo/alertRepo/staffs/secrets/batchEnq/alerts。
+// retryBase 退避基准可经测试覆盖（默认 PersonEvalRetryBase），生产不动。
 type Orchestrator struct {
 	repo        repository.AssessmentBatchRepository
 	alertRepo   repository.AssessmentAlertRepository
@@ -84,6 +87,7 @@ type Orchestrator struct {
 	alerts      *fallback.AlertWriter
 	batchEnq    BatchEnqueuer
 	sessionEnq  SessionEnqueuer
+	retryBase   time.Duration
 }
 
 // NewOrchestrator 组装批次编排器。
@@ -112,6 +116,7 @@ func NewOrchestrator(
 		alerts:      alerts,
 		batchEnq:    batchEnq,
 		sessionEnq:  sessionEnq,
+		retryBase:   PersonEvalRetryBase,
 	}
 }
 
@@ -269,7 +274,123 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 		}
 	}
 
-	// 逐人评估 → 推进终态 → 告警归 T3 在同一方法内补齐。
+	// 逐人评估（specs §5.2.2 步骤4-7）：名单快照全员入编排，不在分组内者为零会话
+	//（skipped 终态归 T5 评估侧）。逐人并发上限 4（channel 信号量，03 §4.4）。
+	var names []string
+	if err := json.Unmarshal([]byte(batch.TargetNamesJSON), &names); err != nil {
+		return fmt.Errorf("pipeline: 名单快照反序列化: %w", err)
+	}
+	sem := make(chan struct{}, BatchRunConcurrency)
+	var wg sync.WaitGroup
+	for _, name := range names {
+		wg.Add(1)
+		go func(tokenName string) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			o.runOnePerson(ctx, batch, tokenName, period, groups[tokenName], len(groups[tokenName]))
+		}(name)
+	}
+	wg.Wait()
+
+	return o.finalizeBatch(ctx, batchID, names, period)
+}
+
+// runOnePerson 单人评估与终态推进（specs §5.2.4 规则1：失败只影响自己）：
+// 评估成功按结果映射终态，重试耗尽落 failed；终态推进回写失败记 ERROR 日志后继续。
+func (o *Orchestrator) runOnePerson(ctx context.Context, batch *domain.AssessmentBatch, tokenName string, period activity.Period, sessions []conversationlog.SessionSummary, sessionCount int) {
+	res, err := o.evaluatePersonWithRetry(ctx, tokenName, period, sessions)
+	status := domain.PersonStatusFailed
+	errorSummary := ""
+	if err == nil {
+		status = personTerminal(res)
+	} else {
+		errorSummary = err.Error()
+		slog.Error("person evaluate retry exhausted", "batch_no", batch.BatchNo, "token_name", tokenName, "err", err)
+	}
+	if advErr := o.repo.AdvancePersonTerminal(ctx, batch.ID, tokenName, status, errorSummary, sessionCount); advErr != nil {
+		// 回写失败（specs §5.2.5）：批次留 running 按停滞处置，不阻塞其余人员。
+		slog.Error("advance person terminal failed", "batch_no", batch.BatchNo, "token_name", tokenName, "err", advErr)
+	}
+}
+
+// evaluatePersonWithRetry 单人评估带编排器侧重试（specs §5.3.4 规则1）：3 次重试
+// 共 4 次尝试（Retry 的 maxAttempts 含首次），每次尝试派生 1050s 预算子 ctx，
+// 退避等待不计入预算。
+func (o *Orchestrator) evaluatePersonWithRetry(ctx context.Context, tokenName string, period activity.Period, sessions []conversationlog.SessionSummary) (*evaluator.EvaluateResult, error) {
+	var res *evaluator.EvaluateResult
+	err := fallback.Retry(ctx, func(attemptCtx context.Context) error {
+		attemptCtx, cancel := context.WithTimeout(attemptCtx, personEvalBudget)
+		defer cancel()
+		r, err := o.evaluator.EvaluatePerson(attemptCtx, tokenName, period, sessions)
+		if err != nil {
+			return err
+		}
+		res = r
+		return nil
+	}, PersonEvalMaxRetries+1, o.retryBase)
+	return res, err
+}
+
+// personEvalBudget 单次评估尝试预算（specs §5.2.2 步骤4，对齐 person-evaluate 任务超时）。
+const personEvalBudget = 1050 * time.Second
+
+// personTerminal 单人终态判定（03 §4.6 表）：Reused/Skipped 标志优先，
+// 存在 failed 评分行判 degraded，否则 success。
+func personTerminal(res *evaluator.EvaluateResult) string {
+	switch {
+	case res.Reused:
+		return domain.PersonStatusReused
+	case res.Skipped:
+		return domain.PersonStatusSkipped
+	}
+	for _, s := range res.Scores {
+		if s.Status == domain.ScoreStatusFailed {
+			return domain.PersonStatusDegraded
+		}
+	}
+	return domain.PersonStatusSuccess
+}
+
+// finalizeBatch 全员终态后落批次终态（specs §5.2.2 步骤6-7）：读回批次，
+// evaluated_count < total_count（存在回写失败者）不落终态留 running 停滞处置；
+// 否则按失败人数占比落终态（≤10.00 success、<100 partial_failed、=100 failed），
+// 会话级失败比例分母为 0 置 0.00 不除零；占比超阈写告警信号。
+func (o *Orchestrator) finalizeBatch(ctx context.Context, batchID int64, names []string, period activity.Period) error {
+	batch, err := o.repo.GetByID(ctx, batchID)
+	if err != nil {
+		return fmt.Errorf("pipeline: 批次读回: %w", err)
+	}
+	if batch == nil || batch.Status != domain.BatchStatusRunning {
+		return nil
+	}
+	if batch.EvaluatedCount < batch.TotalCount {
+		slog.Error("batch advance incomplete, left running for stalled handling",
+			"batch_no", batch.BatchNo, "evaluated", batch.EvaluatedCount, "total", batch.TotalCount)
+		return nil
+	}
+	status := domain.BatchStatusPartialFailed
+	switch {
+	case fallback.BelowAlertThreshold(batch.FailedCount, batch.TotalCount):
+		status = domain.BatchStatusSuccess
+	case batch.FailedCount == batch.TotalCount:
+		status = domain.BatchStatusFailed
+	}
+
+	sessionFailRatio := 0.00
+	if batch.TotalSessionCount > 0 {
+		failed, err := o.featureRepo.CountFailedByTokenNames(ctx, names, period.Start, period.End)
+		if err != nil {
+			return fmt.Errorf("pipeline: 失败会话计数: %w", err)
+		}
+		sessionFailRatio = math.Round(float64(failed)/float64(batch.TotalSessionCount)*10000) / 100
+	}
+	if err := o.repo.FinalizeBatch(ctx, batchID, status, sessionFailRatio); err != nil {
+		return fmt.Errorf("pipeline: 批次终态落库: %w", err)
+	}
+	if !fallback.BelowAlertThreshold(batch.FailedCount, batch.TotalCount) && o.alerts != nil {
+		_ = o.alerts.WriteAlert(ctx, batch) // 写入失败仅记日志不重试（specs §5.3.5）
+	}
 	return nil
 }
 

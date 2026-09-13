@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/engine/activity"
+	"sili-smart-hr/backend/internal/engine/evaluator"
 	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
@@ -23,11 +25,18 @@ import (
 var errFake = errors.New("fake failure")
 
 // fakeBatchRepo 批次仓储 fake：Create 支持注入错误（模拟撞 uk_batch_no）。
+// advanceErrs 按 token_name 注入 AdvancePersonTerminal 恒错（BR6 回写失败探针）。
 type fakeBatchRepo struct {
-	createErrs []error // 逐次消费，耗尽后返回 nil
-	created    []*domain.AssessmentBatch
-	persons    []domain.AssessmentBatchPerson // CreatePersons 捕获的明细行
-	stored     *domain.AssessmentBatch        // GetByID 返回的批次（RunBatch 入口）
+	mu           sync.Mutex
+	createErrs   []error // 逐次消费，耗尽后返回 nil
+	created      []*domain.AssessmentBatch
+	persons      []domain.AssessmentBatchPerson // CreatePersons 捕获的明细行
+	stored       *domain.AssessmentBatch        // GetByID 返回的批次（RunBatch 入口）
+	advanceErrs  map[string]error
+	advanceCalls map[string]int
+	advanceErr   map[string]string
+	finalizeCalls []string
+
 	failCalled bool
 	failReason string
 	failBatch  int64
@@ -55,6 +64,8 @@ func (f *fakeBatchRepo) Create(ctx context.Context, b *domain.AssessmentBatch) e
 }
 
 func (f *fakeBatchRepo) GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return f.stored, nil
 }
 
@@ -69,19 +80,76 @@ func (f *fakeBatchRepo) ListByFilter(ctx context.Context, bf repository.BatchFil
 	return nil, 0, nil
 }
 func (f *fakeBatchRepo) UpdateTotalSessions(ctx context.Context, batchID int64, totalSessions int, personSessions map[string]int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.utsCalled = true
 	f.utsBatchID = batchID
 	f.utsTotal = totalSessions
 	f.utsPersons = personSessions
+	if f.stored != nil {
+		f.stored.TotalSessionCount = totalSessions
+	}
 	for _, p := range f.persons {
 		f.utsPersonsKeys = append(f.utsPersonsKeys, p.TokenName)
 	}
 	return nil
 }
+// AdvancePersonTerminal 内存模拟仓储推进：幂等守卫（已终态跳过）、按终态累计计数、
+// errorSummary 按 255 rune 截断（对齐真实仓储 truncateRunes），按人可注入恒错。
 func (f *fakeBatchRepo) AdvancePersonTerminal(ctx context.Context, batchID int64, tokenName, personStatus, errorSummary string, sessionCount int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err, ok := f.advanceErrs[tokenName]; ok {
+		return err
+	}
+	for i := range f.persons {
+		p := &f.persons[i]
+		if p.BatchID != batchID || p.TokenName != tokenName {
+			continue
+		}
+		if p.Status != domain.PersonStatusPending {
+			return nil // 重入已终态：跳过计数自增
+		}
+		p.Status = personStatus
+		if personStatus == domain.PersonStatusFailed {
+			runes := []rune(errorSummary)
+			if len(runes) > 255 {
+				errorSummary = string(runes[:255])
+			}
+			p.ErrorSummary = errorSummary
+		} else {
+			p.ErrorSummary = ""
+		}
+		f.stored.EvaluatedCount++
+		if personStatus == domain.PersonStatusFailed {
+			f.stored.FailedCount++
+		} else {
+			f.stored.CoveredSessionCount += sessionCount
+		}
+		if f.advanceCalls == nil {
+			f.advanceCalls = map[string]int{}
+		}
+		f.advanceCalls[tokenName]++
+		if f.advanceErr == nil {
+			f.advanceErr = map[string]string{}
+		}
+		f.advanceErr[tokenName] = errorSummary
+		return nil
+	}
 	return nil
 }
+
+// FinalizeBatch 内存模拟（同真实仓储 WHERE status='running' 守卫）。
 func (f *fakeBatchRepo) FinalizeBatch(ctx context.Context, batchID int64, status string, sessionFailRatio float64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.finalizeCalls = append(f.finalizeCalls, status)
+	if f.stored.Status != domain.BatchStatusRunning {
+		return nil
+	}
+	f.stored.Status = status
+	ratio := sessionFailRatio
+	f.stored.SessionFailRatio = &ratio
 	return nil
 }
 func (f *fakeBatchRepo) FailWholeBatch(ctx context.Context, batchID int64, reason string) error {
@@ -156,6 +224,79 @@ func (f *fakeBatchEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) 
 	}
 	f.enqIDs = append(f.enqIDs, batchID)
 	return nil
+}
+
+// fakeFeatureRepo 特征档案仓储 fake：只承载 T3 消费面 CountFailedByTokenNames。
+type fakeFeatureRepo struct {
+	failed int64
+	names  []string
+	start  int64
+	end    int64
+	calls  int
+}
+
+var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
+
+func (f *fakeFeatureRepo) FindBySessionKey(ctx context.Context, sessionKey string) (*domain.SessionFeature, error) {
+	return nil, nil
+}
+func (f *fakeFeatureRepo) Save(ctx context.Context, rec *domain.SessionFeature) (bool, error) {
+	return false, nil
+}
+func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error) {
+	return nil, nil
+}
+func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
+	f.calls++
+	f.names = tokenNames
+	f.start, f.end = start, end
+	return f.failed, nil
+}
+
+// fakePersonEvaluator 单人评估 fake：perName 结果切片逐次消费（重试耗尽按次数
+// 给错误），缺省返回正常结果。
+type fakePersonEvaluator struct {
+	perName map[string][]evalAttempt
+	calls   map[string]int
+	mu      sync.Mutex
+}
+
+// evalAttempt 一次尝试的返回：err 非 nil 上抛，否则返回 res（res 为 nil 视为正常成功）。
+type evalAttempt struct {
+	res *evaluator.EvaluateResult
+	err error
+}
+
+var _ pipeline.PersonEvaluator = (*fakePersonEvaluator)(nil)
+
+func (f *fakePersonEvaluator) EvaluatePerson(ctx context.Context, tokenName string, period activity.Period, sessions []conversationlog.SessionSummary) (*evaluator.EvaluateResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[tokenName]++
+	attempts := f.perName[tokenName]
+	if len(attempts) == 0 {
+		return &evaluator.EvaluateResult{}, nil
+	}
+	idx := f.calls[tokenName] - 1
+	if idx >= len(attempts) {
+		idx = len(attempts) - 1
+	}
+	a := attempts[idx]
+	if a.err != nil {
+		return nil, a.err
+	}
+	if a.res != nil {
+		return a.res, nil
+	}
+	return &evaluator.EvaluateResult{}, nil
+}
+
+// scoreRow 构造评分行（status 由用例指定）。
+func scoreRow(status string) domain.DimensionScore {
+	return domain.DimensionScore{Status: status}
 }
 
 func staffs(names ...string) []userapi.Staff {
@@ -407,30 +548,35 @@ func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, session
 	return nil
 }
 
-// newRunBatchOrch 组装 RunBatch 链路编排器。
+// newRunBatchOrch 组装 RunBatch 链路编排器（T2 段只到投递，评估器与特征仓储以
+// 零值 fake 承载防止 T3 逐人评估段空指针，断言面不涉及其计数）。
 func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, sessionEnq *fakeSessionEnqueuer) *pipeline.Orchestrator {
-	return pipeline.NewOrchestrator(repo, alertRepo, nil, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, alertRepo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		nil, alertWriter(alertRepo), nil, sessionEnq)
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	return o
 }
 
 // runBatchFixture 建 running 批次：3 人明细、窗口 2026-09-07 至 2026-09-13（含止日）。
 func runBatchFixture(repo *fakeBatchRepo) *domain.AssessmentBatch {
+	namesJSON, _ := json.Marshal([]string{"张敏", "李芳", "王强"})
 	repo.persons = []domain.AssessmentBatchPerson{
 		{BatchID: 1, TokenName: "张敏", Status: domain.PersonStatusPending},
 		{BatchID: 1, TokenName: "李芳", Status: domain.PersonStatusPending},
 		{BatchID: 1, TokenName: "王强", Status: domain.PersonStatusPending},
 	}
 	batch := &domain.AssessmentBatch{
-		ID:            1,
-		BatchNo:       "B202609070800001",
-		TriggerType:   domain.BatchTriggerScheduled,
-		TargetMode:    domain.BatchTargetSpecified,
-		TotalCount:    3,
-		Status:        domain.BatchStatusRunning,
-		PeriodStartAt: time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),
-		PeriodEndAt:   time.Date(2026, 9, 13, 0, 0, 0, 0, time.UTC),
-		TriggeredAt:   time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
+		ID:              1,
+		BatchNo:         "B202609070800001",
+		TriggerType:     domain.BatchTriggerScheduled,
+		TargetMode:      domain.BatchTargetSpecified,
+		TargetNamesJSON: string(namesJSON),
+		TotalCount:      3,
+		Status:          domain.BatchStatusRunning,
+		PeriodStartAt:   time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),
+		PeriodEndAt:     time.Date(2026, 9, 13, 0, 0, 0, 0, time.UTC),
+		TriggeredAt:     time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
 	}
 	repo.stored = batch
 	return batch
@@ -664,5 +810,239 @@ func TestRunBatchBatchNotFound(t *testing.T) {
 	}
 	if fetcher.calls != 0 || sessionEnq.calls != 0 || repo.utsCalled {
 		t.Error("批次不存在不应有任何副作用")
+	}
+}
+
+// ---- RunBatch 逐人评估 + 终态推进 + 告警（specs §5.2.2 步骤4-7、§5.2.4、§5.2.5、§5.3.4） ----
+
+// TestPersonTerminal 终态映射表（03 §4.6）：Reused 标志优先、Skipped 标志次之、
+// 含 failed 评分行降级、正常返回 success。
+func TestPersonTerminal(t *testing.T) {
+	cases := []struct {
+		name string
+		res  *evaluator.EvaluateResult
+		want string
+	}{
+		{"正常返回", &evaluator.EvaluateResult{Scores: []domain.DimensionScore{scoreRow(domain.ScoreStatusSuccess)}}, domain.PersonStatusSuccess},
+		{"复用标志优先", &evaluator.EvaluateResult{Reused: true, Skipped: true, Scores: []domain.DimensionScore{scoreRow(domain.ScoreStatusFailed)}}, domain.PersonStatusReused},
+		{"跳过标志", &evaluator.EvaluateResult{Skipped: true}, domain.PersonStatusSkipped},
+		{"含 failed 评分行降级", &evaluator.EvaluateResult{Scores: []domain.DimensionScore{scoreRow(domain.ScoreStatusSuccess), scoreRow(domain.ScoreStatusFailed)}}, domain.PersonStatusDegraded},
+		{"空评分行正常", &evaluator.EvaluateResult{}, domain.PersonStatusSuccess},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := pipeline.PersonTerminal(c.res); got != c.want {
+				t.Errorf("personTerminal = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// evalOrch 组装含评估器与特征仓储的 RunBatch 全链编排器（退避置 1ms 免测试等待）。
+func evalOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, pe *fakePersonEvaluator) *pipeline.Orchestrator {
+	o := pipeline.NewOrchestrator(repo, alertRepo, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		pe, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
+	o.SetRetryBaseForTest(time.Millisecond)
+	return o
+}
+
+func sessionsOf(names map[string]int) [][]conversationlog.SessionSummary {
+	var page []conversationlog.SessionSummary
+	i := 0
+	for name, n := range names {
+		for j := 0; j < n; j++ {
+			page = append(page, conversationlog.SessionSummary{
+				SessionKey: fmt.Sprintf("sk-%d-%d", i, j),
+				TokenName:  name,
+			})
+		}
+		i++
+	}
+	return [][]conversationlog.SessionSummary{page}
+}
+
+func TestRunBatchTerminalMapping(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 张敏 2 会话正常，李芳 1 会话 Reused，王强 1 会话重试耗尽 error。
+	fetcher := &fakeSessionFetcher{pages: sessionsOf(map[string]int{"张敏": 2, "李芳": 1, "王强": 1})}
+	pe := &fakePersonEvaluator{perName: map[string][]evalAttempt{
+		"李芳": {{res: &evaluator.EvaluateResult{Reused: true}}},
+		"王强": {{err: errFake}, {err: errFake}, {err: errFake}, {err: errFake}},
+	}}
+	featureRepo := &fakeFeatureRepo{failed: 1} // 1 个 failed 档案：比例 25.00
+	alertRepo := &fakeAlertRepo{}
+	o := evalOrch(repo, alertRepo, fetcher, featureRepo, pe)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if batch.Status != domain.BatchStatusPartialFailed {
+		t.Errorf("Status = %q, want partial_failed（失败占比 33.33 > 10.00）", batch.Status)
+	}
+	if batch.FailedCount != 1 {
+		t.Errorf("FailedCount = %d, want 1", batch.FailedCount)
+	}
+	if batch.EvaluatedCount != 3 {
+		t.Errorf("EvaluatedCount = %d, want 3", batch.EvaluatedCount)
+	}
+	// 成功侧两人会话数 2+1=3，失败人员会话不计入（§5.2.4 规则3）。
+	if batch.CoveredSessionCount != 3 {
+		t.Errorf("CoveredSessionCount = %d, want 3（只含成功侧两人）", batch.CoveredSessionCount)
+	}
+	if pe.calls["王强"] != 4 {
+		t.Errorf("王强评估尝试 = %d 次, want 4（首次+3 重试，§5.3.4 规则1）", pe.calls["王强"])
+	}
+	// 人员终态映射：正常 success、复用 reused、耗尽 failed。
+	wantStatus := map[string]string{"张敏": domain.PersonStatusSuccess, "李芳": domain.PersonStatusReused, "王强": domain.PersonStatusFailed}
+	for name := range wantStatus {
+		if repo.advanceCalls[name] != 1 {
+			t.Errorf("%s AdvancePersonTerminal 调用 = %d, want 1", name, repo.advanceCalls[name])
+		}
+	}
+	for _, p := range repo.persons {
+		if p.Status != wantStatus[p.TokenName] {
+			t.Errorf("%s 人员终态 = %q, want %q", p.TokenName, p.Status, wantStatus[p.TokenName])
+		}
+	}
+	if repo.advanceErr["张敏"] != "" || repo.advanceErr["李芳"] != "" {
+		t.Error("成功侧终态 errorSummary 应为空串")
+	}
+	if repo.advanceErr["王强"] == "" {
+		t.Error("失败终态应带错误摘要")
+	}
+	// 33.33 > 10.00 超阈写告警。
+	if len(alertRepo.alerts) != 1 {
+		t.Fatalf("超阈应写 1 条告警，实际 %d", len(alertRepo.alerts))
+	}
+	if alertRepo.alerts[0].FailedRatio != 33.33 {
+		t.Errorf("告警占比 = %v, want 33.33", alertRepo.alerts[0].FailedRatio)
+	}
+	// 会话级失败比例分子查询入参：批次名单与窗口半开区间（子计划01 T4 口径）。
+	if len(featureRepo.names) != 3 {
+		t.Errorf("CountFailedByTokenNames 名单 = %v, want 3 人", featureRepo.names)
+	}
+	if featureRepo.start != batch.PeriodStartAt.Unix() || featureRepo.end != batch.PeriodEndAt.AddDate(0, 0, 1).Unix() {
+		t.Errorf("失败会话统计窗口 = [%d, %d), want [%d, %d)",
+			featureRepo.start, featureRepo.end,
+			batch.PeriodStartAt.Unix(), batch.PeriodEndAt.AddDate(0, 0, 1).Unix())
+	}
+	if batch.SessionFailRatio == nil || *batch.SessionFailRatio != 25.00 {
+		t.Errorf("SessionFailRatio = %v, want 25.00（1/4 失败档案）", batch.SessionFailRatio)
+	}
+}
+
+func TestRunBatchAllFailed(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: sessionsOf(map[string]int{"张敏": 1, "李芳": 1, "王强": 1})}
+	attempts := []evalAttempt{{err: errFake}, {err: errFake}, {err: errFake}, {err: errFake}}
+	pe := &fakePersonEvaluator{perName: map[string][]evalAttempt{
+		"张敏": attempts, "李芳": attempts, "王强": attempts,
+	}}
+	alertRepo := &fakeAlertRepo{}
+	o := evalOrch(repo, alertRepo, fetcher, &fakeFeatureRepo{}, pe)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if batch.Status != domain.BatchStatusFailed {
+		t.Errorf("Status = %q, want failed（失败占比 100.00）", batch.Status)
+	}
+	if batch.FailedCount != 3 {
+		t.Errorf("FailedCount = %d, want 3", batch.FailedCount)
+	}
+	if batch.CoveredSessionCount != 0 {
+		t.Errorf("CoveredSessionCount = %d, want 0（无成功侧）", batch.CoveredSessionCount)
+	}
+	// 占比 100.00 超阈必写告警（§5.2.4 规则4）。
+	if len(alertRepo.alerts) != 1 {
+		t.Fatalf("应写 1 条告警，实际 %d", len(alertRepo.alerts))
+	}
+	if alertRepo.alerts[0].FailedRatio != 100.00 || alertRepo.alerts[0].FailedCount != 3 {
+		t.Errorf("告警 = (%.2f, %d), want (100.00, 3)", alertRepo.alerts[0].FailedRatio, alertRepo.alerts[0].FailedCount)
+	}
+	if alertRepo.alerts[0].BatchNo != batch.BatchNo {
+		t.Errorf("告警批次号 = %q, want %q", alertRepo.alerts[0].BatchNo, batch.BatchNo)
+	}
+}
+
+// TestRunBatchNoAlertUnderThreshold 10 人 1 失败：占比 10.00 未超阈（≤10.00），不写告警。
+func TestRunBatchNoAlertUnderThreshold(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	names := []string{"甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸"}
+	namesJSON, _ := json.Marshal(names)
+	for _, n := range names {
+		repo.persons = append(repo.persons, domain.AssessmentBatchPerson{BatchID: 1, TokenName: n, Status: domain.PersonStatusPending})
+	}
+	batch := &domain.AssessmentBatch{
+		ID: 1, BatchNo: "B202609070800001", TriggerType: domain.BatchTriggerScheduled,
+		TargetMode: domain.BatchTargetSpecified, TotalCount: 10, Status: domain.BatchStatusRunning,
+		TargetNamesJSON: string(namesJSON),
+		PeriodStartAt:   time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),
+		PeriodEndAt:     time.Date(2026, 9, 13, 0, 0, 0, 0, time.UTC),
+		TriggeredAt:     time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
+	}
+	repo.stored = batch
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{nil}} // 全员无会话
+	pe := &fakePersonEvaluator{perName: map[string][]evalAttempt{
+		"甲": {{err: errFake}, {err: errFake}, {err: errFake}, {err: errFake}},
+	}}
+	alertRepo := &fakeAlertRepo{}
+	featureRepo := &fakeFeatureRepo{}
+	o := evalOrch(repo, alertRepo, fetcher, featureRepo, pe)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if batch.FailedCount != 1 || batch.EvaluatedCount != 10 {
+		t.Fatalf("计数 = (%d/%d), want (1/10)", batch.FailedCount, batch.EvaluatedCount)
+	}
+	if batch.Status != domain.BatchStatusSuccess {
+		t.Errorf("Status = %q, want success（10.00 ≤ 阈值）", batch.Status)
+	}
+	if len(alertRepo.alerts) != 0 {
+		t.Errorf("占比 10.00 未超阈不应写告警，实际 %d 条", len(alertRepo.alerts))
+	}
+	if featureRepo.calls != 0 {
+		t.Errorf("全员无会话分母 0 不应查询失败会话计数，实际 %d 次", featureRepo.calls)
+	}
+	if batch.SessionFailRatio == nil || *batch.SessionFailRatio != 0.00 {
+		t.Errorf("SessionFailRatio = %v, want 0.00（分母 0 口径）", batch.SessionFailRatio)
+	}
+}
+
+// TestRunBatchAdvanceFailLeavesRunning 回写失败行（§5.2.5）：1 人恒错不阻塞其余人员，
+// RunBatch 返回 nil，FinalizeBatch 不调，批次留 running 按停滞处置。
+func TestRunBatchAdvanceFailLeavesRunning(t *testing.T) {
+	repo := &fakeBatchRepo{advanceErrs: map[string]error{"李芳": errFake}}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: sessionsOf(map[string]int{"张敏": 1, "李芳": 1, "王强": 1})}
+	pe := &fakePersonEvaluator{}
+	alertRepo := &fakeAlertRepo{}
+	o := evalOrch(repo, alertRepo, fetcher, &fakeFeatureRepo{}, pe)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("回写失败不应上抛（返回 nil），得到 %v", err)
+	}
+	if len(repo.finalizeCalls) != 0 {
+		t.Errorf("FinalizeBatch 不应被调用（批次留 running 停滞处置），实际 %d 次", len(repo.finalizeCalls))
+	}
+	if batch.Status != domain.BatchStatusRunning {
+		t.Errorf("Status = %q, want running", batch.Status)
+	}
+	// 错误者外其余人员照常推进（§5.2.5：不阻塞其余人员）。
+	if batch.EvaluatedCount != 2 {
+		t.Errorf("EvaluatedCount = %d, want 2（李芳回写失败不计）", batch.EvaluatedCount)
+	}
+	if repo.persons[0].Status != domain.PersonStatusSuccess || repo.persons[2].Status != domain.PersonStatusSuccess {
+		t.Error("张敏、王强应照常推进 success 终态")
+	}
+	if repo.persons[1].Status != domain.PersonStatusPending {
+		t.Errorf("李芳回写失败应仍 pending，实际 %q", repo.persons[1].Status)
+	}
+	if len(alertRepo.alerts) != 0 {
+		t.Error("未终态批次不应写告警")
 	}
 }
