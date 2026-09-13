@@ -283,6 +283,106 @@ func TestListByPersonAndRange_BoundaryInclusive(t *testing.T) {
 	}
 }
 
+// TestCountFailedByTokenNames 验证失败分子统计口径（specs P2_ASM_001 §5.2.2 步骤7：
+// 分子为批次内 status=failed 会话计数）。半开区间 [start, end) 与批次窗口装配一致。
+func TestCountFailedByTokenNames(t *testing.T) {
+	t.Run("窗口内多人失败计数", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		start, end := baseUnix, baseUnix+3600
+
+		seeds := []*domain.SessionFeature{
+			makeFeature("cf-1", "张三", domain.FeatureStatusFailed, time.Unix(start+10, 0).UTC()),
+			makeFeature("cf-2", "李四", domain.FeatureStatusFailed, time.Unix(start+20, 0).UTC()),
+			makeFeature("cf-3", "张三", domain.FeatureStatusSuccess, time.Unix(start+30, 0).UTC()),   // success 不计
+			makeFeature("cf-4", "张三", domain.FeatureStatusFailed, time.Unix(start-100, 0).UTC()),  // 窗外
+			makeFeature("cf-5", "王五", domain.FeatureStatusFailed, time.Unix(start+40, 0).UTC()),   // 名单外
+			makeFeature("cf-6", "李四", domain.FeatureStatusSkipped, time.Unix(start+50, 0).UTC()),  // skipped 不计
+			makeFeature("cf-7", "张三", domain.FeatureStatusFailed, time.Unix(end, 0).UTC()),        // end 边界半开排除
+			makeFeature("cf-8", "李四", domain.FeatureStatusFailed, time.Unix(start, 0).UTC()),      // start 边界含
+		}
+		for _, s := range seeds {
+			if err := db.Create(s).Error; err != nil {
+				t.Fatalf("seed %s: %v", s.SessionKey, err)
+			}
+		}
+
+		n, err := repo.CountFailedByTokenNames(context.Background(), []string{"张三", "李四"}, start, end)
+		if err != nil {
+			t.Fatalf("CountFailedByTokenNames: unexpected error: %v", err)
+		}
+		// 命中 cf-1 / cf-2 / cf-8 三行。
+		if n != int64(3) {
+			t.Fatalf("失败分子 want 3, got %d", n)
+		}
+	})
+
+	t.Run("预置 2 failed 1 success 断言 2", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		start, end := baseUnix, baseUnix+3600
+
+		seeds := []*domain.SessionFeature{
+			makeFeature("cc-1", "张三", domain.FeatureStatusFailed, time.Unix(start+10, 0).UTC()),
+			makeFeature("cc-2", "张三", domain.FeatureStatusFailed, time.Unix(start+20, 0).UTC()),
+			makeFeature("cc-3", "张三", domain.FeatureStatusSuccess, time.Unix(start+30, 0).UTC()),
+		}
+		for _, s := range seeds {
+			if err := db.Create(s).Error; err != nil {
+				t.Fatalf("seed %s: %v", s.SessionKey, err)
+			}
+		}
+
+		n, err := repo.CountFailedByTokenNames(context.Background(), []string{"张三"}, start, end)
+		if err != nil {
+			t.Fatalf("CountFailedByTokenNames: unexpected error: %v", err)
+		}
+		if n != int64(2) {
+			t.Fatalf("失败分子 want 2, got %d", n)
+		}
+	})
+
+	t.Run("空名单直接返回 0 且无错误", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		if err := db.Create(makeFeature("ce-1", "张三", domain.FeatureStatusFailed, time.Unix(baseUnix+10, 0).UTC())).Error; err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		n, err := repo.CountFailedByTokenNames(context.Background(), nil, baseUnix, baseUnix+3600)
+		if err != nil {
+			t.Fatalf("空名单 want nil error, got %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("空名单 want 0, got %d", n)
+		}
+
+		n, err = repo.CountFailedByTokenNames(context.Background(), []string{}, baseUnix, baseUnix+3600)
+		if err != nil {
+			t.Fatalf("空切片 want nil error, got %v", err)
+		}
+		if n != 0 {
+			t.Fatalf("空切片 want 0, got %d", n)
+		}
+	})
+
+	t.Run("查询故障透传", func(t *testing.T) {
+		db := newFeatureTestDB(t, true)
+		repo := repository.NewSessionFeatureRepository(db)
+		sqlDB, err := db.DB()
+		if err != nil {
+			t.Fatalf("取底层连接: %v", err)
+		}
+		if err := sqlDB.Close(); err != nil {
+			t.Fatalf("关闭连接: %v", err)
+		}
+
+		if _, err := repo.CountFailedByTokenNames(context.Background(), []string{"张三"}, 0, 1); err == nil {
+			t.Fatal("连接关闭后 CountFailedByTokenNames want error, got nil")
+		}
+	})
+}
+
 // TestFindBySessionKey 验证 session_key 点查两态：命中返回该行，未命中返回 (nil, nil) 非 error。
 func TestFindBySessionKey(t *testing.T) {
 	db := newFeatureTestDB(t, true)
