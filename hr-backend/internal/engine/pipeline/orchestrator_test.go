@@ -32,6 +32,7 @@ type fakeBatchRepo struct {
 	created      []*domain.AssessmentBatch
 	persons      []domain.AssessmentBatchPerson // CreatePersons 捕获的明细行
 	stored       *domain.AssessmentBatch        // GetByID 返回的批次（RunBatch 入口）
+	runningScheduled *domain.AssessmentBatch    // FindLatestRunningScheduled 返回的批次（tick 同源阻塞探针）
 	advanceErrs  map[string]error
 	advanceCalls map[string]int
 	advanceErr   map[string]string
@@ -74,7 +75,7 @@ func (f *fakeBatchRepo) CreatePersons(ctx context.Context, persons []domain.Asse
 	return nil
 }
 func (f *fakeBatchRepo) FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
-	return nil, nil
+	return f.runningScheduled, nil
 }
 func (f *fakeBatchRepo) ListByFilter(ctx context.Context, bf repository.BatchFilter) ([]domain.AssessmentBatch, int64, error) {
 	return nil, 0, nil

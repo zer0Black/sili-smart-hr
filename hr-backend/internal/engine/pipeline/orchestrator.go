@@ -201,8 +201,55 @@ func (o *Orchestrator) SubmitManualBatch(ctx context.Context, req CreateBatchReq
 // TickTrigger 周期触发判定（03 §4.3，BatchTickRunner 消费面）：
 // 读配置 → TriggerHit 未命中返 nil → 读名单 → 同源阻塞判定 → 推窗口 → CreateBatch + 入队。
 // 四类错误（配置读取/名单拉取/建批落库/入队）上抛交 Asynq 任务级重试。
-// 完整逻辑归 T4 实现。
 func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
+	cfg, err := o.configRepo.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("pipeline: 配置读取: %w", err)
+	}
+	if !TriggerHit(now, cfg.Period, cfg.TriggerTime) {
+		return nil
+	}
+
+	// 评估对象快照（specs §5.1.2 步骤2）：specified 读配置关联名单，all 由
+	// CreateBatch 经 StaffFetcher 展开。
+	var names []string
+	if cfg.TargetMode == domain.BatchTargetSpecified {
+		members, err := o.configRepo.ListMembers(ctx, cfg.ID)
+		if err != nil {
+			return fmt.Errorf("pipeline: 指定名单读取: %w", err)
+		}
+		for _, m := range members {
+			names = append(names, m.StaffName)
+		}
+	}
+
+	// 同源阻塞判定（specs §5.1.4 规则2）：存在 running 且非停滞的定时批次时
+	// 记 ERROR 跳过返回 nil，不排队叠加；停滞批次不阻塞。
+	if prev, err := o.repo.FindLatestRunningScheduled(ctx); err != nil {
+		return fmt.Errorf("pipeline: 同源批次查询: %w", err)
+	} else if prev != nil && !IsStalled(now, prev.TriggeredAt, cfg.Period, prev.Status) {
+		slog.Error("batch tick skipped: previous scheduled batch still running",
+			"batch_no", prev.BatchNo, "triggered_at", prev.TriggeredAt)
+		return nil
+	}
+
+	// 含止日口径（specs §5.1.4 规则1）：窗口左闭右开，PeriodStart 为窗口 start
+	// 当日零点，PeriodEnd 为窗口 end 前一日零点，保证连续周期不重叠不遗漏。
+	start, end := CurrentPeriodWindow(now, cfg.Period)
+	batch, err := o.CreateBatch(ctx, CreateBatchRequest{
+		TriggerType: domain.BatchTriggerScheduled,
+		TargetMode:  cfg.TargetMode,
+		TargetNames: names,
+		PeriodStart: time.Unix(start, 0),
+		PeriodEnd:   time.Unix(end, 0).AddDate(0, 0, -1),
+	})
+	if err != nil {
+		return err
+	}
+	if err := o.batchEnq.EnqueueBatchRun(ctx, batch.ID); err != nil {
+		return fmt.Errorf("pipeline: batch-run 投递: %w", err)
+	}
+	slog.Info("batch tick triggered", "batch_no", batch.BatchNo, "period", cfg.Period)
 	return nil
 }
 
