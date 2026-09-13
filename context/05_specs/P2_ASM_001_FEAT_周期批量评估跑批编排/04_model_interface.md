@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_ASM_001_FEAT_周期批量评估跑批编排 |
 | 模块代号 | ASM（评估运营域） |
-| 文档版本 | v1.4 |
+| 文档版本 | v1.5 |
 | 创建日期 | 2026-09-11 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md) |
@@ -214,7 +214,7 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 **业务规则：**
 
 - **状态机（specs §6.1/§6.2 唯一权威）**：`running` → `success`（全员终态且失败人数占比 ≤ `10.00`）/ `partial_failed`（`10.00` < 占比 < `100.00`）/ `failed`（占比 = `100.00`，或批次级异常）。占比为百分比口径（0 至 100）保留两位小数，与 `batchAlertThreshold` 同精度比较（03 文档 §4.6）。终态无出边，`RunBatch` 对非 `running` 批次幂等返回，重复消费不重复编排（03 文档 §4.4）。
-- **计数原子推进**：`evaluated_count`/`covered_session_count`/`failed_count` 在单人终态回写时用 SQL 自增（`SET col = col + ?`），不做读改写；`evaluated_count = total_count` 作为终态触发条件在同事务内判定。
+- **计数原子推进**：`evaluated_count`/`covered_session_count`/`failed_count` 在单人终态回写时用 SQL 自增（`SET col = col + ?`），不做读改写；`evaluated_count = total_count` 的终态判定由调用方在回写事务外读回批次行进行，终态落定以 `WHERE status='running'` 条件更新守卫（affected==0 视为已终态幂等返回），并发双触发不重复落终态、计数不回退。
 - **停滞不落库**：停滞是查询期按 `status='running'` 加 `triggered_at` 与周期长度比较派生的标识，不改写 `status`（specs §6.2 说明），故本表无停滞列。
 - **会话级失败比例口径**：分母取批次展开时确定的 `total_session_count`（本功能定义），分子按同批人员与同时段从 `session_features` 统计 `status='failed'` 计数（承接 T4 口径）。两口径的差异仅来自跨边界会话（展开按上游窗口过滤，档案侧按末轮归属），属已知近似，比例可能轻微低估。
 - **名单快照不可变**：`target_names_json` 与人员明细行在**批次创建时**一次性落库，此后不再刷新，配置变更与人员变动不回改已落库批次（specs §4.1.4 规则1/4）。编排展开会话列表后按 `token_name` 分组得到的会话集只用于 `EvaluatePerson` 的 sessions 入参与覆盖会话数口径，不增删名单（03 文档 §1.5）。
@@ -467,10 +467,10 @@ COMMENT ON TABLE "assessment_alerts" IS '批次失败超阈告警信号';
 
 ---
 
-**文档版本：** v1.4
+**文档版本：** v1.5
 **最后更新：** 2026-09-12
 **作者：** lixuetao
 
-**v1.4 变更（监理扫描·模式二修复）：** §6 计划卡构成描述补 all 模式下 target_count 含上游人员接口全量拉取与不可达降级口径。
+**v1.5 变更（监理扫描·模式三修复）：** §3.1 计数原子推进条目的终态判定表述按开发计划实现口径修正：终态判定由调用方在回写事务外读回批次行进行，以 FinalizeBatch 的 `WHERE status='running'` 条件更新守卫防并发双触发，原「同事务内判定」表述废弃。
 
 **v1.3 变更（监理扫描·模式二修复）：** §3.2 status 字段「前四态计成功侧」改为显式枚举「success/reused/degraded/skipped 四态计成功侧」；§6 维度计数过滤条件补全 group_code；文档信息表版本号同步 v1.3。

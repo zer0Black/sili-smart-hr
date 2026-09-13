@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_ASM_001_FEAT_周期批量评估跑批编排 |
 | 模块代号 | ASM（评估运营域） |
-| 文档版本 | v1.4 |
+| 文档版本 | v1.6 |
 | 创建日期 | 2026-09-11 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md)、[04_model_interface.md](04_model_interface.md) |
@@ -152,6 +152,7 @@ GET /api/assessment/batches?trigger_type=scheduled&status=running&page=1&page_si
         "trigger_type": "scheduled",
         "target_mode": "specified",
         "target_brief": ["张敏", "李芳"],
+        "target_names": ["张敏", "李芳", "王强", "赵磊", "周杰"],
         "period_start": "2026-09-07",
         "period_end": "2026-09-13",
         "status": "running",
@@ -180,6 +181,7 @@ GET /api/assessment/batches?trigger_type=scheduled&status=running&page=1&page_si
 | trigger_type | string | 触发方式 [可选值：scheduled/manual] |
 | target_mode | string | 评估对象模式 [可选值：all/specified] |
 | target_brief | array | 评估对象摘要：`specified` 模式取名单前 2 个人名，`all` 模式为空数组（前端渲染「全员」）。超过 2 人时前端拼「前两人名 等 N 人」，N 取 `total_count`（specs §4.1.5） |
+| target_names | array | 评估对象完整名单快照（`token_name` 人名全量数组，`all` 模式同返快照），供列表悬浮展示全部名单（specs §4.1.5 通用规范悬浮全名单） |
 | period_start | string | 评估时段起点（含），`yyyy-MM-dd` |
 | period_end | string | 评估时段终点（**含**），`yyyy-MM-dd`；与 `period_start` 同口径，可相等表示单日评估 |
 | status | string | 批次状态 [可选值：running/success/partial_failed/failed] |
@@ -256,6 +258,7 @@ GET /api/assessment/batches?trigger_type=scheduled&status=running&page=1&page_si
     "period": "weekly",
     "target_mode": "specified",
     "target_brief": ["张敏", "李芳"],
+    "target_names": ["张敏", "李芳", "王强", "赵磊"],
     "target_count": 12,
     "dimension_base_count": 4,
     "dimension_upper_count": 4
@@ -271,6 +274,7 @@ GET /api/assessment/batches?trigger_type=scheduled&status=running&page=1&page_si
 | period | string | 周期长度 [可选值：daily/weekly/monthly] |
 | target_mode | string | 评估对象模式 [可选值：all/specified] |
 | target_brief | array | 指定人员名单前 2 个人名，`all` 模式为空数组 |
+| target_names | array | 评估对象完整名单（specified 为当前配置名单全量、`all` 模式为空数组由前端渲染「全员」），供计划卡悬浮展示全部名单（specs §4.1.5 通用规范悬浮全名单，与 A1 的 `target_names` 同承载） |
 | target_count | integer | 评估对象人数。`specified` 模式为名单条数；`all` 模式为经人员检索接口取到的全员人数，上游不可达时返回 0（该情形下前端只渲染「全员」不展示人数，不影响计划卡其余字段） |
 | dimension_base_count | integer | 当前启用的对话分析维度中 `group_code=BASE` 的计数（specs §4.1.2B 的「底层 N 维」） |
 | dimension_upper_count | integer | 当前启用的对话分析维度中 `group_code=UPPER` 的计数（同上的「上层 N 维」） |
@@ -697,7 +701,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 ## 7. SSOT 合规与一致性
 
 - [x] 页面功能全覆盖：4.1 评测运营中心页（列表、统计卡、计划卡、筛选、发起入口、失败明细入口、重新发起、查看结果跳转、刷新统计）→ A1-A5；4.2 发起评测弹窗（对象、时段、提交、取消、人员搜索）→ B1 与复用的 C1；4.3 失败明细弹窗 → A5。
-- [x] 字段定义与 specs 一致：4.1.2A/B/C/D、4.2.2、4.3.2 的全部字段在响应结构中一一对应；两处按 spec 语义省略（4.2.2「评测类型」首期恒为对话分析不携带，4.1.2D「停滞」以派生布尔 `stalled` 承载而非状态值），「周期长度」沿用上游字段名（specs v1.8）。
+- [x] 字段定义与 specs 一致：4.1.2A/B/C/D、4.2.2、4.3.2 的全部字段在响应结构中一一对应；三处按 spec 语义适配（4.2.2「评测类型」首期恒为对话分析不携带，4.1.2D「停滞」以派生布尔 `stalled` 承载而非状态值，4.1.5 悬浮全名单经 A1/A3 的 `target_names` 全量字段承载），「周期长度」沿用上游字段名（specs v1.8）。
 - [x] 业务规则在接口与任务契约中落地：全员互斥（B1 的 `target_mode` 单值）、全员名单在创建时快照（§1.5）、时段边界（1602 校验）、同周期批次并存（B1 无重叠校验）、进度与覆盖会话数口径（A1 字段 + §4.6）、失败人数占比与告警（§4.6-4.7）。
 - [x] 状态定义与 specs 第 6 章一致：批次四态与转换条件落 §4.6，终态不可逆由 `RunBatch` 的幂等返回保证。
 - [x] 权限规则一致：全部接口挂 JWT，无角色差异（specs §2.2），无字段级权限。
@@ -719,9 +723,13 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 
 ---
 
-**文档版本：** v1.4
-**最后更新：** 2026-09-12
+**文档版本：** v1.6
+**最后更新：** 2026-09-13
 **作者：** lixuetao
+
+**v1.6 变更（监理扫描·模式三修复）：** A3 响应追加 `target_names` 全量名单字段（计划卡悬浮展示全部名单的承载，此前仅 target_brief 前 2 人名，对齐 A1 v1.5 同款处理）。
+
+**v1.5 变更（监理扫描·模式三修复）：** A1 响应追加 `target_names` 全量名单字段（specs §4.1.5 悬浮展示全部名单的承载，此前仅 target_brief 前 2 人名）。
 
 **v1.4 变更（监理扫描·模式二修复）：** B1 响应 total_count 说明补 specified 模式按 staff_name 去重语义（对齐 §4.8 TargetNames 去重口径）。
 
