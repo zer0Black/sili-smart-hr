@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -33,11 +34,21 @@ const (
 	staffPageSize = 100
 	// personInsertBatch 人员明细批量落库批尺寸。
 	personInsertBatch = 100
+	// 任务类型常量（03 §4.1）：worker/task 定义 handler 侧，此处投递侧重复
+	// 声明规避循环 import（task → pipeline → task）；改动须双侧同步。
+	typeBatchRun       = "engine:batch-run"
+	typeSessionExtract = "engine:session-extract"
 )
 
 // StaffFetcher 全员名单拉取窄接口（*userapi.Client 鸭子满足）。
 type StaffFetcher interface {
 	ListStaffs(ctx context.Context, secret, keyword string, page, pageSize int) ([]userapi.Staff, int64, error)
+}
+
+// SessionListFetcher 会话列表拉取窄接口（*conversationlog.Client 鸭子满足，
+// 与 activity.SessionListFetcher 同签名，窄接口消费侧各持定义）。
+type SessionListFetcher interface {
+	ListSessions(ctx context.Context, secret string, req conversationlog.ListSessionsRequest) ([]conversationlog.SessionSummary, int64, error)
 }
 
 // SecretResolver 集成密钥解析（service.ResolveIntegrationSecret 收敛点注入）。
@@ -66,7 +77,7 @@ type Orchestrator struct {
 	alertRepo   repository.AssessmentAlertRepository
 	featureRepo repository.SessionFeatureRepository
 	configRepo  repository.AssessmentConfigRepository
-	cl          *conversationlog.Client
+	cl          SessionListFetcher
 	staffs      StaffFetcher
 	secrets     SecretResolver
 	evaluator   PersonEvaluator
@@ -81,7 +92,7 @@ func NewOrchestrator(
 	alertRepo repository.AssessmentAlertRepository,
 	featureRepo repository.SessionFeatureRepository,
 	configRepo repository.AssessmentConfigRepository,
-	cl *conversationlog.Client,
+	cl SessionListFetcher,
 	staffs StaffFetcher,
 	secrets SecretResolver,
 	evaluator PersonEvaluator,
@@ -188,6 +199,100 @@ func (o *Orchestrator) SubmitManualBatch(ctx context.Context, req CreateBatchReq
 // 完整逻辑归 T4 实现。
 func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 	return nil
+}
+
+// 会话列表拉取翻页常量（页大小与页数上限复用 activity 包口径）。
+const (
+	sessionListPageSize = 100
+	sessionListMaxPages = 100
+)
+
+// RunBatch 批次编排全流程（03 §4.4）：非 running 批次幂等返回 nil。
+// 展开分组 → 回填会话数 → 投递抽取 → 逐人评估（T3）→ 推进终态（T3）→ 告警（T3）。
+func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
+	batch, err := o.repo.GetByID(ctx, batchID)
+	if err != nil {
+		return fmt.Errorf("pipeline: 批次读取: %w", err)
+	}
+	if batch == nil || batch.Status != domain.BatchStatusRunning {
+		return nil // 幂等终态：重复消费不重复编排
+	}
+
+	secret, err := o.secrets(ctx)
+	if err != nil {
+		return fmt.Errorf("pipeline: 集成密钥解析: %w", err)
+	}
+	// Period 半开区间（03 §2.5）：PeriodStart 当日零点为 Start，PeriodEnd 加一天零点为 End。
+	period := activity.Period{
+		Start: batch.PeriodStartAt.Unix(),
+		End:   batch.PeriodEndAt.AddDate(0, 0, 1).Unix(),
+	}
+	sessions, err := o.fetchAllSessions(ctx, secret, period)
+	if err != nil {
+		// 上游列表不可用：整批落 failed 终态（全员计入失败计数，§5.2.5 异常表第一行）。
+		reason := fmt.Sprintf("会话列表拉取失败: %v", err)
+		slog.Error("batch run upstream list failed", "batch_id", batchID, "batch_no", batch.BatchNo, "err", err)
+		if failErr := o.repo.FailWholeBatch(ctx, batchID, reason); failErr != nil {
+			return fmt.Errorf("pipeline: %s；落 failed 终态失败: %w", reason, failErr)
+		}
+		// 终态判定写告警（§5.2.4 规则4）：占比 100.00 超阈必写。
+		batch.Status = domain.BatchStatusFailed
+		batch.ErrorSummary = reason
+		batch.EvaluatedCount = batch.TotalCount
+		batch.FailedCount = batch.TotalCount
+		if o.alerts != nil {
+			_ = o.alerts.WriteAlert(ctx, batch)
+		}
+		return nil
+	}
+
+	sessions = activity.DedupSessions(sessions) // 跨页重复去重（§5.2.5）
+	groups := make(map[string][]conversationlog.SessionSummary)
+	for _, s := range sessions {
+		groups[s.TokenName] = append(groups[s.TokenName], s)
+	}
+
+	// 回填会话数（03 §4.4 步骤4）：名单快照全员入明细，无会话者为 0。
+	personSessions := make(map[string]int, len(groups))
+	for name, ss := range groups {
+		personSessions[name] = len(ss)
+	}
+	if err := o.repo.UpdateTotalSessions(ctx, batchID, len(sessions), personSessions); err != nil {
+		return fmt.Errorf("pipeline: 回填会话数: %w", err)
+	}
+
+	// 逐会话投递抽取任务（一会话一任务，specs §5.2.2 步骤3）。
+	for _, s := range sessions {
+		if err := o.sessionEnq.EnqueueSessionExtract(ctx, s.SessionKey, s.TokenName); err != nil {
+			// 投递失败该会话无档案行，不计入失败比例分子（已知披露，§5.2.5），记日志继续。
+			slog.Error("session extract enqueue failed", "batch_id", batchID, "session_key", s.SessionKey, "err", err)
+		}
+	}
+
+	// 逐人评估 → 推进终态 → 告警归 T3 在同一方法内补齐。
+	return nil
+}
+
+// fetchAllSessions 全量串行翻页拉取会话列表（禁止按人过滤，T4 §3.2：中文
+// token_name 上游过滤不可用）。短页/空页终止，页数上限防上游分页失效无界推进。
+func (o *Orchestrator) fetchAllSessions(ctx context.Context, secret string, period activity.Period) ([]conversationlog.SessionSummary, error) {
+	var all []conversationlog.SessionSummary
+	for page := 1; page <= sessionListMaxPages; page++ {
+		items, _, err := o.cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
+			StartTime: period.Start,
+			EndTime:   period.End,
+			Page:      page,
+			PageSize:  sessionListPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, items...)
+		if len(items) < sessionListPageSize {
+			return all, nil
+		}
+	}
+	return nil, fmt.Errorf("会话列表翻页超 %d 页上限（上游分页疑似失效）", sessionListMaxPages)
 }
 
 // resolveNames 解析名单快照：specified 按 staff_name 去重（同名同人收敛，与

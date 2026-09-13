@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"sync"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
+	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/userapi"
 	"sili-smart-hr/backend/internal/repository"
 
@@ -25,9 +27,16 @@ type fakeBatchRepo struct {
 	createErrs []error // 逐次消费，耗尽后返回 nil
 	created    []*domain.AssessmentBatch
 	persons    []domain.AssessmentBatchPerson // CreatePersons 捕获的明细行
+	stored     *domain.AssessmentBatch        // GetByID 返回的批次（RunBatch 入口）
 	failCalled bool
 	failReason string
 	failBatch  int64
+
+	utsCalled      bool
+	utsBatchID     int64
+	utsTotal       int
+	utsPersons     map[string]int
+	utsPersonsKeys []string // 写入顺序，供确定性断言
 }
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
@@ -46,7 +55,7 @@ func (f *fakeBatchRepo) Create(ctx context.Context, b *domain.AssessmentBatch) e
 }
 
 func (f *fakeBatchRepo) GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error) {
-	return nil, nil
+	return f.stored, nil
 }
 
 func (f *fakeBatchRepo) CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error {
@@ -60,6 +69,13 @@ func (f *fakeBatchRepo) ListByFilter(ctx context.Context, bf repository.BatchFil
 	return nil, 0, nil
 }
 func (f *fakeBatchRepo) UpdateTotalSessions(ctx context.Context, batchID int64, totalSessions int, personSessions map[string]int) error {
+	f.utsCalled = true
+	f.utsBatchID = batchID
+	f.utsTotal = totalSessions
+	f.utsPersons = personSessions
+	for _, p := range f.persons {
+		f.utsPersonsKeys = append(f.utsPersonsKeys, p.TokenName)
+	}
 	return nil
 }
 func (f *fakeBatchRepo) AdvancePersonTerminal(ctx context.Context, batchID int64, tokenName, personStatus, errorSummary string, sessionCount int) error {
@@ -128,8 +144,8 @@ func (f *fakeStaffFetcher) ListStaffs(ctx context.Context, secret, keyword strin
 
 // fakeBatchEnqueuer 投递 fake。
 type fakeBatchEnqueuer struct {
-	err     error
-	enqIDs  []int64
+	err    error
+	enqIDs []int64
 }
 
 var _ pipeline.BatchEnqueuer = (*fakeBatchEnqueuer)(nil)
@@ -340,4 +356,313 @@ func TestCreateBatchConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+// ---- RunBatch 展开分组与抽取投递（specs §5.2.2 步骤2-3） ----
+
+// fakeSessionFetcher 会话列表 fake：pages 逐页返回，耗尽返空页终止；lastReq 记录末次请求。
+type fakeSessionFetcher struct {
+	pages   [][]conversationlog.SessionSummary
+	err     error
+	calls   int
+	lastReq conversationlog.ListSessionsRequest
+}
+
+func (f *fakeSessionFetcher) ListSessions(ctx context.Context, secret string, req conversationlog.ListSessionsRequest) ([]conversationlog.SessionSummary, int64, error) {
+	f.lastReq = req
+	if f.err != nil {
+		return nil, 0, f.err
+	}
+	idx := f.calls
+	f.calls++
+	if idx >= len(f.pages) {
+		return nil, 0, nil
+	}
+	var total int64
+	for _, p := range f.pages {
+		total += int64(len(p))
+	}
+	return f.pages[idx], total, nil
+}
+
+// fakeSessionEnqueuer 会话抽取投递 fake：逐次记录入参，errs 注入逐次错误。
+type fakeSessionEnqueuer struct {
+	errs   []error // 逐次消费，耗尽后 nil
+	calls  int
+	keys   []string
+	tokens []string
+}
+
+var _ pipeline.SessionEnqueuer = (*fakeSessionEnqueuer)(nil)
+
+func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, tokenName string) error {
+	f.calls++
+	f.keys = append(f.keys, sessionKey)
+	f.tokens = append(f.tokens, tokenName)
+	if len(f.errs) > 0 {
+		err := f.errs[0]
+		f.errs = f.errs[1:]
+		return err
+	}
+	return nil
+}
+
+// newRunBatchOrch 组装 RunBatch 链路编排器。
+func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, sessionEnq *fakeSessionEnqueuer) *pipeline.Orchestrator {
+	return pipeline.NewOrchestrator(repo, alertRepo, nil, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		nil, alertWriter(alertRepo), nil, sessionEnq)
+}
+
+// runBatchFixture 建 running 批次：3 人明细、窗口 2026-09-07 至 2026-09-13（含止日）。
+func runBatchFixture(repo *fakeBatchRepo) *domain.AssessmentBatch {
+	repo.persons = []domain.AssessmentBatchPerson{
+		{BatchID: 1, TokenName: "张敏", Status: domain.PersonStatusPending},
+		{BatchID: 1, TokenName: "李芳", Status: domain.PersonStatusPending},
+		{BatchID: 1, TokenName: "王强", Status: domain.PersonStatusPending},
+	}
+	batch := &domain.AssessmentBatch{
+		ID:            1,
+		BatchNo:       "B202609070800001",
+		TriggerType:   domain.BatchTriggerScheduled,
+		TargetMode:    domain.BatchTargetSpecified,
+		TotalCount:    3,
+		Status:        domain.BatchStatusRunning,
+		PeriodStartAt: time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC),
+		PeriodEndAt:   time.Date(2026, 9, 13, 0, 0, 0, 0, time.UTC),
+		TriggeredAt:   time.Date(2026, 9, 13, 8, 0, 0, 0, time.UTC),
+	}
+	repo.stored = batch
+	return batch
+}
+
+// padFullPage 把页片前 3 行后补 filler 凑满 100 行（满页才会翻到下一页）。
+// filler 用页外 token_name（名单快照外人员），不影响主断言的分组口径。
+func padFullPage(rows []conversationlog.SessionSummary, fillerPrefix string) []conversationlog.SessionSummary {
+	out := append([]conversationlog.SessionSummary{}, rows...)
+	for i := len(rows); i < 100; i++ {
+		out = append(out, conversationlog.SessionSummary{
+			SessionKey: fmt.Sprintf("%s-filler-%d", fillerPrefix, i),
+			TokenName:  fillerPrefix + "路人",
+		})
+	}
+	return out
+}
+
+func TestRunBatchDedupAndGroup(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 2 页：page1 满页（3 行名单会话 + 97 filler），page2 短页含 sk-a 跨页重复与
+	// 王强 1 行；名单内去重后 张敏 1、李芳 2、王强 1；filler 会话属名单外人员，
+	// 计入 total_session_count（全量口径）但不投递给名单内断言面。
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		padFullPage([]conversationlog.SessionSummary{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+			{SessionKey: "sk-c", TokenName: "李芳"},
+		}, "p1"),
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"}, // 跨页重复（BR4）
+			{SessionKey: "sk-d", TokenName: "王强"},
+		},
+	}}
+	sessionEnq := &fakeSessionEnqueuer{}
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, fetcher, sessionEnq)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if fetcher.calls != 2 {
+		t.Errorf("ListSessions 调用 = %d, want 2（满页后短页终止）", fetcher.calls)
+	}
+	// 全量拉取口径：无按人过滤字段（T4 §3.2 禁令）。
+	if fetcher.lastReq.Username != "" || fetcher.lastReq.UserID != 0 || fetcher.lastReq.PageSize != 100 {
+		t.Errorf("lastReq = %+v, want PageSize=100 且无按人过滤", fetcher.lastReq)
+	}
+	// Period 半开区间：Start 当日零点、End 加一天零点（03 §2.5）。
+	if fetcher.lastReq.StartTime != batch.PeriodStartAt.Unix() {
+		t.Errorf("StartTime = %d, want %d", fetcher.lastReq.StartTime, batch.PeriodStartAt.Unix())
+	}
+	if fetcher.lastReq.EndTime != batch.PeriodEndAt.AddDate(0, 0, 1).Unix() {
+		t.Errorf("EndTime = %d, want PeriodEnd+1 天 %d", fetcher.lastReq.EndTime, batch.PeriodEndAt.AddDate(0, 0, 1).Unix())
+	}
+	if !repo.utsCalled {
+		t.Fatal("UpdateTotalSessions 未被调用")
+	}
+	if repo.utsBatchID != batch.ID {
+		t.Errorf("UpdateTotalSessions batchID = %d, want %d", repo.utsBatchID, batch.ID)
+	}
+	// 名单内人员分组口径（specs §5.2.2 步骤2 展开分组）：去重后 张敏 1、李芳 2、王强 1。
+	want := map[string]int{"张敏": 1, "李芳": 2, "王强": 1}
+	for name, cnt := range want {
+		if repo.utsPersons[name] != cnt {
+			t.Errorf("personSessions[%q] = %d, want %d（全量 %v）", name, repo.utsPersons[name], cnt, repo.utsPersons)
+		}
+	}
+	// 总数 = 去重后全部会话（含名单外 filler：100 + 2 - 1 重复 = 101）。
+	if repo.utsTotal != 101 {
+		t.Errorf("totalSessions = %d, want 101（去重后全量）", repo.utsTotal)
+	}
+}
+
+func TestRunBatchEnqueuesExtract(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		padFullPage([]conversationlog.SessionSummary{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+			{SessionKey: "sk-c", TokenName: "李芳"},
+		}, "p1"),
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"}, // 跨页重复不重复投递（BR4）
+			{SessionKey: "sk-d", TokenName: "王强"},
+		},
+	}}
+	sessionEnq := &fakeSessionEnqueuer{}
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, fetcher, sessionEnq)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if sessionEnq.calls != 101 {
+		t.Fatalf("EnqueueSessionExtract 调用 = %d, want 101（去重后全量会话数）", sessionEnq.calls)
+	}
+	for i, k := range sessionEnq.keys {
+		if k == "" {
+			t.Errorf("第 %d 次投递 session_key 为空", i)
+		}
+	}
+	// 名单内会话归属与去重口径：sk-a 只投递一次，token_name 与会话随行携带。
+	got := map[string]string{}
+	dup := 0
+	for i, k := range sessionEnq.keys {
+		if _, ok := got[k]; ok {
+			dup++
+		}
+		got[k] = sessionEnq.tokens[i]
+	}
+	if dup != 0 {
+		t.Errorf("重复投递 %d 次（跨页重复应去重，BR4）", dup)
+	}
+	want := map[string]string{"sk-a": "张敏", "sk-b": "李芳", "sk-c": "李芳", "sk-d": "王强"}
+	for k, tok := range want {
+		if got[k] != tok {
+			t.Errorf("投递 %q 的 token_name = %q, want %q", k, got[k], tok)
+		}
+	}
+}
+
+func TestRunBatchUpstreamFail(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{err: errFake}
+	sessionEnq := &fakeSessionEnqueuer{}
+	alertRepo := &fakeAlertRepo{}
+	o := newRunBatchOrch(repo, alertRepo, fetcher, sessionEnq)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch 整批失败终态应返回 nil（不重试），得到 %v", err)
+	}
+	if !repo.failCalled {
+		t.Error("列表拉取失败应调 FailWholeBatch 落整批 failed")
+	}
+	if repo.failBatch != batch.ID {
+		t.Errorf("FailWholeBatch batchID = %d, want %d", repo.failBatch, batch.ID)
+	}
+	if repo.failReason == "" {
+		t.Error("FailWholeBatch reason 应记上游错误摘要")
+	}
+	if sessionEnq.calls != 0 {
+		t.Errorf("整批失败不应投递抽取任务，实际 %d 次", sessionEnq.calls)
+	}
+	if repo.utsCalled {
+		t.Error("整批失败不应回填会话数")
+	}
+	// 占比 100.00 超阈必写告警（§5.2.4 规则4）。
+	if len(alertRepo.alerts) != 1 {
+		t.Fatalf("应写 1 条告警，实际 %d", len(alertRepo.alerts))
+	}
+	if alertRepo.alerts[0].FailedRatio != 100.00 {
+		t.Errorf("告警占比 = %v, want 100.00", alertRepo.alerts[0].FailedRatio)
+	}
+	if alertRepo.alerts[0].FailedCount != batch.TotalCount || alertRepo.alerts[0].TotalCount != batch.TotalCount {
+		t.Errorf("告警计数 = %d/%d, want %d/%d", alertRepo.alerts[0].FailedCount, alertRepo.alerts[0].TotalCount, batch.TotalCount, batch.TotalCount)
+	}
+}
+
+func TestRunBatchIdempotentTerminal(t *testing.T) {
+	for _, status := range []string{domain.BatchStatusSuccess, domain.BatchStatusPartialFailed, domain.BatchStatusFailed} {
+		t.Run(status, func(t *testing.T) {
+			repo := &fakeBatchRepo{}
+			batch := runBatchFixture(repo)
+			batch.Status = status
+			fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+				{{SessionKey: "sk-a", TokenName: "张敏"}},
+			}}
+			sessionEnq := &fakeSessionEnqueuer{}
+			alertRepo := &fakeAlertRepo{}
+			o := newRunBatchOrch(repo, alertRepo, fetcher, sessionEnq)
+
+			if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+				t.Fatalf("终态批次应幂等返回 nil，得到 %v", err)
+			}
+			if fetcher.calls != 0 {
+				t.Error("终态批次不应拉取上游列表")
+			}
+			if sessionEnq.calls != 0 {
+				t.Error("终态批次不应投递抽取任务")
+			}
+			if repo.utsCalled {
+				t.Error("终态批次不应回填会话数")
+			}
+			if repo.failCalled {
+				t.Error("终态批次不应调 FailWholeBatch")
+			}
+			if len(alertRepo.alerts) != 0 {
+				t.Error("终态批次不应写告警")
+			}
+		})
+	}
+}
+
+// TestRunBatchEnqueueFailContinues 补充（BR5 §5.2.5）：单次投递失败记日志继续，
+// 其余会话照常投递，计数回填不受影响，RunBatch 返回 nil。
+func TestRunBatchEnqueueFailContinues(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+		},
+	}}
+	sessionEnq := &fakeSessionEnqueuer{errs: []error{errFake, nil}}
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, fetcher, sessionEnq)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("投递失败不阻断编排，应返回 nil，得到 %v", err)
+	}
+	if sessionEnq.calls != 2 {
+		t.Errorf("投递失败后续会话应照常投递，调用 = %d, want 2", sessionEnq.calls)
+	}
+	if repo.utsTotal != 2 {
+		t.Errorf("totalSessions = %d, want 2（漏计口径不影响回填总数）", repo.utsTotal)
+	}
+}
+
+// TestRunBatchBatchNotFound 补充边界：批次记录不存在（GetByID 返回 nil）按
+// 幂等终态同款返回 nil，不触碰上游与投递（重复消费已删批次不留副作用）。
+func TestRunBatchBatchNotFound(t *testing.T) {
+	repo := &fakeBatchRepo{} // stored 为 nil
+	fetcher := &fakeSessionFetcher{}
+	sessionEnq := &fakeSessionEnqueuer{}
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, fetcher, sessionEnq)
+
+	if err := o.RunBatch(context.Background(), 999); err != nil {
+		t.Fatalf("批次不存在应返回 nil，得到 %v", err)
+	}
+	if fetcher.calls != 0 || sessionEnq.calls != 0 || repo.utsCalled {
+		t.Error("批次不存在不应有任何副作用")
+	}
 }
