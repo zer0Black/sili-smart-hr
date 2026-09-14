@@ -185,9 +185,9 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 | id | BIGINT | BIGINT | 是 | - | 主键ID（雪花ID），应用层生成 [长度来源：雪花 int64] |
 | batch_no | VARCHAR(32) | VARCHAR(32) | 是 | 业务层置值 | 批次号，格式 `B` + `yyyyMMddHHmm` + 3 位序号（如 `B202609132300001`，共 16 字符），触发时点派生，唯一索引兜底同秒并发撞键（撞键重取序号重试） [长度来源：规则文件 §1.6 标题类量级，32 字符留余量] |
 | trigger_type | VARCHAR(16) | VARCHAR(16) | 是 | - | 触发方式：`scheduled`（周期跑批调度创建）/ `manual`（发起评测接口创建）；列表筛选维度与状态流转无关 [长度来源：枚举值最长 9 字符] |
-| target_mode | VARCHAR(16) | VARCHAR(16) | 是 | - | 评估对象模式：`all`（全员，名单在**批次创建时**经人员检索接口拉取全员名单快照，见 03 文档 §1.5）/ `specified`（指定人员，名单取发起时的选择）；决定名单快照来源，两类名单均在创建时落库 [长度来源：枚举值最长 9 字符] |
-| target_names_json | TEXT | TEXT | 是 | 业务层置值 | 评估对象名单快照（人名数组的 JSON 序列化）。`specified` 取发起请求的人员名单，`all` 取创建时经人员检索接口拉取的全员名单（03 文档 §1.5）；供列表摘要（前 2 个）、「重新发起」预填与总数校核。**批次创建时写入**，此后不随人员主数据变动（specs §4.1.4 规则1 的人员变动不入已展开批次） [长度来源：规则文件 §1.6 长文本 TEXT] |
-| total_count | INT | INTEGER | 是 | 业务层置值 | 批次总人数（进度分母），创建时按名单快照条数写入，`specified` 与 `all` 两种模式同源，无待回填窗口（03 文档 §1.5） [长度来源：int] |
+| target_mode | VARCHAR(16) | VARCHAR(16) | 是 | - | 评估对象模式：`all`（全员，名单在批次执行开头经人员检索接口拉取全员名单快照，见 03 文档 §1.5）/ `specified`（指定人员，名单取发起时的选择）；决定名单快照来源 [长度来源：枚举值最长 9 字符] |
+| target_names_json | TEXT | TEXT | 是 | 业务层置值 | 评估对象名单快照（人名数组的 JSON 序列化）。`specified` 取发起请求的人员名单于批次创建时写入；`all` 落骨架 `'[]'`，由批次执行开头拉取全员名单后原子展开回填（03 文档 §1.5）；供列表摘要（前 2 个）、「重新发起」预填与总数校核。名单一经写入不随人员主数据变动（specs §4.1.4 规则1 的人员变动不入已展开批次） [长度来源：规则文件 §1.6 长文本 TEXT] |
+| total_count | INT | INTEGER | 是 | 业务层置值 | 批次总人数（进度分母），`specified` 创建时按名单条数写入；`all` 骨架期置 0，随名单展开原子回填（通常秒级），展开完成前进度分母按 0 处理（03 文档 §1.5） [长度来源：int] |
 | evaluated_count | INT | INTEGER | 是 | 业务层置 0 | 已到达终态（success/reused/degraded/skipped/failed）的单人评估数，进度分子；单人终态回写时 SQL 原子自增，只增不减（specs §5.2.4 规则2） [长度来源：int] |
 | covered_session_count | INT | INTEGER | 是 | 业务层置 0 | 覆盖会话数：到达成功侧终态的各人窗口内会话数之和，在该人终态时一次性累计；失败人员的会话不计入，含降级与会话（specs §5.2.4 规则3，权威口径） [长度来源：int] |
 | failed_count | INT | INTEGER | 是 | 业务层置 0 | 失败人数：单人评估重试耗尽计数。非零时列表以警示色强调，作为补跑决策依据；批次终态判定与告警判定的分子（specs §8.1 失败人数占比） [长度来源：int] |
@@ -208,7 +208,7 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 |--------|------|------|------|
 | PRIMARY | PRIMARY KEY | id | 主键索引 |
 | uk_batch_no | UNIQUE | batch_no | 批次号唯一：人工引用锚点，同秒并发创建撞键由业务层重取序号重试；本表无软删除，无规则文件 §1.10 的 NULL 语义问题 |
-| idx_status_triggered | INDEX | status, triggered_at | 列表状态筛选加热度排序（「进行中」筛选与停滞判定的点查路径）、tick 的同源批次阻塞判定（查 running 的定时批次） |
+| idx_status_triggered | INDEX | status, triggered_at | 列表状态筛选加热度排序（「进行中」筛选与停滞判定的点查路径）。tick 的已建批判定（FindLatestScheduled 按 trigger_type 查、不限状态）改走 idx_triggered_at 过滤，与本索引无关（实现期演进） |
 | idx_triggered_at | INDEX | triggered_at | 统计卡的本期跑批间隔范围查询与列表无筛选时的倒序翻页 |
 
 **业务规则：**
@@ -217,7 +217,7 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 - **计数原子推进**：`evaluated_count`/`covered_session_count`/`failed_count` 在单人终态回写时用 SQL 自增（`SET col = col + ?`），不做读改写；`evaluated_count = total_count` 的终态判定由调用方在回写事务外读回批次行进行，终态落定以 `WHERE status='running'` 条件更新守卫（affected==0 视为已终态幂等返回），并发双触发不重复落终态、计数不回退。
 - **停滞不落库**：停滞是查询期按 `status='running'` 加 `triggered_at` 与周期长度比较派生的标识，不改写 `status`（specs §6.2 说明），故本表无停滞列。
 - **会话级失败比例口径**：分母取批次展开时确定的 `total_session_count`（本功能定义），分子按同批人员与同时段从 `session_features` 统计 `status='failed'` 计数（承接 T4 口径）。两口径的差异仅来自跨边界会话（展开按上游窗口过滤，档案侧按末轮归属），属已知近似，比例可能轻微低估。
-- **名单快照不可变**：`target_names_json` 与人员明细行在**批次创建时**一次性落库，此后不再刷新，配置变更与人员变动不回改已落库批次（specs §4.1.4 规则1/4）。编排展开会话列表后按 `token_name` 分组得到的会话集只用于 `EvaluatePerson` 的 sessions 入参与覆盖会话数口径，不增删名单（03 文档 §1.5）。
+- **名单快照不可变**：`target_names_json` 与人员明细行在名单确定时一次性落库（`specified` 为批次创建时，`all` 为批次执行开头展开回填，03 文档 §1.5），此后不再刷新，配置变更与人员变动不回改已落库批次（specs §4.1.4 规则1/4）。编排展开会话列表后按 `token_name` 分组得到的会话集只用于 `EvaluatePerson` 的 sessions 入参与覆盖会话数口径，不增删名单（03 文档 §1.5）。
 - **无软删除**：批次为审计留痕，物理保留供历史追溯与工作台态势消费。
 
 ---
@@ -299,7 +299,7 @@ COMMENT ON TABLE "assessment_batch_persons" IS '批次人员评估明细';
 
 **业务规则：**
 
-- **写入时机**：批次创建时按名单快照批量落 N 行 `pending`（名单来源见 §3.1 `target_names_json`），`session_count` 在编排展开分组后按人回填（窗口内无会话者为 0），单人评估返回即按 `uk_batch_person` upsert 更新终态、原因摘要与 `finished_at`。
+- **写入时机**：名单确定时批量落 N 行 `pending`（`specified` 为批次创建时随批次行同事务落库，`all` 为批次执行开头展开时落库，名单来源见 §3.1 `target_names_json`），`session_count` 在编排展开分组后按人回填（窗口内无会话者为 0），单人评估返回即按 `uk_batch_person` upsert 更新终态、原因摘要与 `finished_at`。
 - **终态枚举与批次计数的映射**：`success`/`reused`/`degraded`/`skipped` → 批次 `evaluated_count+1` 且 `covered_session_count += session_count`；`failed` → `evaluated_count+1` 且 `failed_count+1`，不计会话数（specs §5.2.4 规则3）。映射的判定依据是 `EvaluateResult` 的 `Skipped`/`Reused` 标志与评分行是否存在 `failed`（03 文档 §4.6 表）。
 - **清单一致性**：失败明细清单条数恒等于批次 `failed_count`（同一次回写内更新两个位置），顺序按 `finished_at` 升序（specs §4.3.4 规则1）。
 - **会话数快照**：`session_count` 在展开时确定后不再刷新，即使后续抽取任务增删档案行也不回改（与批次覆盖会话数口径一致）。
@@ -404,8 +404,8 @@ COMMENT ON TABLE "assessment_alerts" IS '批次失败超阈告警信号';
 |----|--------|------|------|------|
 | assessment_batches | PRIMARY | PRIMARY KEY | id | 主键 |
 | assessment_batches | uk_batch_no | UNIQUE | batch_no | 批次号唯一与撞键重试兜底 |
-| assessment_batches | idx_status_triggered | INDEX | status, triggered_at | 列表状态筛选、tick 同源批次阻塞判定 |
-| assessment_batches | idx_triggered_at | INDEX | triggered_at | 列表倒序翻页、统计卡本期间隔范围查 |
+| assessment_batches | idx_status_triggered | INDEX | status, triggered_at | 列表状态筛选加热度排序 |
+| assessment_batches | idx_triggered_at | INDEX | triggered_at | 列表倒序翻页、统计卡本期间隔范围查、tick 已建批判定（按 trigger_type 查不限状态） |
 | assessment_batch_persons | PRIMARY | PRIMARY KEY | id | 主键 |
 | assessment_batch_persons | uk_batch_person | UNIQUE | batch_id, token_name | 展开重入 upsert 幂等键 |
 | assessment_batch_persons | idx_batch_status | INDEX | batch_id, status | 失败明细清单、进度校核 |

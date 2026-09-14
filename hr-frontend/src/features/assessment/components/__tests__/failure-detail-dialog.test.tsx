@@ -95,10 +95,7 @@ describe('FailureDetailDialog（specs §4.3）', () => {
 
     expect(onReSubmitFailed).toHaveBeenCalledTimes(1);
     expect(onReSubmitFailed).toHaveBeenCalledWith({
-      staffs: [
-        { staff_id: '', staff_name: '张三' },
-        { staff_id: '', staff_name: '李四' },
-      ],
+      staffs: [{ staff_name: '张三' }, { staff_name: '李四' }],
       period: { start: '2026-08-31', end: '2026-09-06' },
     });
   });

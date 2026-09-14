@@ -41,7 +41,7 @@ export function FailureDetailDialog({
   function handleReSubmit() {
     if (!data) return;
     onReSubmitFailed({
-      staffs: data.list.map((it) => ({ staff_id: '', staff_name: it.token_name })),
+      staffs: data.list.map((it) => ({ staff_name: it.token_name })),
       period: { start: data.period_start, end: data.period_end },
     });
   }

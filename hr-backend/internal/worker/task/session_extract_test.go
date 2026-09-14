@@ -50,9 +50,6 @@ func (r *stubRepo) Save(ctx context.Context, rec *domain.SessionFeature) (bool, 
 func (r *stubRepo) ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error) {
 	return nil, nil
 }
-func (r *stubRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
-	return 0, nil
-}
 func (r *stubRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
 	return 0, nil
 }

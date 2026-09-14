@@ -36,12 +36,12 @@ import {
 } from '@/features/assessment/components/staff-multi-select';
 import { useBatchPlan, useCreateBatch } from '@/features/assessment/hooks';
 import { previousPeriodRange } from '@/features/assessment/period-default';
-import type { StaffItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
-/** 预填值：失败明细/重新发起带入的人员名单与评估时段（§4.2.2 默认值列）。 */
+/** 预填值：失败明细/重新发起带入的人员名单与评估时段（§4.2.2 默认值列）。
+ * staff_id 可选：补跑预填仅需 staff_name（03 B1，staff_id 仅日志定位可省略）。 */
 export interface CreateBatchPreset {
-  staffs: StaffItem[];
+  staffs: { staff_id?: string; staff_name: string }[];
   period: { start: string; end: string };
 }
 
@@ -82,7 +82,7 @@ export function CreateBatchDialog({
         target: z
           .object({
             mode: z.enum(['all', 'specified']),
-            staffs: z.array(z.object({ staff_id: z.string(), staff_name: z.string() })),
+            staffs: z.array(z.object({ staff_id: z.string().optional(), staff_name: z.string() })),
           })
           .refine((v) => v.mode === 'all' || v.staffs.length > 0, {
             message: t('create.targetRequired'),

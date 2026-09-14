@@ -43,6 +43,9 @@ type fakeBatchRepo struct {
 	failBatch  int64
 	failErr    error // 注入 FailWholeBatch 恒错（落终态失败探针）
 
+	deleted  bool   // DeleteBatch 命中 running 批次探针
+	deleteErr error // 注入 DeleteBatch 恒错（回滚失败探针）
+
 	utsCalled      bool
 	utsBatchID     int64
 	utsTotal       int
@@ -215,6 +218,23 @@ func (f *fakeBatchRepo) ListFailedByBatch(ctx context.Context, batchID int64) ([
 	return nil, nil
 }
 
+// DeleteBatch 内存模拟：running 守卫删除批次（含明细）；支持注入恒错探针。
+func (f *fakeBatchRepo) DeleteBatch(ctx context.Context, batchID int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	for i := range f.created {
+		if f.created[i].ID == batchID && f.created[i].Status == domain.BatchStatusRunning {
+			f.created = append(f.created[:i], f.created[i+1:]...)
+			f.deleted = true
+			return nil
+		}
+	}
+	return nil
+}
+
 // fakeAlertRepo 告警仓储 fake。
 type fakeAlertRepo struct {
 	alerts []domain.AssessmentAlert
@@ -277,7 +297,6 @@ func (f *fakeBatchEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) 
 type fakeFeatureRepo struct {
 	mu     sync.Mutex
 	failed int64
-	names  []string
 	start  int64
 	end    int64
 	calls  int
@@ -304,12 +323,6 @@ func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.byPerson[tokenName], nil
-}
-func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
-	f.calls++
-	f.names = tokenNames
-	f.start, f.end = start, end
-	return f.failed, nil
 }
 
 func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {

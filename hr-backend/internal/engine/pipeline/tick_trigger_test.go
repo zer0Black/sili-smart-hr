@@ -247,9 +247,9 @@ func TestTickTriggerCreateFail(t *testing.T) {
 	}
 }
 
-// TestTickTriggerEnqueueFail 投递失败落整批 failed 终态不留孤儿 running
-//（与 SubmitManualBatch 同款兜底）。批次已终态返回 nil（重试路径经已建批判定
-// 收敛，无需任务级重试）；落库失败才上抛。
+// TestTickTriggerEnqueueFail 投递失败回滚本次建批后上抛交任务级重试
+//（specs §5.1.5：重试耗尽跳过至下个周期；回滚是重试可达的前提，否则已建批
+// 判定拦截重试、批次滞留 running 成孤儿）。不落 failed 终态、不写告警。
 func TestTickTriggerEnqueueFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
@@ -257,33 +257,36 @@ func TestTickTriggerEnqueueFail(t *testing.T) {
 	alertRepo := &fakeAlertRepo{}
 	o := tickFixtureWithAlerts(repo, cfgRepo, nil, enq, alertRepo)
 
-	if err := o.TickTrigger(context.Background(), tickNow()); err != nil {
-		t.Fatalf("批次已落终态，应返回 nil（无需重试）: %v", err)
+	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
+		t.Fatal("入队失败应上抛交任务级重试，得到 nil")
 	}
-	if len(repo.created) != 1 {
-		t.Fatalf("入队失败时批次已落库，实际 %d 条", len(repo.created))
+	if len(repo.created) != 0 {
+		t.Fatalf("入队失败应回滚建批（不残留批次行），实际 %d 条", len(repo.created))
 	}
-	if !repo.failCalled {
-		t.Error("入队失败应落整批 failed 终态（不留孤儿 running）")
+	if !repo.deleted {
+		t.Error("入队失败应调 DeleteBatch 回滚本次建批")
 	}
-	if len(alertRepo.alerts) != 1 {
-		t.Errorf("占比 100.00 超阈应写告警，实际 %d 条", len(alertRepo.alerts))
+	if repo.failCalled {
+		t.Error("入队失败不应落 failed 终态（交任务级重试重建）")
+	}
+	if len(alertRepo.alerts) != 0 {
+		t.Errorf("回滚路径不应写告警，实际 %d 条", len(alertRepo.alerts))
 	}
 }
 
-// TestTickTriggerEnqueueFailWriteFail 入队失败且落终态也失败（DB 抖动）：
-// 复合错误上抛交任务级重试（重试路径经已建批判定收敛），不留无人管批次。
-func TestTickTriggerEnqueueFailWriteFail(t *testing.T) {
-	repo := &fakeBatchRepo{failErr: errFake}
+// TestTickTriggerEnqueueFailRollbackFail 入队且回滚也失败（DB 抖动）：
+// 复合错误上抛交任务级重试（重放时 DeleteBatch 幂等，批次已删则守卫无命中）。
+func TestTickTriggerEnqueueFailRollbackFail(t *testing.T) {
+	repo := &fakeBatchRepo{deleteErr: errFake}
 	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
 	enq := &fakeBatchEnqueuer{err: errFake}
 	o := tickFixtureWithAlerts(repo, cfgRepo, nil, enq, &fakeAlertRepo{})
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
-		t.Fatal("落终态失败应上抛交任务级重试，得到 nil")
+		t.Fatal("回滚失败应上抛交任务级重试，得到 nil")
 	}
 	if len(repo.created) != 1 {
-		t.Fatalf("入队失败时批次已落库，实际 %d 条", len(repo.created))
+		t.Fatalf("回滚失败时批次行仍在，实际 %d 条", len(repo.created))
 	}
 }
 

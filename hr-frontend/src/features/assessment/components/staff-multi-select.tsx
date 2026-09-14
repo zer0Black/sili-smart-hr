@@ -13,13 +13,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useStaffs } from '@/features/system-params/hooks';
-import type { StaffItem } from '@/lib/contracts';
 import { useDebouncedValue } from '@/lib/use-debounced';
 import { cn } from '@/lib/utils';
 
 export interface StaffSelectValue {
   mode: 'all' | 'specified';
-  staffs: StaffItem[];
+  /** staff_id 可选：补跑预填路径只携带 staff_name（03 B1，staff_name 为去重键）。 */
+  staffs: { staff_id?: string; staff_name: string }[];
 }
 
 export interface StaffMultiSelectProps {
@@ -59,9 +59,9 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
   const list = staffsQ.data?.list ?? [];
 
   // 合并已选 + 当页选项，防翻页丢失；staff_name 去重（与批次名单同键：预填路径
-  // 不携带 staff_id，staff_name 是唯一稳定标识，空 id 下仍正确）
+  // 不携带 staff_id，staff_name 是唯一稳定标识，缺 id 下仍正确）
   const merged = useMemo(() => {
-    const map = new Map<string, StaffItem>();
+    const map = new Map<string, StaffSelectValue['staffs'][number]>();
     for (const s of value.staffs) map.set(s.staff_name, s);
     for (const s of list) if (!map.has(s.staff_name)) map.set(s.staff_name, s);
     return Array.from(map.values());
@@ -82,7 +82,7 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
     }
   };
 
-  const toggle = (s: StaffItem) => {
+  const toggle = (s: StaffSelectValue['staffs'][number]) => {
     if (isAll) {
       onChange({ mode: 'specified', staffs: [s] });
       return;

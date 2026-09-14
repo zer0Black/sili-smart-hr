@@ -51,7 +51,7 @@ export function AssessmentCenterPage() {
     try {
       const targets = await fetchBatchTargets(batch.id);
       openCreateDialog({
-        staffs: targets.names.map((n) => ({ staff_id: '', staff_name: n })),
+        staffs: targets.names.map((n) => ({ staff_name: n })),
         period: { start: targets.period_start, end: targets.period_end },
       });
     } catch {

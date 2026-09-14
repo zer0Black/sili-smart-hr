@@ -52,6 +52,9 @@ type AssessmentBatchRepository interface {
 	// FinalizeBatch 落批次终态（WHERE status='running' 守卫，终态不可逆）：
 	// affected==0 视为已终态幂等返回 nil。
 	FinalizeBatch(ctx context.Context, batchID int64, status string, sessionFailRatio float64) error
+	// DeleteBatch 删除批次行与人员明细行（tick 入队失败回滚本次建批消费）。
+	// running 守卫防误删已终态批次；批次行无命中（已删/已终态）幂等返回。
+	DeleteBatch(ctx context.Context, batchID int64) error
 	// FailWholeBatch 批次级异常整批失败：pending 人员行落 failed、计数按事务内
 	// 实况统计（重放不虚报）、批次行带 running 守卫防竞态改写终态，返回实际
 	// failed/total 供告警；已终态幂等返回 (0, 0, nil)。
@@ -254,6 +257,19 @@ func (r *assessmentBatchRepository) FinalizeBatch(ctx context.Context, batchID i
 			"session_fail_ratio": sessionFailRatio,
 			"finished_at":        utcNow(),
 		}).Error
+}
+
+// DeleteBatch 先删明细后删批次（同事务），running 守卫防误删已终态批次。
+func (r *assessmentBatchRepository) DeleteBatch(ctx context.Context, batchID int64) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("batch_id = ?", batchID).
+			Delete(&domain.AssessmentBatchPerson{}).Error; err != nil {
+			return err
+		}
+		res := tx.Where("id = ? AND status = ?", batchID, domain.BatchStatusRunning).
+			Delete(&domain.AssessmentBatch{})
+		return res.Error
+	})
 }
 
 // FailWholeBatch 整批失败：pending 人员行落 failed（已终态者不动），批次计数按

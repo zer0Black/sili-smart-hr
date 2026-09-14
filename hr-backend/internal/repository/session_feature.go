@@ -26,9 +26,6 @@ type SessionFeatureRepository interface {
 	// start/end 为 Unix 秒，仓储内转 time.Time 走 idx_token_first_turn 组合索引；
 	// 返回全部三态行。
 	ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error)
-	// CountFailedByTokenNames 统计一批人员在窗口内的 failed 档案数（会话级失败比例分子，
-	// 承接 T4 §6.2 extract_fail_ratio 分子口径）。tokenNames 为空直接返回 0。
-	CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error)
 	// CountFailedInRange 统计窗口内全部 failed 档案数（不限人员，会话级失败比例分子
 	// 的全量口径，与 fetchAllSessions 全量分母同基）。区间端点半开 [start, end)。
 	CountFailedInRange(ctx context.Context, start, end int64) (int64, error)
@@ -171,23 +168,6 @@ func (r *sessionFeatureRepository) ListByPersonAndRange(ctx context.Context, tok
 		return nil, err
 	}
 	return list, nil
-}
-
-// CountFailedByTokenNames 区间端点半开 [start, end)，与批次窗口装配口径一致
-// （区别于 ListByPersonAndRange 的闭区间）；端点统一 UTC 口径同 ListByPersonAndRange。
-func (r *sessionFeatureRepository) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
-	if len(tokenNames) == 0 {
-		return 0, nil
-	}
-	var n int64
-	err := r.db.WithContext(ctx).Model(&domain.SessionFeature{}).
-		Where("token_name IN ? AND status = ? AND first_turn_at >= ? AND first_turn_at < ?",
-			tokenNames, domain.FeatureStatusFailed, time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC()).
-		Count(&n).Error
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
 }
 
 // CountFailedInRange 窗口内全部 failed 档案数（不限人员，全量分子口径）；端点统一

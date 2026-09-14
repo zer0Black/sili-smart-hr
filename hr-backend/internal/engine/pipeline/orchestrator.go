@@ -231,7 +231,7 @@ func (o *Orchestrator) failWholeBatch(_ context.Context, batch *domain.Assessmen
 
 // TickTrigger 周期触发判定（03 §4.3）：读配置 → TriggerHit → 已建批判定 →
 // 读名单 → 同源阻塞判定 → 建批入队。错误上抛交 Asynq 任务级重试；入队失败
-// 落终态兜底，不留孤儿 running 批次。
+// 回滚本次建批后上抛，重试在宽限窗内重建，耗尽则跳过至下个周期。
 func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 	cfg, err := o.configRepo.Get(ctx)
 	if err != nil {
@@ -292,12 +292,16 @@ func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 		return err
 	}
 	if err := o.batchEnq.EnqueueBatchRun(ctx, batch.ID); err != nil {
-		// 批次已落终态，重试无意义（已建批判定会拦截）；仅落库失败时上抛。
-		enqErr := fmt.Errorf("pipeline: batch-run 投递失败: %w", err)
-		if failErr := o.failWholeBatch(ctx, batch, enqErr.Error()); failErr != nil {
-			return failErr
+		// 入队失败回滚本次建批（删骨架批次行）后上抛交 Asynq 任务级重试
+		//（specs §5.1.5：重试耗尽跳过至下个周期）。回滚是重试可达的前提：
+		// 不删则已建批判定拦截重试、批次滞留 running 成孤儿。回滚失败一并上抛
+		// 交重试（DeleteBatch 幂等，重放时批次已删则守卫无命中）。
+		slog.Error("batch-run enqueue failed, rolling back batch",
+			"batch_id", batch.ID, "batch_no", batch.BatchNo, "err", err)
+		if delErr := o.repo.DeleteBatch(context.WithoutCancel(context.Background()), batch.ID); delErr != nil {
+			return fmt.Errorf("pipeline: batch-run 投递失败: %w；建批回滚失败: %v", err, delErr)
 		}
-		return nil
+		return fmt.Errorf("pipeline: batch-run 投递失败（已回滚建批）: %w", err)
 	}
 	slog.Info("batch tick triggered", "batch_no", batch.BatchNo, "period", cfg.Period)
 	return nil

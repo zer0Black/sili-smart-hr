@@ -83,6 +83,9 @@ func (f *fakeBatchRepo) ExpandTargets(_ context.Context, _ int64, _ []string) er
 func (f *fakeBatchRepo) FailWholeBatch(_ context.Context, _ int64, _ string) (int64, int64, error) {
 	return 0, 0, nil
 }
+func (f *fakeBatchRepo) DeleteBatch(_ context.Context, _ int64) error {
+	return nil
+}
 func (f *fakeBatchRepo) CountInRange(_ context.Context, start, end time.Time) (int64, error) {
 	f.countInRangeArgs = [2]time.Time{start, end}
 	return f.countInRange, f.countInRangeErr

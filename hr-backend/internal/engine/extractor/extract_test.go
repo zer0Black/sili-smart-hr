@@ -176,10 +176,6 @@ func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	return nil, nil
 }
 
-func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
-	return 0, nil
-}
-
 func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
 	return 0, nil
 }
