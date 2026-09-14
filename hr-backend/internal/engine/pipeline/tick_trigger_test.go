@@ -271,6 +271,22 @@ func TestTickTriggerEnqueueFail(t *testing.T) {
 	}
 }
 
+// TestTickTriggerEnqueueFailWriteFail 入队失败且落终态也失败（DB 抖动）：
+// 复合错误上抛交任务级重试（重试路径经已建批判定收敛），不留无人管批次。
+func TestTickTriggerEnqueueFailWriteFail(t *testing.T) {
+	repo := &fakeBatchRepo{failErr: errFake}
+	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{err: errFake}
+	o := tickFixtureWithAlerts(repo, cfgRepo, nil, enq, &fakeAlertRepo{})
+
+	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
+		t.Fatal("落终态失败应上抛交任务级重试，得到 nil")
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("入队失败时批次已落库，实际 %d 条", len(repo.created))
+	}
+}
+
 // TestTickTriggerAlreadyCreatedThisPeriod 宽限窗内不重复建批：本周期已有定时批次
 //（triggered_at 落在本期触发点之后）时，宽限窗内的重复 tick 直接返回不建批。
 func TestTickTriggerAlreadyCreatedThisPeriod(t *testing.T) {

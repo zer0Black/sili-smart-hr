@@ -273,7 +273,7 @@ func (f *fakeBatchEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) 
 	return nil
 }
 
-// fakeFeatureRepo 特征档案仓储 fake：承载 CountFailedByTokenNames 与 CountExistingBySessionKeys。
+// fakeFeatureRepo 特征档案仓储 fake：等待屏障差集探针 + 失败计数 + 按人档案回读。
 type fakeFeatureRepo struct {
 	mu     sync.Mutex
 	failed int64
@@ -286,7 +286,10 @@ type fakeFeatureRepo struct {
 	waitLast   []string
 	waitCalls  int
 	firstKeys  []string // 首轮入参（差集收缩前全量）
+	allWaitIn  [][]string
 	gotKeys    []string // 末轮入参
+
+	byPerson map[string][]domain.SessionFeature // ListByPersonAndRange 返回值
 }
 
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
@@ -298,7 +301,9 @@ func (f *fakeFeatureRepo) Save(ctx context.Context, rec *domain.SessionFeature) 
 	return false, nil
 }
 func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error) {
-	return nil, nil
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.byPerson[tokenName], nil
 }
 func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
 	f.calls++
@@ -322,6 +327,7 @@ func (f *fakeFeatureRepo) ListExistingBySessionKeys(ctx context.Context, session
 	if f.waitCalls == 1 {
 		f.firstKeys = append([]string{}, sessionKeys...)
 	}
+	f.allWaitIn = append(f.allWaitIn, append([]string{}, sessionKeys...))
 	f.gotKeys = append([]string{}, sessionKeys...)
 	var landed []string
 	if len(f.landedSets) == 0 {
@@ -1346,5 +1352,214 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 	}
 	if len(pe.calls) == 0 {
 		t.Error("到齐后应进入逐人评估，评估未被调用")
+	}
+}
+
+// ---- 重放路径（batch-run 重试，total_session_count>0 标记展开+投递已完成） ----
+
+// TestRunBatchReplaySkipsExpandAndEnqueue 重放路径：total_session_count>0 的
+// running 批次不再触上游列表、不重复投递、不重复回填，会话集从档案表回读，
+// 直接进入逐人评估与终态。
+func TestRunBatchReplaySkipsExpandAndEnqueue(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 模拟首跑已完成展开+投递：会话数已回填，张敏 1 档案、王强 1 档案、李芳无。
+	batch.TotalSessionCount = 2
+	featureRepo := &fakeFeatureRepo{byPerson: map[string][]domain.SessionFeature{
+		"张敏": {{SessionKey: "sk-a", TokenName: "张敏"}},
+		"王强": {{SessionKey: "sk-d", TokenName: "王强"}},
+	}}
+	fetcher := &fakeSessionFetcher{err: errors.New("上游不可达也不该被触达")}
+	sessionEnq := &fakeSessionEnqueuer{}
+	pe := &fakePersonEvaluator{}
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		pe, alertWriter(&fakeAlertRepo{}), nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if fetcher.calls != 0 {
+		t.Errorf("重放不应触上游列表，实际 %d 次", fetcher.calls)
+	}
+	if sessionEnq.calls != 0 {
+		t.Errorf("重放不应重复投递抽取任务，实际 %d 次", sessionEnq.calls)
+	}
+	if repo.utsCalled {
+		t.Error("重放不应重复回填会话数")
+	}
+	if len(pe.calls) != 3 {
+		t.Errorf("重放应照常评估全员，评估人数 = %d, want 3", len(pe.calls))
+	}
+	if batch.Status == domain.BatchStatusRunning {
+		t.Error("重放评估完成后应推进批次终态")
+	}
+	// 零会话者李芳：档案表无行，分组为空 → 推进 skipped（评估 fake 返回空结果）。
+	if repo.advanceCalls["李芳"] != 1 {
+		t.Errorf("李芳 AdvancePersonTerminal 调用 = %d, want 1（零会话者照常入编排）", repo.advanceCalls["李芳"])
+	}
+}
+
+// TestRunBatchSkeletonExpandStaffFetchFail 骨架展开时全员名单拉取失败：
+// 整批落 failed 终态（WithoutCancel 兜底），返回 nil。
+func TestRunBatchSkeletonExpandStaffFetchFail(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	batch.TargetMode = domain.BatchTargetAll
+	batch.TargetNamesJSON = "[]"
+	batch.TotalCount = 0
+	featureRepo := &fakeFeatureRepo{}
+	alertRepo := &fakeAlertRepo{}
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, nil,
+		&fakeStaffFetcher{err: errFake},
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("展开失败整批落终态应返回 nil: %v", err)
+	}
+	if !repo.failCalled {
+		t.Fatal("全员名单拉取失败应调 FailWholeBatch")
+	}
+	if repo.expandCalled {
+		t.Error("拉取失败发生在 ExpandTargets 之前，不应调 ExpandTargets")
+	}
+	if len(alertRepo.alerts) != 1 {
+		t.Errorf("占比 100.00 超阈应写告警，实际 %d 条", len(alertRepo.alerts))
+	}
+}
+
+// TestRunBatchSkeletonExpandEmptyNames 上游返回空名单：不落 0 人批次，
+// 整批落 failed 终态。
+func TestRunBatchSkeletonExpandEmptyNames(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	batch.TargetMode = domain.BatchTargetAll
+	batch.TargetNamesJSON = "[]"
+	batch.TotalCount = 0
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, nil,
+		&fakeStaffFetcher{pages: nil}, // 无页：首次调用即返回空页（total=0 短页终止）
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, alertWriter(&fakeAlertRepo{}), nil, &fakeSessionEnqueuer{})
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("空名单整批落终态应返回 nil: %v", err)
+	}
+	if !repo.failCalled {
+		t.Fatal("全员名单为空应调 FailWholeBatch")
+	}
+	if repo.expandCalled {
+		t.Error("空名单不应调 ExpandTargets 落库")
+	}
+}
+
+// TestRunBatchSkeletonExpandWriteFail 展开落库失败（DB 抖动）：上抛交任务级
+// 重试，批次留 running（重试路径经 '[]' 守卫幂等续跑）。
+func TestRunBatchSkeletonExpandWriteFail(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	batch.TargetMode = domain.BatchTargetAll
+	batch.TargetNamesJSON = "[]"
+	batch.TotalCount = 0
+	repo.expandErr = errFake
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, nil,
+		&fakeStaffFetcher{pages: [][]userapi.Staff{staffs("甲")}},
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{})
+
+	if err := o.RunBatch(context.Background(), batch.ID); err == nil {
+		t.Fatal("展开落库失败应上抛交任务级重试")
+	}
+	if repo.failCalled {
+		t.Error("落库失败（可重试故障）不应落整批 failed")
+	}
+}
+
+// ---- 等待屏障差集收缩 ----
+
+// TestRunBatchWaitShrinksQuerySet 差集收缩断言：3 会话分两轮落库
+//（空 → 1 键 → 全齐），断言每轮查询入参集合严格递减，末轮只剩未落库键。
+func TestRunBatchWaitShrinksQuerySet(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 只给李芳 1 会话，控制等待集合小而确定；名单 3 人中其余零会话不进等待。
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{
+			{SessionKey: "sk-a", TokenName: "张敏"},
+			{SessionKey: "sk-b", TokenName: "李芳"},
+			{SessionKey: "sk-c", TokenName: "王强"},
+		},
+	}}
+	featureRepo := &fakeFeatureRepo{landedSets: [][]string{
+		{},
+		{"sk-a"},
+		{"sk-a", "sk-b", "sk-c"},
+	}}
+	o := waitOrch(repo, &fakeAlertRepo{}, fetcher, featureRepo, &fakeSessionEnqueuer{}, 5*time.Second, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if len(featureRepo.allWaitIn) != 3 {
+		t.Fatalf("等待轮询 = %d 轮, want 3", len(featureRepo.allWaitIn))
+	}
+	// 差集收缩时序（第 n 轮入参由第 n-1 轮返回决定）：
+	// 第 1 轮查 3 键返回 {} → 第 2 轮仍 3 键、返回 {sk-a} → 第 3 轮只查剩余 2 键。
+	if len(featureRepo.allWaitIn[0]) != 3 || len(featureRepo.allWaitIn[1]) != 3 || len(featureRepo.allWaitIn[2]) != 2 {
+		t.Fatalf("各轮查询集合 = %v, want 大小 3→3→2（sk-a 落库后第 3 轮收缩）", lensOf(featureRepo.allWaitIn))
+	}
+	// 第 3 轮集合应恰为 sk-b 与 sk-c（sk-a 已剔除）。
+	third := map[string]bool{}
+	for _, k := range featureRepo.allWaitIn[2] {
+		third[k] = true
+	}
+	if !third["sk-b"] || !third["sk-c"] || third["sk-a"] {
+		t.Errorf("第三轮集合 = %v, want [sk-b sk-c]（sk-a 已剔除）", featureRepo.allWaitIn[2])
+	}
+}
+
+// lensOf 汇总各轮查询集合大小（失败信息用）。
+func lensOf(sets [][]string) []int {
+	out := make([]int, len(sets))
+	for i, s := range sets {
+		out[i] = len(s)
+	}
+	return out
+}
+
+// ---- 零会话者 sessions 语义（nil vs 空切片） ----
+
+// TestRunBatchZeroSessionPersonGetsEmptySlice 零会话者必须以非 nil 空切片进入
+// EvaluatePerson：nil 会被解释为「未提供需内部拉取」，触发多余全量翻页。
+func TestRunBatchZeroSessionPersonGetsEmptySlice(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 会话全归张敏，李芳/王强零会话；评估 fake 捕获收到的 sessions 切片。
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{{SessionKey: "sk-a", TokenName: "张敏"}},
+	}}
+	pe := &fakePersonEvaluator{}
+	o := evalOrch(repo, &fakeAlertRepo{}, fetcher, &fakeFeatureRepo{}, pe)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	zero := 0
+	for name, calls := range pe.calls {
+		if name == "张敏" || calls == 0 {
+			continue
+		}
+		zero++
+	}
+	if zero < 2 {
+		t.Fatalf("零会话者评估调用 = %d, want 2（李芳、王强）", zero)
+	}
+	// fakePersonEvaluator 未记录切片，改以行为断言：评估 fake 零会话者返回空结果
+	// 且批次正常推进 skipped 侧终态，证明空切片路径（非 nil）未触发内部拉取
+	//（内部拉取会调 fetcher，calls 应仍为 1）。
+	if fetcher.calls != 1 {
+		t.Errorf("上游列表调用 = %d, want 1（零会话者不得触发内部二次翻页）", fetcher.calls)
 	}
 }

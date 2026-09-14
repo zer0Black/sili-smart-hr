@@ -875,6 +875,25 @@ func TestCreateAllPlainErrorInternal(t *testing.T) {
 	}
 }
 
+// TestCreateAllSecretResolveFail：all 模式骨架建批前密钥探测失败
+//（ErrSecretResolveFailed 哨兵）同样映射 1305，与全员拉取失败同码。
+func TestCreateAllSecretResolveFail(t *testing.T) {
+	sub := &fakeManualSubmitter{err: fmt.Errorf("wrap: %w", pipeline.ErrSecretResolveFailed)}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	p := createValidPayload()
+	p.TargetMode = domain.BatchTargetAll
+	p.Staffs = nil
+	_, err := svc.Create(context.Background(), p)
+	serr, ok := err.(*service.Error)
+	if !ok {
+		t.Fatalf("err 类型 %T, want *service.Error", err)
+	}
+	if serr.Code != errcode.StaffListUnavailable {
+		t.Errorf("code = %d, want %d（密钥探测失败与拉取失败同码 1305）", serr.Code, errcode.StaffListUnavailable)
+	}
+}
+
 // TestCreateEnqueueFail：submitter 返入队失败错误（编排器已落 failed 终态），映射 1500。
 func TestCreateEnqueueFail(t *testing.T) {
 	sub := &fakeManualSubmitter{err: errors.New("pipeline: batch-run 入队失败: redis down")}
