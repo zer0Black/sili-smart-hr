@@ -41,12 +41,18 @@ type fakeBatchRepo struct {
 	failCalled bool
 	failReason string
 	failBatch  int64
+	failErr    error // 注入 FailWholeBatch 恒错（落终态失败探针）
 
 	utsCalled      bool
 	utsBatchID     int64
 	utsTotal       int
 	utsPersons     map[string]int
 	utsPersonsKeys []string // 写入顺序，供确定性断言
+
+	expandCalled bool
+	expandErr    error
+
+	findCalls *int // FindLatestScheduled 调用计数（同 tick 单查询探针）
 }
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
@@ -73,7 +79,10 @@ func (f *fakeBatchRepo) GetByID(ctx context.Context, id int64) (*domain.Assessme
 	return f.stored, nil
 }
 
-func (f *fakeBatchRepo) FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
+func (f *fakeBatchRepo) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
+	if f.findCalls != nil {
+		*f.findCalls++
+	}
 	return f.runningScheduled, nil
 }
 func (f *fakeBatchRepo) ListByFilter(ctx context.Context, bf repository.BatchFilter) ([]domain.AssessmentBatch, int64, error) {
@@ -152,10 +161,45 @@ func (f *fakeBatchRepo) FinalizeBatch(ctx context.Context, batchID int64, status
 	f.stored.SessionFailRatio = &ratio
 	return nil
 }
-func (f *fakeBatchRepo) FailWholeBatch(ctx context.Context, batchID int64, reason string) error {
+func (f *fakeBatchRepo) FailWholeBatch(ctx context.Context, batchID int64, reason string) (int64, int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.failCalled = true
 	f.failReason = reason
 	f.failBatch = batchID
+	if f.failErr != nil {
+		return 0, 0, f.failErr
+	}
+	// 模拟真实仓储：批次已非 running 时幂等返回 (0,0,nil)，否则按实况计数
+	//（stored 为建批后运行态时用其 TotalCount）。
+	b := f.stored
+	if b == nil {
+		for i := range f.created {
+			if f.created[i].ID == batchID {
+				b = f.created[i]
+			}
+		}
+	}
+	if b == nil || b.Status != domain.BatchStatusRunning {
+		return 0, 0, nil
+	}
+	return int64(b.TotalCount), int64(b.TotalCount), nil
+}
+func (f *fakeBatchRepo) ExpandTargets(ctx context.Context, batchID int64, names []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.expandCalled = true
+	if f.expandErr != nil {
+		return f.expandErr
+	}
+	if f.stored != nil && f.stored.TargetNamesJSON == "[]" {
+		namesJSON, _ := json.Marshal(names)
+		f.stored.TargetNamesJSON = string(namesJSON)
+		f.stored.TotalCount = len(names)
+		for _, n := range names {
+			f.persons = append(f.persons, domain.AssessmentBatchPerson{BatchID: batchID, TokenName: n, Status: domain.PersonStatusPending})
+		}
+	}
 	return nil
 }
 func (f *fakeBatchRepo) CountInRange(ctx context.Context, start, end time.Time) (int64, error) {
@@ -238,10 +282,11 @@ type fakeFeatureRepo struct {
 	end    int64
 	calls  int
 
-	counts    []int64 // 等待计数逐次消费
-	waitLast  int64
-	waitCalls int
-	gotKeys   []string
+	landedSets [][]string // 等待差集逐次消费：每轮返回的已落库键集合
+	waitLast   []string
+	waitCalls  int
+	firstKeys  []string // 首轮入参（差集收缩前全量）
+	gotKeys    []string // 末轮入参
 }
 
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)
@@ -267,18 +312,26 @@ func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int
 	f.start, f.end = start, end
 	return f.failed, nil
 }
-// CountExistingBySessionKeys 等待屏障探针：counts 逐次消费（耗尽保持末值），gotKeys 捕获入参。
-func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
+// ListExistingBySessionKeys 等待屏障差集探针：landedSets 逐次消费（耗尽保持末值），
+// 返回本轮已落库键集合；firstKeys 捕获首轮入参（gotKeys 记末轮，差集收缩后
+// 末轮只含剩余键）。
+func (f *fakeFeatureRepo) ListExistingBySessionKeys(ctx context.Context, sessionKeys []string) ([]string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.waitCalls++
-	f.gotKeys = append([]string{}, sessionKeys...)
-	if len(f.counts) == 0 {
-		return f.waitLast, nil
+	if f.waitCalls == 1 {
+		f.firstKeys = append([]string{}, sessionKeys...)
 	}
-	f.waitLast = f.counts[0]
-	f.counts = f.counts[1:]
-	return f.waitLast, nil
+	f.gotKeys = append([]string{}, sessionKeys...)
+	var landed []string
+	if len(f.landedSets) == 0 {
+		landed = f.waitLast
+	} else {
+		landed = f.landedSets[0]
+		f.landedSets = f.landedSets[1:]
+		f.waitLast = landed
+	}
+	return landed, nil
 }
 
 // fakePersonEvaluator 单人评估 fake：perName 结果切片逐次消费（重试耗尽按次数
@@ -389,13 +442,12 @@ func TestCreateBatchSpecified(t *testing.T) {
 	}
 }
 
-func TestCreateBatchAllFetchesStaffs(t *testing.T) {
+// TestCreateBatchAllSkeleton all 模式建批只落骨架：同步路径不触上游翻页
+//（密钥探测除外），名单留空 target_names_json='[]' 由 RunBatch 异步展开。
+func TestCreateBatchAllSkeleton(t *testing.T) {
 	repo := &fakeBatchRepo{}
-	fetcher := &fakeStaffFetcher{pages: [][]userapi.Staff{
-		staffs("甲", "乙", "丙"),
-		staffs("丁", "戊"),
-	}}
-	o := newOrch(repo, &fakeAlertRepo{}, fetcher, &fakeBatchEnqueuer{})
+	// fetcher 传 nil：若建批侧触上游会直接 panic，以此断言不翻页。
+	o := newOrch(repo, &fakeAlertRepo{}, nil, &fakeBatchEnqueuer{})
 
 	req := manualReq(nil)
 	req.TargetMode = domain.BatchTargetAll
@@ -403,22 +455,21 @@ func TestCreateBatchAllFetchesStaffs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateBatch: %v", err)
 	}
-	if batch.TotalCount != 5 {
-		t.Errorf("TotalCount = %d, want 5", batch.TotalCount)
+	if batch.TargetNamesJSON != "[]" || batch.TotalCount != 0 {
+		t.Errorf("骨架批次 = (%q,%d), want (\"[]\", 0)", batch.TargetNamesJSON, batch.TotalCount)
 	}
-	var names []string
-	if err := json.Unmarshal([]byte(batch.TargetNamesJSON), &names); err != nil {
-		t.Fatalf("TargetNamesJSON 反序列化: %v", err)
-	}
-	if len(names) != 5 {
-		t.Errorf("名单快照人数 = %d, want 5", len(names))
+	if len(repo.persons) != 0 {
+		t.Errorf("骨架批次不应落人员明细，已落 %d 行", len(repo.persons))
 	}
 }
 
-func TestCreateBatchAllFails(t *testing.T) {
+// TestCreateBatchAllSecretFail all 模式密钥探测失败上抛哨兵（service 据此映射 1305），
+// 不落骨架批次静默跑空。
+func TestCreateBatchAllSecretFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
-	fetcher := &fakeStaffFetcher{err: errFake}
-	o := newOrch(repo, &fakeAlertRepo{}, fetcher, &fakeBatchEnqueuer{})
+	o := pipeline.NewOrchestrator(repo, nil, nil, nil, nil,
+		func(ctx context.Context) (string, error) { return "", errFake },
+		nil, nil, &fakeBatchEnqueuer{}, nil)
 
 	req := manualReq(nil)
 	req.TargetMode = domain.BatchTargetAll
@@ -426,11 +477,11 @@ func TestCreateBatchAllFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("预期返回错误，得到 nil")
 	}
-	if !errors.Is(err, pipeline.ErrStaffFetchFailed) {
-		t.Errorf("err = %v, want errors.Is 命中 ErrStaffFetchFailed 哨兵", err)
+	if !errors.Is(err, pipeline.ErrSecretResolveFailed) {
+		t.Errorf("err = %v, want errors.Is 命中 ErrSecretResolveFailed 哨兵", err)
 	}
 	if len(repo.created) != 0 {
-		t.Errorf("名单拉取失败不应落批次，已落 %d 条", len(repo.created))
+		t.Errorf("密钥探测失败不应落批次，已落 %d 条", len(repo.created))
 	}
 }
 
@@ -751,7 +802,7 @@ func TestRunBatchUpstreamFail(t *testing.T) {
 	o := newRunBatchOrch(repo, alertRepo, fetcher, sessionEnq)
 
 	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
-		t.Fatalf("RunBatch 整批失败终态应返回 nil（不重试），得到 %v", err)
+		t.Fatalf("RunBatch 整批失败终态应返回 nil（落库成功）: %v", err)
 	}
 	if !repo.failCalled {
 		t.Error("列表拉取失败应调 FailWholeBatch 落整批 failed")
@@ -777,6 +828,77 @@ func TestRunBatchUpstreamFail(t *testing.T) {
 	}
 	if alertRepo.alerts[0].FailedCount != batch.TotalCount || alertRepo.alerts[0].TotalCount != batch.TotalCount {
 		t.Errorf("告警计数 = %d/%d, want %d/%d", alertRepo.alerts[0].FailedCount, alertRepo.alerts[0].TotalCount, batch.TotalCount, batch.TotalCount)
+	}
+}
+
+// TestRunBatchUpstreamFailWriteFail 上游失败且落终态也失败（DB 抖动）：
+// 错误上抛交 Asynq 重试，返回 nil 会让批次永久停留 running 无人管。
+func TestRunBatchUpstreamFailWriteFail(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	repo.failErr = errFake
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, &fakeSessionFetcher{err: errFake}, &fakeSessionEnqueuer{})
+
+	if err := o.RunBatch(context.Background(), batch.ID); err == nil {
+		t.Fatal("落终态失败应上抛交任务级重试，得到 nil")
+	}
+}
+
+// TestRunBatchFailWholeBatchWithoutCancel 调用方 ctx 已取消（tick 超时最常见
+// 成因）时兜底落库仍能完成：failWholeBatch 走 WithoutCancel 派生 ctx。
+func TestRunBatchFailWholeBatchWithoutCancel(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	o := newRunBatchOrch(repo, &fakeAlertRepo{}, &fakeSessionFetcher{err: errFake}, &fakeSessionEnqueuer{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // 进 RunBatch 前 ctx 已死
+	if err := o.RunBatch(ctx, batch.ID); err != nil {
+		t.Fatalf("整批失败终态应返回 nil: %v", err)
+	}
+	if !repo.failCalled {
+		t.Error("已取消 ctx 下仍应完成 FailWholeBatch 落终态")
+	}
+}
+
+// TestRunBatchAllSkeletonExpand all 骨架批次在 RunBatch 开头异步展开：
+// 拉全员名单 → ExpandTargets 落库 → 重读批次 → 走后续编排。
+func TestRunBatchAllSkeletonExpand(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	batch.TargetMode = domain.BatchTargetAll
+	batch.TargetNamesJSON = "[]"
+	batch.TotalCount = 0
+	repo.persons = nil
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{{SessionKey: "sk-a", TokenName: "甲"}},
+	}}
+	sessionEnq := &fakeSessionEnqueuer{}
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher,
+		&fakeStaffFetcher{pages: [][]userapi.Staff{staffs("甲", "乙")}},
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, nil, nil, sessionEnq)
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if !repo.expandCalled {
+		t.Fatal("骨架批次应调 ExpandTargets 展开名单")
+	}
+	if batch.TotalCount != 2 {
+		t.Errorf("展开后 TotalCount = %d, want 2（甲、乙）", batch.TotalCount)
+	}
+	var names []string
+	if err := json.Unmarshal([]byte(batch.TargetNamesJSON), &names); err != nil {
+		t.Fatalf("名单快照反序列化: %v", err)
+	}
+	if len(names) != 2 {
+		t.Errorf("展开后名单 = %v, want [甲 乙]", names)
+	}
+	if len(repo.persons) != 2 {
+		t.Errorf("人员明细 = %d 行, want 2", len(repo.persons))
 	}
 }
 
@@ -1106,7 +1228,7 @@ func TestRunBatchWaitExtractReady(t *testing.T) {
 			{SessionKey: "sk-b", TokenName: "李芳"},
 		},
 	}}
-	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1, 2}}
+	featureRepo := &fakeFeatureRepo{landedSets: [][]string{{}, {"sk-a"}, {"sk-a", "sk-b"}}}
 	pe := &fakePersonEvaluator{}
 	sessionEnq := &fakeSessionEnqueuer{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
@@ -1121,11 +1243,11 @@ func TestRunBatchWaitExtractReady(t *testing.T) {
 	if featureRepo.waitCalls < 3 {
 		t.Errorf("等待轮询 = %d 次, want >= 3（0→1→2 到齐）", featureRepo.waitCalls)
 	}
-	if len(featureRepo.gotKeys) != 2 {
-		t.Fatalf("等待集合 = %v, want [sk-a sk-b]", featureRepo.gotKeys)
+	if len(featureRepo.firstKeys) != 2 {
+		t.Fatalf("等待集合 = %v, want [sk-a sk-b]", featureRepo.firstKeys)
 	}
 	got := map[string]bool{}
-	for _, k := range featureRepo.gotKeys {
+	for _, k := range featureRepo.firstKeys {
 		got[k] = true
 	}
 	if !got["sk-a"] || !got["sk-b"] {
@@ -1147,7 +1269,7 @@ func TestRunBatchWaitExtractTimeout(t *testing.T) {
 			{SessionKey: "sk-b", TokenName: "李芳"},
 		},
 	}}
-	featureRepo := &fakeFeatureRepo{counts: []int64{1}} // 恒为部分计数（耗尽保持末值 1 < 2）
+	featureRepo := &fakeFeatureRepo{landedSets: [][]string{{"sk-a"}}} // 恒为部分落库（耗尽保持末值，sk-b 永不落库）
 	pe := &fakePersonEvaluator{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
@@ -1179,7 +1301,7 @@ func TestRunBatchWaitExtractCtxCancel(t *testing.T) {
 			{SessionKey: "sk-b", TokenName: "李芳"},
 		},
 	}}
-	featureRepo := &fakeFeatureRepo{counts: []int64{0}} // 恒为 0，永不达齐
+	featureRepo := &fakeFeatureRepo{landedSets: [][]string{{}}} // 恒无落库，永不达齐
 	o := waitOrch(repo, &fakeAlertRepo{}, fetcher, featureRepo, &fakeSessionEnqueuer{}, 30*time.Second, 5*time.Millisecond)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -1204,7 +1326,7 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 			{SessionKey: "sk-b", TokenName: "李芳"},
 		},
 	}}
-	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1}} // 集合大小 1，第二轮到齐
+	featureRepo := &fakeFeatureRepo{landedSets: [][]string{{}, {"sk-b"}}} // 集合大小 1，第二轮到齐
 	sessionEnq := &fakeSessionEnqueuer{errs: []error{errFake, nil}}
 	pe := &fakePersonEvaluator{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
@@ -1219,8 +1341,8 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 	if sessionEnq.calls != 2 {
 		t.Fatalf("投递调用 = %d, want 2", sessionEnq.calls)
 	}
-	if len(featureRepo.gotKeys) != 1 || featureRepo.gotKeys[0] != "sk-b" {
-		t.Errorf("等待集合 = %v, want [sk-b]（投递失败的 sk-a 不参与等待）", featureRepo.gotKeys)
+	if len(featureRepo.firstKeys) != 1 || featureRepo.firstKeys[0] != "sk-b" {
+		t.Errorf("等待集合 = %v, want [sk-b]（投递失败的 sk-a 不参与等待）", featureRepo.firstKeys)
 	}
 	if len(pe.calls) == 0 {
 		t.Error("到齐后应进入逐人评估，评估未被调用")

@@ -6,6 +6,7 @@ package pipeline
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/hibiken/asynq"
@@ -13,14 +14,8 @@ import (
 	"sili-smart-hr/backend/internal/worker/task"
 )
 
-// 队列划分（防互饿）：batch-run 与 session-extract 分队列投递，worker 池按队列
-// 注册处理，抽取洪峰不会占满 batch-run 的消费并发，batch-run 的等待屏障也不会
-// 饿死抽取任务。tick 类分钟级任务走 default 队列保最低延迟。
-const (
-	queueBatchRun   = "batch"
-	queueExtract    = "extract"
-	queueDefault    = "default"
-)
+// 队列划分（防互饿）：常量收敛在 task.Queue*（消费侧 server.go 同引），
+// tick 类分钟级任务走 default 队列保最低延迟。
 
 // AsynqEnqueuer Asynq 双任务投递适配器（满足 BatchEnqueuer 与 SessionEnqueuer）。
 type AsynqEnqueuer struct {
@@ -42,7 +37,7 @@ func (e *AsynqEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) erro
 	if _, err := e.client.EnqueueContext(ctx,
 		asynq.NewTask(task.TypeBatchRun, payload),
 		asynq.MaxRetry(6),
-		asynq.Queue(queueBatchRun)); err != nil {
+		asynq.Queue(task.QueueBatch)); err != nil {
 		return fmt.Errorf("pipeline: batch-run 投递: %w", err)
 	}
 	return nil
@@ -58,7 +53,12 @@ func (e *AsynqEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, t
 	if _, err := e.client.EnqueueContext(ctx,
 		asynq.NewTask(task.TypeSessionExtract, payload),
 		asynq.MaxRetry(4),
-		asynq.Queue(queueExtract)); err != nil {
+		asynq.Queue(task.QueueExtract),
+		// TaskID 用 session_key 去重：重放撞 ErrTaskIDConflict 视作已在途。
+		asynq.TaskID(sessionKey)); err != nil {
+		if errors.Is(err, asynq.ErrTaskIDConflict) {
+			return nil
+		}
 		return fmt.Errorf("pipeline: session-extract 投递: %w", err)
 	}
 	return nil

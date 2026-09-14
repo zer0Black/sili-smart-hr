@@ -11,14 +11,12 @@ import {
 import { FailureDetailDialog } from '@/features/assessment/components/failure-detail-dialog';
 import { StatsCards } from '@/features/assessment/components/stats-cards';
 import { fetchBatchTargets } from '@/features/assessment/api';
-import { useBatches } from '@/features/assessment/hooks';
+import { useBatchStats } from '@/features/assessment/hooks';
 import type { BatchListItem } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/assessment/')({
   component: AssessmentCenterPage,
 });
-
-const DEFAULT_PAGE_SIZE = 10;
 
 export function AssessmentCenterPage() {
   const { t } = useTranslation('assessment');
@@ -34,12 +32,14 @@ export function AssessmentCenterPage() {
     setTableResetKey((k) => k + 1);
   }
 
-  // 轮询开关（specs §4.1.3）：探针自身条件轮询（存在非停滞 running 时 10s 重查），
-  // 开关随数据收敛：批次全终态即停，首屏无 running 后新批次出现也能感知。
-  const batchesProbeQ = useBatches({ page: 1, page_size: DEFAULT_PAGE_SIZE }, { polling: 'probe' });
-  const hasActiveRunning = (batchesProbeQ.data?.list ?? []).some(
-    (b) => b.status === 'running' && !b.stalled,
-  );
+  // 轮询总开关（specs §4.1.3）：stats 自驱动——数据存在进行中批次（已剔除停滞）
+  // 时 10s 续轮询，全终态即停。开关喂给统计卡与列表两处，口径与统计卡 running
+  // 计数同源，不受翻页/筛选把 running 批次挤出当前页影响。
+  const statsQ = useBatchStats();
+  const hasActiveRunning = (statsQ.data?.running_batch_count ?? 0) > 0;
+
+  // 首屏 stats 未返回前保守开轮询一轮拉到状态（拉到后按数据自收敛）。
+  const polling = statsQ.isLoading || hasActiveRunning;
 
   function openCreateDialog(preset: CreateBatchPreset | null) {
     setCreatePreset(preset);
@@ -78,14 +78,14 @@ export function AssessmentCenterPage() {
         </button>
       </div>
 
-      <StatsCards polling={hasActiveRunning} />
+      <StatsCards />
 
       <BatchTable
         onCreateOpen={() => openCreateDialog(null)}
         onFailuresOpen={setFailureBatchId}
         onReSubmit={(batch) => void onReSubmit(batch)}
         resetKey={tableResetKey}
-        polling={hasActiveRunning}
+        polling={polling}
       />
 
       <CreateBatchDialog

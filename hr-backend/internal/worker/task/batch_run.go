@@ -11,7 +11,6 @@ import (
 )
 
 // TypeBatchRun 批次编排任务类型，payload 携批次主键（03 §4.1）。
-// pipeline 包投递侧重复声明同值常量（禁循环 import），改动须双侧同步。
 const TypeBatchRun = "engine:batch-run"
 
 // batchRunTimeout 任务级超时单点声明（03 §4.4 推导）：4 路并发百人量级单人

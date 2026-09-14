@@ -614,8 +614,6 @@
         "monthly": "Monthly"
       },
       "target": "Target",
-      "targetAll": "Everyone",
-      "targetSpecified": "Selected",
       "targetSummary": "{{first}}, {{second}} and {{count}} people",
       "dimensions": "Dimensions",
       "dimensionsValue": "Base {{base}} + Upper {{upper}}",
@@ -665,8 +663,7 @@
       "targetAll": "Everyone",
       "toastGeneric": "Operation failed, please retry later",
       "viewResultDisabled": "Profile feature is under construction",
-      "viewResultRunning": "This batch is still running; profiles are incomplete",
-      "loading": "Loading…"
+      "listSeparator": ", "
     },
     "create": {
       "title": "Launch Assessment",

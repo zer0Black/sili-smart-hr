@@ -121,8 +121,8 @@ func (r *evalFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 func (r *evalFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
 	return 0, nil
 }
-func (r *evalFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
-	return 0, nil
+func (r *evalFeatureRepo) ListExistingBySessionKeys(ctx context.Context, sessionKeys []string) ([]string, error) {
+	return nil, nil
 }
 
 // evalSpecReader 维度口径 fake。

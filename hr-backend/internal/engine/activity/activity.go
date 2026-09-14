@@ -132,9 +132,15 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 // 翻页串行（并发翻页返回重复页）；终止唯一可信信号是短页/空页（total 低报时
 // 累计条数判据会提前截断静默丢会话）；页数上限防上游分页失效恒返满页。
 func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName string, period Period) ([]conversationlog.SessionSummary, error) {
+	return FetchAllSessions(ctx, a.cl, secret, period)
+}
+
+// FetchAllSessions 窗口全量翻页拉取会话列表（不按人过滤）：单人评估与批次编排
+// 两路径共用同一终止判据与页数上限，防两处口径漂移导致同人同周期会话集分叉。
+func FetchAllSessions(ctx context.Context, cl SessionListFetcher, secret string, period Period) ([]conversationlog.SessionSummary, error) {
 	var all []conversationlog.SessionSummary
 	for page := 1; page <= listMaxPages; page++ {
-		items, _, err := a.cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
+		items, _, err := cl.ListSessions(ctx, secret, conversationlog.ListSessionsRequest{
 			StartTime: period.Start,
 			EndTime:   period.End,
 			Page:      page,
@@ -149,7 +155,7 @@ func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName s
 		}
 	}
 	slog.Warn("session list page cap reached, result may be truncated",
-		"token_name", tokenName, "page_cap", listMaxPages, "code", "ErrSessionListFetch")
+		"page_cap", listMaxPages, "code", "ErrSessionListFetch")
 	return nil, fmt.Errorf("%w: page cap %d exceeded (upstream pagination suspected broken)", ErrSessionListFetch, listMaxPages)
 }
 

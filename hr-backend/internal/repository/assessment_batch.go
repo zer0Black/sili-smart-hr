@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -34,24 +35,27 @@ type AssessmentBatchRepository interface {
 	CreateWithPersons(ctx context.Context, batch *domain.AssessmentBatch, persons func(batchID int64) []domain.AssessmentBatchPerson) error
 	// GetByID 按主键点查，无行返 (nil, nil)。
 	GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error)
-	// FindLatestRunningScheduled 取最近触发的 running 定时批次（tick 同源阻塞判定），
-	// 无行返 (nil, nil)。
-	FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
+	// FindLatestScheduled 取最近触发的定时批次（不限状态，tick 已建批判定消费）：
+	// 批次快速落终态后宽限窗内的重复 tick 仍须能查到它防重复建批。无行返 (nil, nil)。
+	FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
 	// ListByFilter 按 triggered_at DESC 倒序分页，返回 (list, total)。
 	ListByFilter(ctx context.Context, f BatchFilter) ([]domain.AssessmentBatch, int64, error)
 	// UpdateTotalSessions 单事务回填批次会话总数并按人更新 session_count
 	// （单条 CASE 批量 UPDATE，名单内无会话者为 0，人员行创建时已落）。
 	UpdateTotalSessions(ctx context.Context, batchID int64, totalSessions int, personSessions map[string]int) error
+	// ExpandTargets all 模式骨架批次展开名单：单事务写名单快照、total_count 与
+	// 人员明细行。target_names_json='[]' 作原子守卫，已展开（重试重放）幂等返回。
+	ExpandTargets(ctx context.Context, batchID int64, names []string) error
 	// AdvancePersonTerminal 单事务推进单人终态并原子自增批次计数（只增不减）。
-	// 人员行 UPDATE 带 status='pending' 幂等守卫：affected==0（重入已终态）跳过计数自增。
-	// 终态判定由调用方在事务外读回批次行，经 FinalizeBatch 守卫兜底。
+	// status='pending' 守卫防重入双计；终态判定由调用方经 FinalizeBatch 兜底。
 	AdvancePersonTerminal(ctx context.Context, batchID int64, tokenName string, personStatus, errorSummary string, sessionCount int) error
 	// FinalizeBatch 落批次终态（WHERE status='running' 守卫，终态不可逆）：
 	// affected==0 视为已终态幂等返回 nil。
 	FinalizeBatch(ctx context.Context, batchID int64, status string, sessionFailRatio float64) error
-	// FailWholeBatch 批次级异常整批失败：pending 人员行落 failed（已终态者不动，
-	// 终态不可逆）、计数置满 N/N、批次落 failed。
-	FailWholeBatch(ctx context.Context, batchID int64, reason string) error
+	// FailWholeBatch 批次级异常整批失败：pending 人员行落 failed、计数按事务内
+	// 实况统计（重放不虚报）、批次行带 running 守卫防竞态改写终态，返回实际
+	// failed/total 供告警；已终态幂等返回 (0, 0, nil)。
+	FailWholeBatch(ctx context.Context, batchID int64, reason string) (failed, total int64, err error)
 	// CountInRange 统计 triggered_at ∈ [start, end) 的批次数（本期评测次数）。
 	CountInRange(ctx context.Context, start, end time.Time) (int64, error)
 	// CountSuccessSideTriggeredBetween 统计 triggered_at ∈ [start, end) 的全部批次中
@@ -61,7 +65,7 @@ type AssessmentBatchRepository interface {
 	// 逐行判定归 service，口径与列表 Stalled 同源）。
 	ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error)
 	// ListFailedByBatch 取批次内 status='failed' 人员行，按 finished_at ASC 升序
-	//（终态落库先后，走 idx_batch_status；specs §4.3.4 规则1）。
+	//（终态落库先后，走 idx_batch_status）。
 	ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error)
 }
 
@@ -100,10 +104,10 @@ func (r *assessmentBatchRepository) GetByID(ctx context.Context, id int64) (*dom
 	return &b, nil
 }
 
-func (r *assessmentBatchRepository) FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
+func (r *assessmentBatchRepository) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
 	var b domain.AssessmentBatch
 	err := r.db.WithContext(ctx).
-		Where("status = ? AND trigger_type = ?", domain.BatchStatusRunning, domain.BatchTriggerScheduled).
+		Where("trigger_type = ?", domain.BatchTriggerScheduled).
 		Order("triggered_at DESC").
 		First(&b).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -167,6 +171,47 @@ func (r *assessmentBatchRepository) UpdateTotalSessions(ctx context.Context, bat
 	})
 }
 
+// ExpandTargets 骨架批次展开：target_names_json='[]' 守卫限定只展开一次
+//（重试重放 affected==0 幂等返回），明细行与批次行计数同事务原子落库。
+func (r *assessmentBatchRepository) ExpandTargets(ctx context.Context, batchID int64, names []string) error {
+	namesJSON, err := json.Marshal(names)
+	if err != nil {
+		return fmt.Errorf("marshal names: %w", err)
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.AssessmentBatch{}).
+			Where("id = ? AND target_names_json = ?", batchID, "[]").
+			Updates(map[string]any{
+				"target_names_json": string(namesJSON),
+				"total_count":       len(names),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil // 已展开：重试重放不双插明细
+		}
+		rows := buildPersonRows(batchID, names)
+		if len(rows) == 0 {
+			return errors.New("expand targets: 名单为空")
+		}
+		return tx.CreateInBatches(rows, 100).Error
+	})
+}
+
+// buildPersonRows 组装人员明细 pending 行（幂等键 batch_id+token_name）。
+func buildPersonRows(batchID int64, names []string) []domain.AssessmentBatchPerson {
+	persons := make([]domain.AssessmentBatchPerson, 0, len(names))
+	for _, n := range names {
+		persons = append(persons, domain.AssessmentBatchPerson{
+			BatchID:   batchID,
+			TokenName: n,
+			Status:    domain.PersonStatusPending,
+		})
+	}
+	return persons
+}
+
 // AdvancePersonTerminal 终态映射（04 §3.2）：成功侧四态累计会话数，failed 只计失败数。
 func (r *assessmentBatchRepository) AdvancePersonTerminal(ctx context.Context, batchID int64, tokenName string, personStatus, errorSummary string, sessionCount int) error {
 	if personStatus == domain.PersonStatusFailed {
@@ -211,11 +256,13 @@ func (r *assessmentBatchRepository) FinalizeBatch(ctx context.Context, batchID i
 		}).Error
 }
 
-// FailWholeBatch 人员行带 status='pending' 守卫：batch-run 重试重放本路径时不覆盖
-// 已终态成功者（与 AdvancePersonTerminal 同款幂等口径）。
-func (r *assessmentBatchRepository) FailWholeBatch(ctx context.Context, batchID int64, reason string) error {
+// FailWholeBatch 整批失败：pending 人员行落 failed（已终态者不动），批次计数按
+// 同事务实况统计（重放不虚报 100%），批次行带 running 守卫防竞态改写终态，
+// 已终态时幂等返回 (0,0,nil)。
+func (r *assessmentBatchRepository) FailWholeBatch(ctx context.Context, batchID int64, reason string) (int64, int64, error) {
 	reason = truncateRunes(reason, errorSummaryMaxLen)
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	var failed, total int64
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := utcNow()
 		if err := tx.Model(&domain.AssessmentBatchPerson{}).
 			Where("batch_id = ? AND status = ?", batchID, domain.PersonStatusPending).
@@ -226,17 +273,43 @@ func (r *assessmentBatchRepository) FailWholeBatch(ctx context.Context, batchID 
 			}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&domain.AssessmentBatch{}).
-			Where("id = ?", batchID).
+		// 实况计数：failed 含本轮前已终态者，防重放把 partial 场景虚报 100%。
+		if err := tx.Model(&domain.AssessmentBatchPerson{}).
+			Where("batch_id = ?", batchID).
+			Count(&total).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.AssessmentBatchPerson{}).
+			Where("batch_id = ? AND status = ?", batchID, domain.PersonStatusFailed).
+			Count(&failed).Error; err != nil {
+			return err
+		}
+		res := tx.Model(&domain.AssessmentBatch{}).
+			Where("id = ? AND status = ?", batchID, domain.BatchStatusRunning).
 			Updates(map[string]any{
 				"status":          domain.BatchStatusFailed,
 				"error_summary":   reason,
-				"evaluated_count": gorm.Expr("total_count"),
-				"failed_count":    gorm.Expr("total_count"),
+				"evaluated_count": total,
+				"failed_count":    failed,
 				"finished_at":     now,
-			}).Error
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// 已终态（终态不可逆）：不虚报计数，交调用方按内存批次决定告警。
+			return errBatchAlreadyTerminal
+		}
+		return nil
 	})
+	if errors.Is(err, errBatchAlreadyTerminal) {
+		return 0, 0, nil
+	}
+	return failed, total, err
 }
+
+// errBatchAlreadyTerminal FailWholeBatch 竞态发现批次已非 running 的内部哨兵。
+var errBatchAlreadyTerminal = errors.New("batch already terminal")
 
 func (r *assessmentBatchRepository) CountInRange(ctx context.Context, start, end time.Time) (int64, error) {
 	var n int64

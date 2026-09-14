@@ -383,10 +383,10 @@ func TestCountFailedByTokenNames(t *testing.T) {
 	})
 }
 
-// TestCountExistingBySessionKeys 验证抽取落库等待计数口径（specs P2_ASM_001 §5.2.2 步骤3 后
-// 等待屏障）：按 session_key 集合计数，任意状态行（含 failed 终态）都计入，集合外 key 不计。
-func TestCountExistingBySessionKeys(t *testing.T) {
-	t.Run("任意状态行均计入且集合外不计", func(t *testing.T) {
+// TestListExistingBySessionKeys 验证抽取落库等待差集口径（specs P2_ASM_001 §5.2.2 步骤3 后
+// 等待屏障）：按 session_key 集合取已落库键，任意状态行（含 failed 终态）都返回，集合外 key 不含。
+func TestListExistingBySessionKeys(t *testing.T) {
+	t.Run("任意状态行均返回且集合外不含", func(t *testing.T) {
 		db := newFeatureTestDB(t, true)
 		repo := repository.NewSessionFeatureRepository(db)
 
@@ -402,36 +402,40 @@ func TestCountExistingBySessionKeys(t *testing.T) {
 			}
 		}
 
-		n, err := repo.CountExistingBySessionKeys(context.Background(), []string{"wk-1", "wk-2", "wk-3", "wk-absent"})
+		keys, err := repo.ListExistingBySessionKeys(context.Background(), []string{"wk-1", "wk-2", "wk-3", "wk-absent"})
 		if err != nil {
-			t.Fatalf("CountExistingBySessionKeys: unexpected error: %v", err)
+			t.Fatalf("ListExistingBySessionKeys: unexpected error: %v", err)
 		}
-		if n != int64(3) {
-			t.Fatalf("want 3（三态各 1，absent 与集合外不计）, got %d", n)
+		got := map[string]bool{}
+		for _, k := range keys {
+			got[k] = true
+		}
+		if len(keys) != 3 || !got["wk-1"] || !got["wk-2"] || !got["wk-3"] {
+			t.Fatalf("want [wk-1 wk-2 wk-3]（三态各 1，absent 与集合外不含）, got %v", keys)
 		}
 	})
 
-	t.Run("空集合直接返回 0 且无错误", func(t *testing.T) {
+	t.Run("空集合直接返回空且无错误", func(t *testing.T) {
 		db := newFeatureTestDB(t, true)
 		repo := repository.NewSessionFeatureRepository(db)
 		if err := db.Create(makeFeature("wk-x", "张三", domain.FeatureStatusSuccess, time.Unix(baseUnix, 0).UTC())).Error; err != nil {
 			t.Fatalf("seed: %v", err)
 		}
 
-		n, err := repo.CountExistingBySessionKeys(context.Background(), nil)
+		keys, err := repo.ListExistingBySessionKeys(context.Background(), nil)
 		if err != nil {
 			t.Fatalf("nil 集合 want nil error, got %v", err)
 		}
-		if n != 0 {
-			t.Fatalf("nil 集合 want 0, got %d", n)
+		if len(keys) != 0 {
+			t.Fatalf("nil 集合 want empty, got %v", keys)
 		}
 
-		n, err = repo.CountExistingBySessionKeys(context.Background(), []string{})
+		keys, err = repo.ListExistingBySessionKeys(context.Background(), []string{})
 		if err != nil {
 			t.Fatalf("空切片 want nil error, got %v", err)
 		}
-		if n != 0 {
-			t.Fatalf("空切片 want 0, got %d", n)
+		if len(keys) != 0 {
+			t.Fatalf("空切片 want empty, got %v", keys)
 		}
 	})
 
@@ -446,8 +450,8 @@ func TestCountExistingBySessionKeys(t *testing.T) {
 			t.Fatalf("关闭连接: %v", err)
 		}
 
-		if _, err := repo.CountExistingBySessionKeys(context.Background(), []string{"wk-1"}); err == nil {
-			t.Fatal("连接关闭后 CountExistingBySessionKeys want error, got nil")
+		if _, err := repo.ListExistingBySessionKeys(context.Background(), []string{"wk-1"}); err == nil {
+			t.Fatal("连接关闭后 ListExistingBySessionKeys want error, got nil")
 		}
 	})
 }

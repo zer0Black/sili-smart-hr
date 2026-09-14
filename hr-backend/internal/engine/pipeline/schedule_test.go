@@ -213,6 +213,46 @@ func TestStalledDeadlineMonthEndClamp(t *testing.T) {
 	}
 }
 
+// TestStalledDeadlineUTCTriggeredAt UTC 落库的 triggered_at（仓储时间列统一
+// UTC）进 StalledDeadline 须按本地墙钟解释：直接取 UTC Clock 填本地时刻会让
+// monthly 钳位偏移一个时区差（东八区提前 8 小时打停滞标）。
+func TestStalledDeadlineUTCTriggeredAt(t *testing.T) {
+	if time.Local.String() == "UTC" {
+		t.Skip("UTC 环境无时区差可验证")
+	}
+	// 本地 2026-01-31 20:00 触发，UTC 落库为 12:00Z。
+	localFired := local(2026, 1, 31, 20, 0)
+	utcStored := localFired.UTC()
+	got := StalledDeadline(utcStored, "monthly")
+	// 期望钳位到本地 2026-02-28 20:00（月末同本地时刻），非 12:00。
+	want := local(2026, 2, 28, 20, 0)
+	if !got.Equal(want) {
+		t.Errorf("StalledDeadline(UTC 落库 %v) = %v, want %v（本地墙钟钳位）", utcStored, got, want)
+	}
+}
+
+// TestTriggerHitMidnightGrace monthly 深夜触发点的宽限窗跨零点：now 落入次月
+// 1 日凌晨时仍须命中上月月末触发点（触发日锚定触发点所在日，不按 now 日判定）。
+func TestTriggerHitMidnightGrace(t *testing.T) {
+	tests := []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{"月末 23:59 触发", local(2026, 1, 31, 23, 59), true},
+		{"次月 1 日 00:00 宽限窗内仍命中", local(2026, 2, 1, 0, 0), true},
+		{"次月 1 日 00:01 超窗不命中", local(2026, 2, 1, 0, 1), false},
+		{"非触发日不命中", local(2026, 2, 1, 12, 0), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TriggerHit(tt.now, "monthly", "23:59"); got != tt.want {
+				t.Errorf("TriggerHit(%v, monthly, 23:59) = %v, want %v", tt.now, got, tt.want)
+			}
+		})
+	}
+}
+
 // TestPrevTriggerAt 本期触发点推算：与 NextTriggerAt 关于 now 对称，
 // monthly 月末锚定不溢出。
 func TestPrevTriggerAt(t *testing.T) {

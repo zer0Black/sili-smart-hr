@@ -23,12 +23,8 @@ import (
 	"sili-smart-hr/backend/internal/repository"
 )
 
-// 评估周期配置域枚举与校验常量。
+// 评估周期配置域枚举与校验常量（周期枚举收敛在 domain.Period*）。
 const (
-	periodDaily   = "daily"
-	periodWeekly  = "weekly"
-	periodMonthly = "monthly"
-
 	targetModeAll       = "all"
 	targetModeSpecified = "specified"
 )
@@ -39,7 +35,7 @@ var triggerTimeRe = regexp.MustCompile(`^\d{2}:\d{2}$`)
 // validPeriod / validTargetMode 用集合语义做枚举校验，避开 map 同时兼顾可读。
 func validPeriod(p string) bool {
 	switch p {
-	case periodDaily, periodWeekly, periodMonthly:
+	case domain.PeriodDaily, domain.PeriodWeekly, domain.PeriodMonthly:
 		return true
 	}
 	return false

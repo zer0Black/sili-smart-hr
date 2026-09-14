@@ -1,12 +1,6 @@
 // assessment_batch 批次域 HTTP 处理器（六接口，03 §3：A1 列表、A2 统计、A3 计划、
-// A4 名单、A5 失败明细、B1 发起手动定向分析）。
-//
-// 业务规则（specs P2_ASM_001）：
-//   - §2.2 全部接口挂 JWT 鉴权 auth 组，无角色差异、无字段级权限（router.go auth 组挂载）
-//   - §4.2.3 提交发起成功后接口返回即 running，列表顶部可见进行中批次（service 落库后返回）
-//
-// binding 失败与 batch_id 解析失败均走 handleServiceError（HTTP 200 + code 1400），
-// 与 assessment_config handler 同款（前端按统一解包契约消费，code 非 0 抛 ApiError）。
+// A4 名单、A5 失败明细、B1 发起手动定向分析）。binding/解析失败与业务错误均走
+// handleServiceError（HTTP 200 + code，前端统一解包契约）。
 package handler
 
 import (

@@ -9,9 +9,10 @@ import { useBatchPlan, useBatchStats } from '@/features/assessment/hooks';
 import { targetSummaryText } from '@/features/assessment/target-summary';
 import type { BatchPlan, BatchStats } from '@/lib/contracts';
 
-/** 态势统计卡 + 跑批计划卡组合入口（specs §4.1.2 A/B）。 */
-export function StatsCards(props?: { polling?: boolean }): JSX.Element {
-  const statsQ = useBatchStats({ polling: props?.polling });
+/** 态势统计卡 + 跑批计划卡组合入口（specs §4.1.2 A/B）。
+ * polling 仅供错误态重试按钮外的加载骨架判断，轮询节奏由 useBatchStats 自驱动。 */
+export function StatsCards(): JSX.Element {
+  const statsQ = useBatchStats();
   const planQ = useBatchPlan();
   return (
     <>
@@ -115,7 +116,7 @@ function PlanCard({ query }: { query: UseQueryResult<BatchPlan> }) {
             </div>
             <div>
               <dt className="text-muted-foreground">{t('plan.target')}</dt>
-              <dd title={plan.target_names.join('、')}>
+              <dd title={plan.target_names.join(t('table.listSeparator'))}>
                 {targetSummaryText(plan, t)}
               </dd>
             </div>

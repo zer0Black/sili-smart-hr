@@ -52,8 +52,8 @@ func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int
 	return 0, nil
 }
 
-func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
-	return 0, nil
+func (f *fakeFeatureRepo) ListExistingBySessionKeys(ctx context.Context, sessionKeys []string) ([]string, error) {
+	return nil, nil
 }
 
 var _ repository.SessionFeatureRepository = (*fakeFeatureRepo)(nil)

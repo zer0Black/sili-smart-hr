@@ -61,7 +61,7 @@ func (f *fakeBatchRepo) ListFailedByBatch(_ context.Context, batchID int64) ([]d
 	f.failedListGotID = batchID
 	return f.failedList, f.failedListErr
 }
-func (f *fakeBatchRepo) FindLatestRunningScheduled(_ context.Context) (*domain.AssessmentBatch, error) {
+func (f *fakeBatchRepo) FindLatestScheduled(_ context.Context) (*domain.AssessmentBatch, error) {
 	return nil, nil
 }
 func (f *fakeBatchRepo) ListByFilter(_ context.Context, bf repository.BatchFilter) ([]domain.AssessmentBatch, int64, error) {
@@ -77,7 +77,12 @@ func (f *fakeBatchRepo) AdvancePersonTerminal(_ context.Context, _ int64, _, _, 
 func (f *fakeBatchRepo) FinalizeBatch(_ context.Context, _ int64, _ string, _ float64) error {
 	return nil
 }
-func (f *fakeBatchRepo) FailWholeBatch(_ context.Context, _ int64, _ string) error { return nil }
+func (f *fakeBatchRepo) ExpandTargets(_ context.Context, _ int64, _ []string) error {
+	return nil
+}
+func (f *fakeBatchRepo) FailWholeBatch(_ context.Context, _ int64, _ string) (int64, int64, error) {
+	return 0, 0, nil
+}
 func (f *fakeBatchRepo) CountInRange(_ context.Context, start, end time.Time) (int64, error) {
 	f.countInRangeArgs = [2]time.Time{start, end}
 	return f.countInRange, f.countInRangeErr

@@ -36,7 +36,8 @@ export interface BatchTableProps {
   polling?: boolean;
 }
 
-const DEFAULT_PAGE_SIZE = 10;
+/** 表格默认每页条数：页面级轮询探针与表格分页共用同一口径。 */
+export const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const ALL = '__all__';
 
@@ -174,7 +175,7 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span title={item.target_names.join('、')}>{targetSummaryText(item, t)}</span>
+                      <span title={item.target_names.join(t('table.listSeparator'))}>{targetSummaryText(item, t)}</span>
                     </TableCell>
                     <TableCell>
                       {item.period_start} ~ {item.period_end}

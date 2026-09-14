@@ -5,10 +5,18 @@ package domain
 
 import "time"
 
+// 评估周期长度枚举（specs §5.1.4）：service 校验侧与 pipeline 调度侧共同消费，
+// 单点定义防两包各持一份漂移（新增枚举值须两侧同步支持）。
+const (
+	PeriodDaily   = "daily"
+	PeriodWeekly  = "weekly"
+	PeriodMonthly = "monthly"
+)
+
 // AssessmentConfig 是评估周期配置实体，系统级单例（首启 migrateDB 幂等插入默认行）。
 type AssessmentConfig struct {
 	ID          int64     `gorm:"primaryKey" json:"id,string"`                  // 雪花 ID（应用层生成），string 化规避前端 JS 精度坑
-	Period      string    `gorm:"type:varchar(16);not null" json:"period"`      // 周期长度，枚举 daily/weekly/monthly，由 Go 侧常量承载
+	Period      string    `gorm:"type:varchar(16);not null" json:"period"`      // 周期长度，枚举值见 Period* 常量
 	TriggerTime string    `gorm:"type:varchar(8);not null" json:"trigger_time"` // 触发时点，HH:mm 格式（如 23:00）
 	TargetMode  string    `gorm:"type:varchar(16);not null" json:"target_mode"` // 评估对象模式，枚举 all/specified，由 Go 侧常量承载
 	Version     int       `gorm:"not null" json:"version"`                      // 乐观锁版本号，新建置 1，更新自增

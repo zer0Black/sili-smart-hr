@@ -11,7 +11,6 @@ import (
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/pipeline"
-	"sili-smart-hr/backend/internal/integration/userapi"
 	"sili-smart-hr/backend/internal/repository"
 )
 
@@ -165,15 +164,16 @@ func TestTickTriggerStalledNotBlocking(t *testing.T) {
 	}
 }
 
-// TestTickTriggerAllMode 全员模式（specs §5.1.2 步骤2）：经 StaffFetcher 拉全员名单快照。
+// TestTickTriggerAllMode 全员模式（specs §5.1.2 步骤2）：建批只落骨架（名单留空
+// 由 RunBatch 异步展开），tick 同步路径不触上游翻页（60s 任务预算防击穿）。
 func TestTickTriggerAllMode(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	cfg := weeklyCfg()
 	cfg.TargetMode = domain.BatchTargetAll
 	cfgRepo := &fakeConfigRepo{cfg: cfg}
-	fetcher := &fakeStaffFetcher{pages: [][]userapi.Staff{staffs("甲", "乙")}}
+	// fetcher 传 nil：tick 触上游会 panic，以此断言不翻页。
 	enq := &fakeBatchEnqueuer{}
-	o := tickFixture(repo, cfgRepo, fetcher, enq)
+	o := tickFixture(repo, cfgRepo, nil, enq)
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err != nil {
 		t.Fatalf("TickTrigger: %v", err)
@@ -182,8 +182,8 @@ func TestTickTriggerAllMode(t *testing.T) {
 		t.Fatalf("应落 1 条批次，实际 %d", len(repo.created))
 	}
 	b := repo.created[0]
-	if b.TargetMode != domain.BatchTargetAll || b.TotalCount != 2 {
-		t.Errorf("批次 = (mode %q, total %d), want (all, 2)", b.TargetMode, b.TotalCount)
+	if b.TargetMode != domain.BatchTargetAll || b.TotalCount != 0 || b.TargetNamesJSON != "[]" {
+		t.Errorf("骨架批次 = (mode %q, total %d, json %q), want (all, 0, \"[]\")", b.TargetMode, b.TotalCount, b.TargetNamesJSON)
 	}
 }
 
@@ -215,22 +215,24 @@ func TestTickTriggerMembersReadFail(t *testing.T) {
 	}
 }
 
-// TestTickTriggerStaffFetchFail 全员名单拉取失败上抛（specs §5.1.5）。
+// TestTickTriggerStaffFetchFail 密钥探测失败（all 骨架建批前置检查）上抛哨兵
+//（specs §5.1.5 名单链路失败）。
 func TestTickTriggerStaffFetchFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	cfg := weeklyCfg()
 	cfg.TargetMode = domain.BatchTargetAll
 	cfgRepo := &fakeConfigRepo{cfg: cfg}
-	fetcher := &fakeStaffFetcher{err: errFake}
-	o := tickFixture(repo, cfgRepo, fetcher, &fakeBatchEnqueuer{})
+	o := pipeline.NewOrchestrator(repo, nil, cfgRepo, nil, nil,
+		func(ctx context.Context) (string, error) { return "", errFake },
+		nil, nil, &fakeBatchEnqueuer{}, nil)
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
-		t.Fatal("全员名单拉取失败应上抛")
-	} else if !errors.Is(err, pipeline.ErrStaffFetchFailed) {
-		t.Errorf("err = %v, want errors.Is 命中 ErrStaffFetchFailed 哨兵", err)
+		t.Fatal("密钥解析失败应上抛")
+	} else if !errors.Is(err, pipeline.ErrSecretResolveFailed) {
+		t.Errorf("err = %v, want errors.Is 命中 ErrSecretResolveFailed 哨兵", err)
 	}
 	if len(repo.created) != 0 {
-		t.Error("名单拉取失败不应建批")
+		t.Error("密钥探测失败不应建批")
 	}
 }
 
@@ -245,8 +247,9 @@ func TestTickTriggerCreateFail(t *testing.T) {
 	}
 }
 
-// TestTickTriggerEnqueueFail 投递失败上抛交任务级重试（specs §5.1.5 批次创建请求投递失败），
-// 且批次落 failed 终态不留孤儿 running（与 SubmitManualBatch 同款兜底）。
+// TestTickTriggerEnqueueFail 投递失败落整批 failed 终态不留孤儿 running
+//（与 SubmitManualBatch 同款兜底）。批次已终态返回 nil（重试路径经已建批判定
+// 收敛，无需任务级重试）；落库失败才上抛。
 func TestTickTriggerEnqueueFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
@@ -254,8 +257,8 @@ func TestTickTriggerEnqueueFail(t *testing.T) {
 	alertRepo := &fakeAlertRepo{}
 	o := tickFixtureWithAlerts(repo, cfgRepo, nil, enq, alertRepo)
 
-	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
-		t.Fatal("入队失败应上抛交任务级重试")
+	if err := o.TickTrigger(context.Background(), tickNow()); err != nil {
+		t.Fatalf("批次已落终态，应返回 nil（无需重试）: %v", err)
 	}
 	if len(repo.created) != 1 {
 		t.Fatalf("入队失败时批次已落库，实际 %d 条", len(repo.created))
@@ -285,5 +288,45 @@ func TestTickTriggerAlreadyCreatedThisPeriod(t *testing.T) {
 	}
 	if len(repo.created) != 0 || len(enq.enqIDs) != 0 {
 		t.Error("本周期已建批不应重复建批或入队")
+	}
+}
+
+// TestTickTriggerAlreadyCreatedThisPeriodTerminal 快速终态批次同样拦截重复建批：
+// FindLatestScheduled 不限状态，批次秒级落 failed/success 后宽限窗内的剩余
+// tick 仍能查到它，不会同周期建第二个批次。
+func TestTickTriggerAlreadyCreatedThisPeriodTerminal(t *testing.T) {
+	for _, status := range []string{domain.BatchStatusFailed, domain.BatchStatusSuccess} {
+		t.Run(status, func(t *testing.T) {
+			repo := &fakeBatchRepo{runningScheduled: &domain.AssessmentBatch{
+				ID: 9, BatchNo: "B202609132300001", TriggerType: domain.BatchTriggerScheduled,
+				Status: status, TriggeredAt: time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local),
+			}}
+			cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+			enq := &fakeBatchEnqueuer{}
+			o := tickFixture(repo, cfgRepo, nil, enq)
+
+			if err := o.TickTrigger(context.Background(), tickNow().Add(time.Minute)); err != nil {
+				t.Fatalf("快速终态批次应拦截重复建批: %v", err)
+			}
+			if len(repo.created) != 0 || len(enq.enqIDs) != 0 {
+				t.Error("快速终态批次存在时不应重复建批或入队")
+			}
+		})
+	}
+}
+
+// TestTickTriggerSingleQuery 同一 tick 内同源批次查询只发一次：已建批判定与
+// 同源阻塞判定共用同一快照（探针计数）。
+func TestTickTriggerSingleQuery(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	repo.findCalls = new(int)
+	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+	o := tickFixture(repo, cfgRepo, nil, &fakeBatchEnqueuer{})
+
+	if err := o.TickTrigger(context.Background(), tickNow()); err != nil {
+		t.Fatalf("TickTrigger: %v", err)
+	}
+	if *repo.findCalls != 1 {
+		t.Errorf("FindLatestScheduled 调用 = %d, want 1（同 tick 复用快照）", *repo.findCalls)
 	}
 }

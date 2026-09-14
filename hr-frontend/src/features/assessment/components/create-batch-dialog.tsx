@@ -73,6 +73,8 @@ export function CreateBatchDialog({
   const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
   // 焦点落评估对象触发框（§4.2.5）
   const targetAnchorRef = useRef<HTMLDivElement>(null);
+  // 本轮 open 是否已回填：plan 晚到不重置用户已改的表单
+  const filledRef = useRef(false);
 
   const schema = useMemo(
     () =>
@@ -116,11 +118,15 @@ export function CreateBatchDialog({
     formState: { errors },
   } = form;
 
-  // 打开时回填：preset 覆盖人员与时段；否则默认上一完整周期窗口（周期取 plan，
-  // BR2）。plan 未就绪不回填，数据到达后由同 effect 依赖纠正（防 daily 配置下
-  // 以 weekly 兜底窗口误提交）。
+  // 打开时回填（每次 open 只执行一次，filledRef 防重入）：preset 覆盖人员与时段；
+  // 否则默认上一完整周期窗口（周期取 plan，BR2）。plan 未就绪等待数据到达后回填
+  //（防 daily 配置下以 weekly 兜底窗口误提交），但用户已改动表单后不再覆盖。
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      filledRef.current = false; // 关闭复位，下次打开重新回填
+      return;
+    }
+    if (filledRef.current) return;
     if (preset) {
       reset({
         target: { mode: 'specified', staffs: preset.staffs },
@@ -144,6 +150,7 @@ export function CreateBatchDialog({
     } else {
       return; // plan 加载中，等待数据到达后重跑本 effect
     }
+    filledRef.current = true;
     // 焦点落评估对象触发框：Radix Dialog 打开后把焦点强制接管给第一个可聚焦元素，
     // 用 setTimeout 0 让位给 Dialog 的初始 focus 完成后再转移
     const tmr = setTimeout(() => {

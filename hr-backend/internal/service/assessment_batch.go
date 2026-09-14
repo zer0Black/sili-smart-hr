@@ -1,15 +1,6 @@
 // assessment_batch 批次域业务层：批次列表（A1）、跑批态势统计（A2）、跑批计划（A3）、
-// 评估对象名单（A4）、失败明细（A5）、发起手动定向分析（B1）。
-//
-// 业务规则（specs P2_ASM_001）：
-//   - §4.1.2A 统计卡三项指标以「本期跑批间隔」为时间归属区间，与周期窗口（评估数据
-//     区间）口径分离；本期跑批间隔 = [本期触发点, 下次触发点)，两端由
-//     PrevTriggerAt/NextTriggerAt 纯日历推算，与历史定时批次无关，
-//     周期配置变更不产生超宽间隔（实现固定口径）
-//   - §4.1.2B/§4.1.5 计划卡与列表评估对象超 2 人按「前两人名 等 N 人」摘要口径，
-//     brief 取前 2 人名、names 返全量名单快照供悬浮展示
-//   - §4.1.4 规则2 进度 = 已终态单人评估数 / 总人数，覆盖会话按终态累计
-//   - 停滞为查询期派生标识（03 §4.5）：running 且距触发超过一个周期长度，不落库不改状态
+// 评估对象名单（A4）、失败明细（A5）、发起手动定向分析（B1）。口径细节见 specs
+// P2_ASM_001 §4.1（时间归属区间与周期窗口分离、名单摘要、进度与停滞派生）。
 package service
 
 import (
@@ -216,9 +207,9 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		PeriodEnd:   end,
 	})
 	if err != nil {
-		// all 模式名单拉取失败不落批次记录，映射 1305；其余错误（含入队失败，编排器
-		// 已落 failed 终态）统一 1500，前端 toast 留在弹窗（specs §4.2.3 提交发起）。
-		if errors.Is(err, pipeline.ErrStaffFetchFailed) {
+		// all 模式名单链路失败（含密钥未配置，骨架批次建批前的探测）不落批次
+		// 记录，映射 1305；其余错误统一 1500，前端 toast 留在弹窗。
+		if errors.Is(err, pipeline.ErrStaffFetchFailed) || errors.Is(err, pipeline.ErrSecretResolveFailed) {
 			return nil, NewError(errcode.StaffListUnavailable)
 		}
 		return nil, NewError(errcode.Internal)

@@ -208,34 +208,130 @@ func TestFinalizeBatchIdempotent(t *testing.T) {
 	}
 }
 
-// TestFailWholeBatch 核心断言：整批失败 N/N（BR4）。
+// TestFailWholeBatch 核心断言：整批失败按实况计数（BR4）；部分已终态者不虚报、
+// 已终态批次不可被改写。
 func TestFailWholeBatch(t *testing.T) {
+	t.Run("全 pending 整批落 N/N", func(t *testing.T) {
+		db := newBatchTestDB(t)
+		repo := repository.NewAssessmentBatchRepository(db)
+		ctx := context.Background()
+		b := createBatchWithPersons(t, db, newBatch("B004", domain.BatchTriggerScheduled, 3),
+			[]string{"张三", "李四", "王五"})
+
+		failed, total, err := repo.FailWholeBatch(ctx, b.ID, "上游会话列表不可用")
+		if err != nil {
+			t.Fatalf("fail whole batch: %v", err)
+		}
+		if failed != 3 || total != 3 {
+			t.Fatalf("返回计数 want (3,3), got (%d,%d)", failed, total)
+		}
+		got := loadBatch(t, db, b.ID)
+		if got.Status != domain.BatchStatusFailed || got.EvaluatedCount != 3 || got.FailedCount != 3 {
+			t.Fatalf("批次 want (failed,3,3), got (%q,%d,%d)", got.Status, got.EvaluatedCount, got.FailedCount)
+		}
+		if got.ErrorSummary != "上游会话列表不可用" || got.FinishedAt == nil {
+			t.Fatalf("批次失败原因/终态时间未落: %+v", got)
+		}
+		for _, p := range loadPersons(t, db, b.ID) {
+			if p.Status != domain.PersonStatusFailed || p.ErrorSummary == "" || p.FinishedAt == nil {
+				t.Fatalf("人员行未落 failed 终态: %+v", p)
+			}
+		}
+	})
+
+	t.Run("部分已终态按实况计数", func(t *testing.T) {
+		db := newBatchTestDB(t)
+		repo := repository.NewAssessmentBatchRepository(db)
+		ctx := context.Background()
+		b := createBatchWithPersons(t, db, newBatch("B005", domain.BatchTriggerScheduled, 3),
+			[]string{"张三", "李四", "王五"})
+		// 张三已 success（重放场景），剩余 2 pending 落 failed。
+		if err := repo.AdvancePersonTerminal(ctx, b.ID, "张三", domain.PersonStatusSuccess, "", 1); err != nil {
+			t.Fatalf("advance: %v", err)
+		}
+
+		failed, total, err := repo.FailWholeBatch(ctx, b.ID, "上游会话列表不可用")
+		if err != nil {
+			t.Fatalf("fail whole batch: %v", err)
+		}
+		if failed != 2 || total != 3 {
+			t.Fatalf("实况计数 want (2,3)（张三 success 不改写）, got (%d,%d)", failed, total)
+		}
+		got := loadBatch(t, db, b.ID)
+		if got.EvaluatedCount != 3 || got.FailedCount != 2 {
+			t.Fatalf("批次计数 want (3,2), got (%d,%d)", got.EvaluatedCount, got.FailedCount)
+		}
+		persons := loadPersons(t, db, b.ID)
+		byName := map[string]domain.AssessmentBatchPerson{}
+		for _, p := range persons {
+			byName[p.TokenName] = p
+		}
+		if byName["张三"].Status != domain.PersonStatusSuccess {
+			t.Fatalf("张三已终态不应被改写: %+v", byName["张三"])
+		}
+		if byName["李四"].Status != domain.PersonStatusFailed || byName["王五"].Status != domain.PersonStatusFailed {
+			t.Fatalf("pending 行应落 failed: %+v", persons)
+		}
+	})
+
+	t.Run("已终态批次幂等不改写", func(t *testing.T) {
+		db := newBatchTestDB(t)
+		repo := repository.NewAssessmentBatchRepository(db)
+		ctx := context.Background()
+		b := createBatchWithPersons(t, db, newBatch("B006", domain.BatchTriggerScheduled, 2),
+			[]string{"张三", "李四"})
+		if err := repo.FinalizeBatch(ctx, b.ID, domain.BatchStatusSuccess, 0); err != nil {
+			t.Fatalf("finalize: %v", err)
+		}
+
+		failed, total, err := repo.FailWholeBatch(ctx, b.ID, "迟到投递")
+		if err != nil {
+			t.Fatalf("已终态幂等 want nil, got %v", err)
+		}
+		if failed != 0 || total != 0 {
+			t.Fatalf("已终态幂等 want (0,0), got (%d,%d)", failed, total)
+		}
+		got := loadBatch(t, db, b.ID)
+		if got.Status != domain.BatchStatusSuccess {
+			t.Fatalf("终态不可逆: want success, got %q", got.Status)
+		}
+	})
+}
+
+// TestExpandTargets all 骨架批次异步展开：'[]' 守卫只展开一次，重复调用不双插明细。
+func TestExpandTargets(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
-	b := createBatchWithPersons(t, db, newBatch("B004", domain.BatchTriggerScheduled, 3),
-		[]string{"张三", "李四", "王五"})
+	b := newBatch("B007", domain.BatchTriggerScheduled, 0)
+	b.TargetNamesJSON = `[]`
+	b.TotalCount = 0
+	if err := db.Create(&b).Error; err != nil {
+		t.Fatalf("create: %v", err)
+	}
 
-	if err := repo.FailWholeBatch(ctx, b.ID, "上游会话列表不可用"); err != nil {
-		t.Fatalf("fail whole batch: %v", err)
+	if err := repo.ExpandTargets(ctx, b.ID, []string{"张三", "李四", "王五"}); err != nil {
+		t.Fatalf("expand: %v", err)
 	}
 	got := loadBatch(t, db, b.ID)
-	if got.Status != domain.BatchStatusFailed || got.EvaluatedCount != 3 || got.FailedCount != 3 {
-		t.Fatalf("批次 want (failed,3,3), got (%q,%d,%d)", got.Status, got.EvaluatedCount, got.FailedCount)
+	if got.TotalCount != 3 || got.TargetNamesJSON != `["张三","李四","王五"]` {
+		t.Fatalf("want (3, 名单 JSON), got (%d,%s)", got.TotalCount, got.TargetNamesJSON)
 	}
-	if got.ErrorSummary != "上游会话列表不可用" || got.FinishedAt == nil {
-		t.Fatalf("批次失败原因/终态时间未落: %+v", got)
+	if len(loadPersons(t, db, b.ID)) != 3 {
+		t.Fatal("want 3 行明细")
 	}
-	for _, p := range loadPersons(t, db, b.ID) {
-		if p.Status != domain.PersonStatusFailed || p.ErrorSummary == "" || p.FinishedAt == nil {
-			t.Fatalf("人员行未落 failed 终态: %+v", p)
-		}
+
+	// 重放：名单已非 '[]'，幂等返回不双插。
+	if err := repo.ExpandTargets(ctx, b.ID, []string{"张三", "李四", "王五"}); err != nil {
+		t.Fatalf("重放 expand: %v", err)
+	}
+	if len(loadPersons(t, db, b.ID)) != 3 {
+		t.Fatalf("重放不应双插明细, got %d 行", len(loadPersons(t, db, b.ID)))
 	}
 }
 
 // TestGetByIDNotFound 无行返 (nil, nil)。
-func TestGetByIDNotFound(t *testing.T) {
-	db := newBatchTestDB(t)
+func TestGetByIDNotFound(t *testing.T) {	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	got, err := repo.GetByID(context.Background(), 999)
 	if err != nil || got != nil {
@@ -243,13 +339,14 @@ func TestGetByIDNotFound(t *testing.T) {
 	}
 }
 
-// TestFindLatestRunningScheduled 取最近触发的 running 定时批次；无行返 (nil, nil)。
-func TestFindLatestRunningScheduled(t *testing.T) {
+// TestFindLatestScheduled 取最近触发的定时批次（不限状态，防快速终态后宽限窗内
+// 重复建批）；无行返 (nil, nil)。
+func TestFindLatestScheduled(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
 
-	got, err := repo.FindLatestRunningScheduled(ctx)
+	got, err := repo.FindLatestScheduled(ctx)
 	if err != nil || got != nil {
 		t.Fatalf("空表 want (nil,nil), got (%v,%v)", got, err)
 	}
@@ -269,12 +366,13 @@ func TestFindLatestRunningScheduled(t *testing.T) {
 		}
 	}
 
-	got, err = repo.FindLatestRunningScheduled(ctx)
+	// 不限状态：终态 scheduled（B013）也算，manual 排除。
+	got, err = repo.FindLatestScheduled(ctx)
 	if err != nil || got == nil {
-		t.Fatalf("want 最新 running scheduled, got (%v,%v)", got, err)
+		t.Fatalf("want 最新 scheduled（含终态）, got (%v,%v)", got, err)
 	}
-	if got.BatchNo != "B011" {
-		t.Fatalf("want B011（manual 与终态须排除）, got %q", got.BatchNo)
+	if got.BatchNo != "B013" {
+		t.Fatalf("want B013（manual 排除、终态不排除）, got %q", got.BatchNo)
 	}
 }
 
@@ -368,7 +466,7 @@ func TestFailWholeBatchTruncated(t *testing.T) {
 	ctx := context.Background()
 	b := createBatchWithPersons(t, db, newBatch("B041", domain.BatchTriggerScheduled, 1), []string{"张三"})
 
-	if err := repo.FailWholeBatch(ctx, b.ID, strings.Repeat("e", 300)); err != nil {
+	if _, _, err := repo.FailWholeBatch(ctx, b.ID, strings.Repeat("e", 300)); err != nil {
 		t.Fatalf("fail whole batch: %v", err)
 	}
 	got := loadBatch(t, db, b.ID)
@@ -515,7 +613,7 @@ func TestFailWholeBatchPendingGuard(t *testing.T) {
 	if err := repo.AdvancePersonTerminal(ctx, b.ID, "张三", domain.PersonStatusSuccess, "", 1); err != nil {
 		t.Fatalf("advance 张三: %v", err)
 	}
-	if err := repo.FailWholeBatch(ctx, b.ID, "整批失败"); err != nil {
+	if _, _, err := repo.FailWholeBatch(ctx, b.ID, "整批失败"); err != nil {
 		t.Fatalf("fail whole batch: %v", err)
 	}
 	persons := loadPersons(t, db, b.ID)

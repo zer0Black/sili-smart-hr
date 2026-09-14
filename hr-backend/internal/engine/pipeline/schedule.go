@@ -3,34 +3,33 @@ package pipeline
 import (
 	"fmt"
 	"time"
+
+	"sili-smart-hr/backend/internal/domain"
 )
 
-// 合法周期取值集合，与 specs §5.1.4 及 03 上游契约一致。
-const (
-	periodDaily   = "daily"
-	periodWeekly  = "weekly"
-	periodMonthly = "monthly"
-)
-
-// triggerGraceWindow 触发命中宽限窗：worker 队列积压时 tick 任务消费晚于
-// 理论触发点几分钟仍应命中（spec v1.9 技术修正），窗宽取 2 分钟覆盖分钟级
-// 重试半径；同窗重复建批由本周期已建批判定拦截。
+// 合法周期取值集合收敛在 domain.Period*（service 校验侧与调度侧共消费）。
+// triggerGraceWindow 触发命中宽限窗：队列积压致 tick 消费晚于理论触发点几分
+// 钟仍应命中（spec v1.9），窗宽 2 分钟覆盖分钟级重试半径；同窗重复建批由
+// 本周期已建批判定拦截。
 const triggerGraceWindow = 2 * time.Minute
 
-// TriggerHit 判定触发时刻是否命中：now 落在理论触发点 [触发点, 触发点+宽限窗)
-// 内且当日为触发日（daily→每日、weekly→周日、monthly→当月最后一天）。
-// triggerTime 为 HH:mm 字符串。
+// TriggerHit 判定 now 是否命中触发点 [触发点, 触发点+宽限窗) 且触发点当日为
+// 触发日（daily 每日 / weekly 周日 / monthly 月末）。触发日锚定触发点所在日：
+// monthly 23:59 类深夜触发点的宽限窗跨零点落入次月，按 now 日判定会整月漏触发。
 func TriggerHit(now time.Time, period, triggerTime string) bool {
 	hh, mm, err := parseTriggerTime(triggerTime)
 	if err != nil {
 		return false
 	}
 	n := now.Local()
-	if !isTriggerDay(n, period) {
-		return false
+	// 候选触发日：now 当日与前一日的触发点（覆盖宽限窗跨零点），取落在宽限窗内者。
+	for _, day := range []time.Time{n, n.AddDate(0, 0, -1)} {
+		fired := time.Date(day.Year(), day.Month(), day.Day(), hh, mm, 0, 0, time.Local)
+		if !n.Before(fired) && n.Before(fired.Add(triggerGraceWindow)) && isTriggerDay(fired, period) {
+			return true
+		}
 	}
-	fired := time.Date(n.Year(), n.Month(), n.Day(), hh, mm, 0, 0, time.Local)
-	return !n.Before(fired) && n.Before(fired.Add(triggerGraceWindow))
+	return false
 }
 
 // PrevTriggerAt 推算最近一个已过去的触发点（本期起点）：与 NextTriggerAt 同构
@@ -43,11 +42,11 @@ func PrevTriggerAt(now time.Time, period, triggerTime string) (time.Time, error)
 	n := now.Local()
 	var last time.Time
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		last = time.Date(n.Year(), n.Month(), n.Day(), hh, mm, 0, 0, time.Local)
-	case periodWeekly:
+	case domain.PeriodWeekly:
 		last = prevWeekdayOnOrBefore(n, time.Sunday, hh, mm)
-	case periodMonthly:
+	case domain.PeriodMonthly:
 		last = monthEndAt(n, hh, mm)
 	default:
 		return time.Time{}, fmt.Errorf("未知周期: %q", period)
@@ -62,9 +61,9 @@ func PrevTriggerAt(now time.Time, period, triggerTime string) (time.Time, error)
 // monthly 锚定月初回退避免 AddDate 月末溢出，daily 减 1 天）。
 func prevPeriodTrigger(at time.Time, period string, hh, mm int) time.Time {
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		return at.AddDate(0, 0, -1)
-	case periodMonthly:
+	case domain.PeriodMonthly:
 		return monthEndAt(time.Date(at.Year(), at.Month(), 1, hh, mm, 0, 0, time.Local).AddDate(0, 0, -1), hh, mm)
 	default: // weekly
 		return at.AddDate(0, 0, -7)
@@ -77,11 +76,11 @@ func prevPeriodTrigger(at time.Time, period string, hh, mm int) time.Time {
 func CurrentPeriodWindow(now time.Time, period string) (start, end int64) {
 	n := now.Local()
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		s := time.Date(n.Year(), n.Month(), n.Day(), 0, 0, 0, 0, time.Local)
 		e := s.AddDate(0, 0, 1)
 		return s.Unix(), e.Unix()
-	case periodWeekly:
+	case domain.PeriodWeekly:
 		s := weekStart(n)
 		e := s.AddDate(0, 0, 7)
 		return s.Unix(), e.Unix()
@@ -102,11 +101,11 @@ func NextTriggerAt(now time.Time, period, triggerTime string) (time.Time, error)
 	n := now.Local()
 	var first time.Time
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		first = time.Date(n.Year(), n.Month(), n.Day(), hh, mm, 0, 0, time.Local)
-	case periodWeekly:
+	case domain.PeriodWeekly:
 		first = nextWeekdayOnOrAfter(n, time.Sunday, hh, mm)
-	case periodMonthly:
+	case domain.PeriodMonthly:
 		first = monthEndAt(n, hh, mm)
 	default:
 		return time.Time{}, fmt.Errorf("未知周期: %q", period)
@@ -116,9 +115,9 @@ func NextTriggerAt(now time.Time, period, triggerTime string) (time.Time, error)
 	}
 	// 已过当次，顺延一个周期（BR3 §4.1.2B）
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		return first.AddDate(0, 0, 1), nil
-	case periodWeekly:
+	case domain.PeriodWeekly:
 		return first.AddDate(0, 0, 7), nil
 	default: // monthly
 		// AddDate 对 1/31+1月 会归一化到 3/3，须先锚定月初再推下月月末
@@ -126,19 +125,20 @@ func NextTriggerAt(now time.Time, period, triggerTime string) (time.Time, error)
 	}
 }
 
-// StalledDeadline 停滞边界（03 §4.5）：daily→+1天、weekly→+7天、monthly→+1日历月。
-// monthly 须防 AddDate 月末溢出：1/31 锚点直接加月归一化到 3/3，越过后月真实
-// 触发点（2/29），卡死批次阻塞下月触发；取加月结果与后月月末同刻的较早者钳位，
-// 后月从 triggeredAt 所在月的次月初推（naive 溢出后所在月已失真，不可作锚）。
+// StalledDeadline 停滞边界（03 §4.5）：daily +1 天、weekly +7 天、monthly
+// +1 日历月（月末溢出时钳位到后月月末同刻，防 1/31 加月归一化越过 2/29 真实
+// 触发点卡死批次）。先转本地墙钟再取 Clock：UTC 落库值直接取会把 UTC 数字
+// 当本地解释，钳位偏移一个时区差。
 func StalledDeadline(triggeredAt time.Time, period string) time.Time {
+	local := triggeredAt.Local()
 	switch period {
-	case periodDaily:
-		return triggeredAt.AddDate(0, 0, 1)
-	case periodMonthly:
-		naive := triggeredAt.AddDate(0, 1, 0)
-		hh, mm, ss := triggeredAt.Clock()
+	case domain.PeriodDaily:
+		return local.AddDate(0, 0, 1)
+	case domain.PeriodMonthly:
+		naive := local.AddDate(0, 1, 0)
+		hh, mm, ss := local.Clock()
 		// 后月（M+1）月末同刻：M+2 月初回退一天（月内任意锚推 M+2 月初都不溢出）。
-		firstOfDeadlineMonth := time.Date(triggeredAt.Year(), triggeredAt.Month(), 1, 0, 0, 0, 0, time.Local).AddDate(0, 1, 0)
+		firstOfDeadlineMonth := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, time.Local).AddDate(0, 1, 0)
 		lastOfDeadlineMonth := firstOfDeadlineMonth.AddDate(0, 1, 0).AddDate(0, 0, -1)
 		monthEnd := time.Date(lastOfDeadlineMonth.Year(), lastOfDeadlineMonth.Month(), lastOfDeadlineMonth.Day(), hh, mm, ss, 0, time.Local)
 		if monthEnd.Before(naive) {
@@ -146,7 +146,7 @@ func StalledDeadline(triggeredAt time.Time, period string) time.Time {
 		}
 		return naive
 	default: // weekly
-		return triggeredAt.AddDate(0, 0, 7)
+		return local.AddDate(0, 0, 7)
 	}
 }
 
@@ -170,11 +170,11 @@ func parseTriggerTime(triggerTime string) (hh, mm int, err error) {
 // isTriggerDay 判定日期 n 是否为该周期的触发日。
 func isTriggerDay(n time.Time, period string) bool {
 	switch period {
-	case periodDaily:
+	case domain.PeriodDaily:
 		return true
-	case periodWeekly:
+	case domain.PeriodWeekly:
 		return n.Weekday() == time.Sunday
-	case periodMonthly:
+	case domain.PeriodMonthly:
 		// 当月最后一天：加一天月份变化即月末
 		return n.AddDate(0, 0, 1).Month() != n.Month()
 	default:

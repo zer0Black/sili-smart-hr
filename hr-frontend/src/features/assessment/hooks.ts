@@ -29,42 +29,37 @@ function usePageVisible(): boolean {
 const POLLING_INTERVAL_MS = 10_000;
 
 /**
- * useBatches：批次列表。polling 为 true（或 'probe'）且页面可见时 10s 轮询。
- * 'probe' 模式供页面级探针：数据里存在非停滞 running 批次时才续轮询，全终态即停，
- * 让轮询开关随真实状态收敛（specs §4.1.3 存在进行中批次才轮询）。
+ * useBatches：批次列表。polling 为 true 且页面可见时 10s 轮询（specs §4.1.3）。
+ * 轮询开关由页面级 stats 探针（running_batch_count）驱动，口径与统计卡同源，
+ * 不受翻页/筛选把 running 批次挤出当前页影响。
  */
-export function useBatches(filter: BatchFilter, opts?: { polling?: boolean | 'probe' }) {
+export function useBatches(filter: BatchFilter, opts?: { polling?: boolean }) {
   const token = useAuthStore((s) => s.token);
   const visible = usePageVisible();
   return useQuery<BatchListPage>({
     queryKey: ['assessment', 'batches', filter],
     queryFn: () => fetchBatches(filter),
     enabled: !!token,
-    refetchInterval: (query) => resolveInterval(query.state.data, opts, visible),
+    refetchInterval: opts?.polling && visible ? POLLING_INTERVAL_MS : false,
   });
 }
 
-function resolveInterval(
-  data: BatchListPage | undefined,
-  opts: { polling?: boolean | 'probe' } | undefined,
-  visible: boolean,
-): number | false {
-  if (!visible || !opts?.polling) return false;
-  if (opts.polling === true) return POLLING_INTERVAL_MS;
-  // probe：由数据驱动自收敛
-  const hasRunning = (data?.list ?? []).some((b) => b.status === 'running' && !b.stalled);
-  return hasRunning ? POLLING_INTERVAL_MS : false;
-}
-
-/** useBatchStats：跑批态势统计，随列表同节奏轮询。 */
-export function useBatchStats(opts?: { polling?: boolean }) {
+/**
+ * useBatchStats：跑批态势统计，自驱动轮询：数据里存在进行中批次
+ *（running_batch_count > 0，已剔除停滞，与列表 stalled 同口径）时 10s 续轮询，
+ * 全终态即停。轮询期跨域废弃（batches/stats）同步触发统计卡刷新。
+ */
+export function useBatchStats() {
   const token = useAuthStore((s) => s.token);
   const visible = usePageVisible();
   return useQuery<BatchStats>({
     queryKey: ['assessment', 'stats'],
     queryFn: fetchBatchStats,
     enabled: !!token,
-    refetchInterval: opts?.polling && visible ? POLLING_INTERVAL_MS : false,
+    refetchInterval: (query) =>
+      visible && (query.state.data?.running_batch_count ?? 0) > 0
+        ? POLLING_INTERVAL_MS
+        : false,
   });
 }
 

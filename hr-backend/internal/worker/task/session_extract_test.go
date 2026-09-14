@@ -56,8 +56,8 @@ func (r *stubRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []str
 func (r *stubRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
 	return 0, nil
 }
-func (r *stubRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
-	return 0, nil
+func (r *stubRepo) ListExistingBySessionKeys(ctx context.Context, sessionKeys []string) ([]string, error) {
+	return nil, nil
 }
 
 // stubParams 空集参数源：ReadStringArray 恒返回空（Trim/Redact 走出厂分支）。

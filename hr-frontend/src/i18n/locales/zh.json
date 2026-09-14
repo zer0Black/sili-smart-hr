@@ -614,8 +614,6 @@
         "monthly": "每月"
       },
       "target": "评估对象",
-      "targetAll": "全员",
-      "targetSpecified": "指定人员",
       "targetSummary": "{{first}}、{{second}} 等 {{count}} 人",
       "dimensions": "评估维度",
       "dimensionsValue": "底层 {{base}} 维 + 上层 {{upper}} 维",
@@ -665,8 +663,7 @@
       "targetAll": "全员",
       "toastGeneric": "操作失败，请稍后重试",
       "viewResultDisabled": "个人画像功能建设中",
-      "viewResultRunning": "本批次评估进行中，画像尚不完整",
-      "loading": "加载中…"
+      "listSeparator": "、"
     },
     "create": {
       "title": "发起评测",

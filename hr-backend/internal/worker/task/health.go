@@ -12,6 +12,15 @@ import (
 // TypeHealthCheck 是 no-op 健康任务的类型名。
 const TypeHealthCheck = "health:check"
 
+// 队列名常量单点定义（防互饿分流）：投递侧（pipeline 入队）与消费侧（worker
+// server Queues 注册）共同引用，双侧改名只动此处。default 承载 tick 等分钟级
+// 任务保最低延迟，batch 承载 batch-run 编排，extract 承载会话抽取洪峰。
+const (
+	QueueDefault = "default"
+	QueueBatch   = "batch"
+	QueueExtract = "extract"
+)
+
 // NewMux 构造 worker 任务路由：健康任务原地注册，抽取、评估与批次任务经参数
 // 注入（保持单一注册入口）。session-extract / person-evaluate / batch-tick /
 // batch-run 均以 context.WithTimeout 挂任务级超时（asynq v0.26.0 ServeMux 无
