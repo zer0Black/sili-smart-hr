@@ -241,10 +241,13 @@ describe('BatchTable 批次列表', () => {
 
     renderTable();
 
-    // 初次失败渲染空态
+    // 初次失败渲染错误态（区别于空态，specs §4.1.3 加载失败展示重试入口）
     const queryBtn = await screen.findByRole('button', { name: '查询' });
-    await screen.findByText('暂无评测记录，点击右上角发起评测或等待周期自动跑批');
+    await screen.findByText('数据加载失败，请重试');
     expect(screen.queryByText('B20260913001')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('暂无评测记录，点击右上角发起评测或等待周期自动跑批'),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(queryBtn);
 

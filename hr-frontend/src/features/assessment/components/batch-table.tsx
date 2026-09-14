@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
-import type { TFunction } from 'i18next';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useBatches } from '@/features/assessment/hooks';
+import { targetSummaryText } from '@/features/assessment/target-summary';
 import type { BatchFilter } from '@/features/assessment/types';
 import type { BatchListItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
@@ -32,24 +32,13 @@ export interface BatchTableProps {
   onReSubmit: (batch: BatchListItem) => void;
   /** 外部重置信号：值变化时清空筛选并回第一页（§4.2.3 提交成功后重置入口）。 */
   resetKey?: number;
+  /** 轮询开关：存在非停滞 running 批次时由父级传入（specs §4.1.3 列表轮询）。 */
+  polling?: boolean;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [10, 20, 50];
 const ALL = '__all__';
-
-/** 评估对象摘要：all 显「全员」；specified ≤2 人直显，>2 人按「前两人 等 N 人」，title 悬浮全量名单（specs §4.1.5）。 */
-function targetSummary(item: BatchListItem, t: TFunction): string {
-  if (item.target_mode === 'all') return t('table.targetAll');
-  if (item.target_names.length > 2) {
-    return t('plan.targetSummary', {
-      first: item.target_brief[0] ?? item.target_names[0],
-      second: item.target_brief[1] ?? item.target_names[1],
-      count: item.target_names.length,
-    });
-  }
-  return item.target_names.join('、');
-}
 
 /** 状态标签变体：running 中性、success 系统、partial/failed 警示。 */
 function statusVariant(status: BatchListItem['status']): 'default' | 'secondary' | 'destructive' {
@@ -59,14 +48,14 @@ function statusVariant(status: BatchListItem['status']): 'default' | 'secondary'
 }
 
 /** 批次列表：筛选 + 九列 + 行操作 + 分页。行操作可见性见 specs §4.1.3。 */
-export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey }: BatchTableProps): JSX.Element {
+export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey, polling }: BatchTableProps): JSX.Element {
   const { t } = useTranslation('assessment');
 
   const [draftTrigger, setDraftTrigger] = useState<string>(ALL);
   const [draftStatus, setDraftStatus] = useState<string>(ALL);
   const [filter, setFilter] = useState<BatchFilter>({ page: 1, page_size: DEFAULT_PAGE_SIZE });
 
-  const query = useBatches(filter);
+  const query = useBatches(filter, { polling });
 
   // 外部 resetKey 变化（跳过首挂载）时把筛选与页码重置为默认，由 filter 变化触发 refetch
   const resetKeyRef = useRef<number | undefined>(resetKey);
@@ -102,7 +91,8 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey 
   }
 
   function onPageSizeChange(v: string) {
-    setFilter({ page: 1, page_size: Number(v) });
+    // 函数式展开保留已应用的筛选条件，只重置页码
+    setFilter((f) => ({ ...f, page: 1, page_size: Number(v) }));
   }
 
   return (
@@ -145,6 +135,14 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey 
 
         {query.isLoading ? (
           <div className="bg-muted h-40 w-full animate-pulse rounded-md" />
+        ) : query.isError ? (
+          // 加载失败态：查询按钮兼作重试入口（specs §4.1.3）
+          <div className="flex flex-col items-center gap-2 py-8">
+            <span className="text-muted-foreground text-sm">{t('table.loadError')}</span>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              {t('stats.refresh')}
+            </Button>
+          </div>
         ) : list.length === 0 ? (
           <p className="text-muted-foreground py-8 text-center text-sm">{t('table.empty')}</p>
         ) : (
@@ -176,7 +174,7 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey 
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <span title={item.target_names.join('、')}>{targetSummary(item, t)}</span>
+                      <span title={item.target_names.join('、')}>{targetSummaryText(item, t)}</span>
                     </TableCell>
                     <TableCell>
                       {item.period_start} ~ {item.period_end}

@@ -82,6 +82,10 @@ func (r *dimFakeRepo) ListEnabledFullByDataSource(_ context.Context, _ string) (
 	return nil, nil
 }
 
+func (r *dimFakeRepo) CountEnabledByGroupCode(_ context.Context, _ string) (map[string]int, error) {
+	return nil, nil
+}
+
 func (r *dimFakeRepo) FindByID(_ context.Context, _ int64) (*domain.Dimension, error) {
 	r.findByIDCalls++
 	return r.findByIDDim, r.findByIDErr

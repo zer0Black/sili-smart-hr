@@ -8,17 +8,13 @@ import type {
 
 import type {
   BatchFailures,
+  BatchFilter,
   BatchTargets,
   CreateBatchPayload,
 } from './types';
 
 /** GET /api/assessment/batches：批次记录分页查询（按触发时间倒序）。 */
-export async function fetchBatches(params: {
-  trigger_type?: string;
-  status?: string;
-  page: number;
-  page_size: number;
-}): Promise<BatchListPage> {
+export async function fetchBatches(params: BatchFilter): Promise<BatchListPage> {
   const { data } = await httpClient.get<BatchListPage>('/assessment/batches', {
     params: {
       trigger_type: params.trigger_type || undefined,

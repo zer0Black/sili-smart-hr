@@ -111,13 +111,14 @@ export function CreateBatchDialog({
   });
   const {
     control,
-    register,
     handleSubmit,
     reset,
     formState: { errors },
   } = form;
 
-  // 打开时回填：preset 覆盖人员与时段；否则默认上一完整周期窗口（周期取 plan 缓存，BR2）
+  // 打开时回填：preset 覆盖人员与时段；否则默认上一完整周期窗口（周期取 plan，
+  // BR2）。plan 未就绪不回填，数据到达后由同 effect 依赖纠正（防 daily 配置下
+  // 以 weekly 兜底窗口误提交）。
   useEffect(() => {
     if (!open) return;
     if (preset) {
@@ -126,14 +127,22 @@ export function CreateBatchDialog({
         periodStart: preset.period.start,
         periodEnd: preset.period.end,
       });
-    } else {
-      const period = planQ.data?.period ?? 'weekly';
-      const range = previousPeriodRange(new Date(), period);
+    } else if (planQ.data?.period) {
+      const range = previousPeriodRange(new Date(), planQ.data.period);
       reset({
         target: { mode: 'specified', staffs: [] },
         periodStart: range.start,
         periodEnd: range.end,
       });
+    } else if (planQ.isError) {
+      // plan 拉取失败：不兜底错误窗口，留空由校验拦住提交（用户可手填）。
+      reset({
+        target: { mode: 'specified', staffs: [] },
+        periodStart: '',
+        periodEnd: '',
+      });
+    } else {
+      return; // plan 加载中，等待数据到达后重跑本 effect
     }
     // 焦点落评估对象触发框：Radix Dialog 打开后把焦点强制接管给第一个可聚焦元素，
     // 用 setTimeout 0 让位给 Dialog 的初始 focus 完成后再转移
@@ -142,9 +151,7 @@ export function CreateBatchDialog({
       btn?.focus();
     }, 0);
     return () => clearTimeout(tmr);
-    // plan 数据为缓存读，不作为重置触发依赖
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, preset, reset]);
+  }, [open, preset, reset, planQ.data, planQ.isError]);
 
   const staffsSelected = (() => {
     const v = form.getValues().target;
@@ -216,15 +223,7 @@ export function CreateBatchDialog({
             <DialogTitle>{t('create.title')}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              // 不依赖 register 回填：手动同步 dom 到 formState（type=date 在 jsdom 下 fireEvent.change 偶发不进 RHF）
-              const dom = (id: string) =>
-                (document.getElementById(id) as HTMLInputElement | null)?.value ?? '';
-              form.setValue('periodStart', dom('period-start'), { shouldValidate: false });
-              form.setValue('periodEnd', dom('period-end'), { shouldValidate: false });
-              return handleSubmit(onSubmit)(e);
-            }}
+            onSubmit={handleSubmit(onSubmit)}
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
@@ -262,15 +261,17 @@ export function CreateBatchDialog({
               <Label>{t('create.periodLabel')}</Label>
               <div className="flex items-center gap-2">
                 <div className="flex flex-1 flex-col gap-1">
-                  <Label htmlFor="period-start" className="sr-only">
-                    {t('create.periodStartPlaceholder')}
-                  </Label>
-                  <Input
-                    id="period-start"
-                    type="date"
-                    aria-label={t('create.periodStartPlaceholder')}
-                    max={yesterday}
-                    {...register('periodStart')}
+                  <Controller
+                    control={control}
+                    name="periodStart"
+                    render={({ field }) => (
+                      <Input
+                        {...field}
+                        type="date"
+                        aria-label={t('create.periodStartPlaceholder')}
+                        max={yesterday}
+                      />
+                    )}
                   />
                   {errors.periodStart && (
                     <p className="text-destructive text-sm">{errors.periodStart.message}</p>
@@ -278,15 +279,17 @@ export function CreateBatchDialog({
                 </div>
                 <span className="text-muted-foreground">~</span>
                 <div className="flex flex-1 flex-col gap-1">
-                  <Label htmlFor="period-end" className="sr-only">
-                    {t('create.periodEndPlaceholder')}
-                  </Label>
-                  <Input
-                    id="period-end"
-                    type="date"
-                    aria-label={t('create.periodEndPlaceholder')}
-                    max={yesterday}
-                    {...register('periodEnd')}
+                  <Controller
+                    control={control}
+                    name="periodEnd"
+                    render={({ field }) => (
+                      <Input
+                        {...field}
+                        type="date"
+                        aria-label={t('create.periodEndPlaceholder')}
+                        max={yesterday}
+                      />
+                    )}
                   />
                   {errors.periodEnd && (
                     <p className="text-destructive text-sm">{errors.periodEnd.message}</p>

@@ -175,3 +175,69 @@ func TestIsStalled(t *testing.T) {
 		})
 	}
 }
+
+// TestTriggerHitGraceWindow 宽限窗（spec v1.9）：触发点后 2 分钟内仍命中，
+// 超窗不命中；worker 队列积压导致 tick 消费晚几分钟不丢整周期触发。
+func TestTriggerHitGraceWindow(t *testing.T) {
+	tests := []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{"触发点后 1 分钟命中", local(2026, 9, 13, 23, 1), true},
+		{"触发点后 2 分钟边界不命中", local(2026, 9, 13, 23, 2), false},
+		{"触发点后 10 分钟不命中", local(2026, 9, 13, 23, 10), false},
+		{"触发点前 1 分钟不命中", local(2026, 9, 13, 22, 59), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TriggerHit(tt.now, "weekly", "23:00"); got != tt.want {
+				t.Errorf("TriggerHit(%v) = %v, want %v", tt.now, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestStalledDeadlineMonthEndClamp 月末钳位：1/31 触发的停滞边界钳到 2/28 同刻，
+// 不越过下月真实触发点（AddDate 直接加月会溢出到 3/3 阻塞下月触发）。
+func TestStalledDeadlineMonthEndClamp(t *testing.T) {
+	triggered := local(2024, 1, 31, 23, 0) // monthly 触发日恒为月末
+	got := StalledDeadline(triggered, "monthly")
+	want := local(2024, 2, 29, 23, 0) // 闰年 2 月末
+	if !got.Equal(want) {
+		t.Errorf("StalledDeadline(1/31) = %v, want %v（钳位到下月月末）", got, want)
+	}
+	// 钳位后：2/29 23:01 已判停滞，下月（2/29 触发）建批不被阻塞。
+	if !IsStalled(local(2024, 2, 29, 23, 1), triggered, "monthly", "running") {
+		t.Error("钳位边界次日应判停滞放行下月触发")
+	}
+}
+
+// TestPrevTriggerAt 本期触发点推算：与 NextTriggerAt 关于 now 对称，
+// monthly 月末锚定不溢出。
+func TestPrevTriggerAt(t *testing.T) {
+	tests := []struct {
+		name        string
+		now         time.Time
+		period      string
+		triggerTime string
+		want        time.Time
+	}{
+		{"weekly 周六指本周日 23:00", local(2026, 9, 12, 10, 0), "weekly", "23:00", local(2026, 9, 6, 23, 0)},
+		{"weekly 周日宽限窗内仍取本周日", local(2026, 9, 13, 23, 1), "weekly", "23:00", local(2026, 9, 13, 23, 0)},
+		{"daily 未到当日触发点取昨日", local(2026, 9, 12, 10, 0), "daily", "23:00", local(2026, 9, 11, 23, 0)},
+		{"monthly 月中指上月月末", local(2026, 9, 15, 10, 0), "monthly", "23:00", local(2026, 8, 31, 23, 0)},
+		{"monthly 闰年 3 月指 2/29", local(2024, 3, 15, 10, 0), "monthly", "23:00", local(2024, 2, 29, 23, 0)},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := PrevTriggerAt(tt.now, tt.period, tt.triggerTime)
+			if err != nil {
+				t.Fatalf("PrevTriggerAt: %v", err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("PrevTriggerAt(%v, %q, %q) = %v, want %v", tt.now, tt.period, tt.triggerTime, got, tt.want)
+			}
+		})
+	}
+}

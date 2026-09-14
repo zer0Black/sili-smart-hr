@@ -64,6 +64,9 @@ func (f *fakeDimensionRepo) SoftDeleteWithVersion(ctx context.Context, id int64,
 func (f *fakeDimensionRepo) UpdateActivitySetting(ctx context.Context, activeThreshold, lowFrequencyThreshold int) error {
 	panic("not used")
 }
+func (f *fakeDimensionRepo) CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error) {
+	panic("not used")
+}
 
 var _ repository.DimensionRepository = (*fakeDimensionRepo)(nil)
 

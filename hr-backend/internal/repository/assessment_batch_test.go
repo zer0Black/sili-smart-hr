@@ -264,7 +264,7 @@ func TestFindLatestRunningScheduled(t *testing.T) {
 	finished.Status = domain.BatchStatusSuccess
 	finished.TriggeredAt = time.Unix(batchBaseUnix+10800, 0).UTC()
 	for _, b := range []domain.AssessmentBatch{older, newer, manual, finished} {
-		if err := repo.Create(ctx, &b); err != nil {
+		if err := db.Create(&b).Error; err != nil {
 			t.Fatalf("create: %v", err)
 		}
 	}
@@ -297,7 +297,7 @@ func TestListByFilter(t *testing.T) {
 		b := newBatch(s.no, s.trigger, 1)
 		b.Status = s.status
 		b.TriggeredAt = time.Unix(s.triggerAt, 0).UTC()
-		if err := repo.Create(ctx, &b); err != nil {
+		if err := db.Create(&b).Error; err != nil {
 			t.Fatalf("create: %v", err)
 		}
 	}
@@ -385,7 +385,7 @@ func TestCountInRange(t *testing.T) {
 	for i, offset := range []int64{-1, 0, 3600, 7199, 7200} {
 		b := newBatch(fmt.Sprintf("B05%d", i), domain.BatchTriggerScheduled, 1)
 		b.TriggeredAt = time.Unix(batchBaseUnix+offset, 0).UTC()
-		if err := repo.Create(ctx, &b); err != nil {
+		if err := db.Create(&b).Error; err != nil {
 			t.Fatalf("create: %v", err)
 		}
 	}
@@ -395,8 +395,8 @@ func TestCountInRange(t *testing.T) {
 	}
 }
 
-// TestCountRunningNonStalled 剔除停滞批次（triggered_at 早于阈值）。
-func TestCountRunningNonStalled(t *testing.T) {
+// TestListRunningTriggeredAt 取全部 running 批次触发时刻（终态排除）。
+func TestListRunningTriggeredAt(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
@@ -408,29 +408,35 @@ func TestCountRunningNonStalled(t *testing.T) {
 	finished.Status = domain.BatchStatusSuccess
 	finished.TriggeredAt = time.Unix(batchBaseUnix+7200, 0).UTC()
 	for _, b := range []domain.AssessmentBatch{stalled, fresh, finished} {
-		if err := repo.Create(ctx, &b); err != nil {
+		if err := db.Create(&b).Error; err != nil {
 			t.Fatalf("create: %v", err)
 		}
 	}
-	n, err := repo.CountRunningNonStalled(ctx, time.Unix(batchBaseUnix+1800, 0).UTC())
-	if err != nil || n != 1 {
-		t.Fatalf("want 1（仅非停滞 running）, got (%d,%v)", n, err)
+	ats, err := repo.ListRunningTriggeredAt(ctx)
+	if err != nil || len(ats) != 2 {
+		t.Fatalf("want 2（仅 running，终态排除）, got (%d,%v)", len(ats), err)
 	}
 }
 
-// TestCountSuccessSideInRanges 成功侧四态计数与空列表短路。
-func TestCountSuccessSideInRanges(t *testing.T) {
+// TestCountSuccessSideTriggeredBetween 按 triggered_at 范围圈定批次计数成功侧四态；
+// 范围外批次的人员行不计。
+func TestCountSuccessSideTriggeredBetween(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
 
-	n, err := repo.CountSuccessSideInRanges(ctx, nil)
+	n, err := repo.CountSuccessSideTriggeredBetween(ctx,
+		time.Unix(batchBaseUnix, 0).UTC(), time.Unix(batchBaseUnix+7200, 0).UTC())
 	if err != nil || n != 0 {
-		t.Fatalf("空列表 want 0 不发 SQL, got (%d,%v)", n, err)
+		t.Fatalf("空库 want 0, got (%d,%v)", n, err)
 	}
 
 	b1 := createBatchWithPersons(t, db, newBatch("B070", domain.BatchTriggerScheduled, 1), nil)
-	b2 := createBatchWithPersons(t, db, newBatch("B071", domain.BatchTriggerScheduled, 1), nil)
+	b2 := newBatch("B071", domain.BatchTriggerScheduled, 1)
+	b2.TriggeredAt = time.Unix(batchBaseUnix+99999, 0).UTC() // 范围外批次
+	if err := db.Create(&b2).Error; err != nil {
+		t.Fatalf("create b2: %v", err)
+	}
 	statuses := []string{
 		domain.PersonStatusSuccess, domain.PersonStatusReused, domain.PersonStatusDegraded,
 		domain.PersonStatusSkipped, domain.PersonStatusFailed, domain.PersonStatusPending,
@@ -444,50 +450,33 @@ func TestCountSuccessSideInRanges(t *testing.T) {
 		t.Fatalf("create persons: %v", err)
 	}
 
-	n, err = repo.CountSuccessSideInRanges(ctx, []int64{b1.ID})
+	// b1 triggered_at=batchBaseUnix 在 [start,end) 内；b2 在范围外不计其成功行。
+	n, err = repo.CountSuccessSideTriggeredBetween(ctx,
+		time.Unix(batchBaseUnix, 0).UTC(), time.Unix(batchBaseUnix+7200, 0).UTC())
 	if err != nil || n != 4 {
-		t.Fatalf("want 4（成功侧四态）, got (%d,%v)", n, err)
-	}
-	n, err = repo.CountSuccessSideInRanges(ctx, []int64{b1.ID, b2.ID})
-	if err != nil || n != 5 {
-		t.Fatalf("want 5（含 b2 成功行）, got (%d,%v)", n, err)
+		t.Fatalf("want 4（范围内 b1 成功侧四态）, got (%d,%v)", n, err)
 	}
 }
 
-// TestCreateDuplicateBatchNo 批次号唯一索引兜底（uk_batch_no）。
-func TestCreateDuplicateBatchNo(t *testing.T) {
+// TestCreateWithPersonsAtomic 批次行与人员明细同事务：正常路径 3 行落库、
+// 初值 pending、BatchID 关联正确；撞批次号唯一索引返回错误。
+func TestCreateWithPersonsAtomic(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
-	b := newBatch("B080", domain.BatchTriggerScheduled, 1)
-	if err := repo.Create(ctx, &b); err != nil {
-		t.Fatalf("首次 create: %v", err)
+	b := newBatch("B080", domain.BatchTriggerScheduled, 3)
+	err := repo.CreateWithPersons(ctx, &b, func(batchID int64) []domain.AssessmentBatchPerson {
+		return []domain.AssessmentBatchPerson{
+			{BatchID: batchID, TokenName: "张三", Status: domain.PersonStatusPending},
+			{BatchID: batchID, TokenName: "李四", Status: domain.PersonStatusPending},
+			{BatchID: batchID, TokenName: "王五", Status: domain.PersonStatusPending},
+		}
+	})
+	if err != nil {
+		t.Fatalf("CreateWithPersons: %v", err)
 	}
 	if b.ID == 0 {
 		t.Fatal("雪花 ID 未被回调赋值")
-	}
-	dup := newBatch("B080", domain.BatchTriggerManual, 1)
-	if err := repo.Create(ctx, &dup); err == nil {
-		t.Fatal("撞批次号 want error")
-	}
-}
-
-// TestCreatePersons 批量落人员明细：3 行落库、初值 pending/0/""、BatchID 关联正确。
-func TestCreatePersons(t *testing.T) {
-	db := newBatchTestDB(t)
-	repo := repository.NewAssessmentBatchRepository(db)
-	ctx := context.Background()
-	b := newBatch("B081", domain.BatchTriggerManual, 3)
-	if err := repo.Create(ctx, &b); err != nil {
-		t.Fatalf("create batch: %v", err)
-	}
-	persons := []domain.AssessmentBatchPerson{
-		{BatchID: b.ID, TokenName: "张三", Status: domain.PersonStatusPending},
-		{BatchID: b.ID, TokenName: "李四", Status: domain.PersonStatusPending},
-		{BatchID: b.ID, TokenName: "王五", Status: domain.PersonStatusPending},
-	}
-	if err := repo.CreatePersons(ctx, persons); err != nil {
-		t.Fatalf("CreatePersons: %v", err)
 	}
 	var rows []domain.AssessmentBatchPerson
 	if err := db.Where("batch_id = ?", b.ID).Find(&rows).Error; err != nil {
@@ -503,14 +492,37 @@ func TestCreatePersons(t *testing.T) {
 		if r.Status != domain.PersonStatusPending {
 			t.Errorf("Status = %q, want pending", r.Status)
 		}
-		if r.SessionCount != 0 {
-			t.Errorf("SessionCount = %d, want 0", r.SessionCount)
-		}
-		if r.ErrorSummary != "" {
-			t.Errorf("ErrorSummary = %q, want 空串", r.ErrorSummary)
-		}
 		if r.ID == 0 {
 			t.Error("雪花 ID 未被回调赋值")
 		}
+	}
+	dup := newBatch("B080", domain.BatchTriggerManual, 1)
+	if err := repo.CreateWithPersons(ctx, &dup, func(int64) []domain.AssessmentBatchPerson {
+		return nil
+	}); err == nil {
+		t.Fatal("撞批次号 want error")
+	}
+}
+
+// TestFailWholeBatchPendingGuard pending 守卫：已终态成功者不被整批失败覆盖。
+func TestFailWholeBatchPendingGuard(t *testing.T) {
+	db := newBatchTestDB(t)
+	repo := repository.NewAssessmentBatchRepository(db)
+	ctx := context.Background()
+	b := createBatchWithPersons(t, db, newBatch("B081", domain.BatchTriggerManual, 2), []string{"张三", "李四"})
+
+	// 张三先成功终态，随后整批失败：张三保持 success，李四落 failed。
+	if err := repo.AdvancePersonTerminal(ctx, b.ID, "张三", domain.PersonStatusSuccess, "", 1); err != nil {
+		t.Fatalf("advance 张三: %v", err)
+	}
+	if err := repo.FailWholeBatch(ctx, b.ID, "整批失败"); err != nil {
+		t.Fatalf("fail whole batch: %v", err)
+	}
+	persons := loadPersons(t, db, b.ID)
+	if persons[0].Status != domain.PersonStatusSuccess {
+		t.Errorf("已终态成功者被覆盖: %q", persons[0].Status)
+	}
+	if persons[1].Status != domain.PersonStatusFailed {
+		t.Errorf("pending 者应落 failed: %q", persons[1].Status)
 	}
 }

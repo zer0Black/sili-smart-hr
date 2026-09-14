@@ -404,13 +404,12 @@ func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEv
 		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun))
 }
 
-// NewOrchestratorProvider 装配批次编排器（十一参，specs §5.2.2）：配置读取复用
+// NewOrchestratorProvider 装配批次编排器（十参，specs §5.2.2）：配置读取复用
 // AssessmentConfigRepository，密钥走 service.ResolveIntegrationSecret 收敛点
 //（NewExtractorProvider 同款闭包），双任务投递由 *pipeline.AsynqEnqueuer 一物
 // 满足 BatchEnqueuer 与 SessionEnqueuer 两窄接口。
 func NewOrchestratorProvider(
 	batchRepo repository.AssessmentBatchRepository,
-	alertRepo repository.AssessmentAlertRepository,
 	featureRepo repository.SessionFeatureRepository,
 	configRepo repository.AssessmentConfigRepository,
 	cl *conversationlog.Client,
@@ -424,7 +423,7 @@ func NewOrchestratorProvider(
 	secrets := pipeline.SecretResolver(func(ctx context.Context) (string, error) {
 		return service.ResolveIntegrationSecret(ctx, secretRepo, encKey)
 	})
-	return pipeline.NewOrchestrator(batchRepo, alertRepo, featureRepo, configRepo,
+	return pipeline.NewOrchestrator(batchRepo, featureRepo, configRepo,
 		cl, staffs, secrets, ev, alertWriter, enqueuer, enqueuer)
 }
 

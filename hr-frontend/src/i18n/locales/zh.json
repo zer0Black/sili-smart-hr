@@ -651,6 +651,7 @@
       "actionFailures": "失败明细",
       "actionRestart": "重新发起",
       "actionViewResult": "查看结果",
+      "loadError": "数据加载失败，请重试",
       "empty": "暂无评测记录，点击右上角发起评测或等待周期自动跑批",
       "total": "共 {{total}} 条",
       "prevPage": "上一页",

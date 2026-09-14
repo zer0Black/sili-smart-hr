@@ -28,8 +28,11 @@ export function previousPeriodRange(
       break;
     }
     case 'monthly': {
-      const lastMonth = d.subtract(1, 'month');
-      start = lastMonth.startOf('month');
+      // 先锚定本月 1 日再减一月：dayjs 月末减月是前滚归一（3/31-1月=3/3），
+      // 直接 subtract 会把上月窗口算到本月（未来），先 startOf 消掉月内偏移。
+      const thisMonthStart = d.startOf('month');
+      const lastMonth = thisMonthStart.subtract(1, 'month');
+      start = lastMonth;
       end = lastMonth.endOf('month').startOf('day');
       break;
     }

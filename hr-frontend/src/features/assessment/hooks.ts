@@ -9,10 +9,9 @@ import {
   fetchBatchFailures,
   fetchBatchPlan,
   fetchBatchStats,
-  fetchBatchTargets,
   fetchBatches,
 } from './api';
-import type { BatchFailures, BatchFilter, BatchTargets, CreateBatchPayload } from './types';
+import type { BatchFailures, BatchFilter, CreateBatchPayload } from './types';
 
 /** 页面可见性状态：specs §4.1.3 隐藏暂停轮询、恢复即拉。 */
 function usePageVisible(): boolean {
@@ -29,16 +28,32 @@ function usePageVisible(): boolean {
 
 const POLLING_INTERVAL_MS = 10_000;
 
-/** useBatches：批次列表。polling=true 且页面可见时 10s 轮询，页面隐藏即暂停、恢复立拉。 */
-export function useBatches(filter: BatchFilter, opts?: { polling?: boolean }) {
+/**
+ * useBatches：批次列表。polling 为 true（或 'probe'）且页面可见时 10s 轮询。
+ * 'probe' 模式供页面级探针：数据里存在非停滞 running 批次时才续轮询，全终态即停，
+ * 让轮询开关随真实状态收敛（specs §4.1.3 存在进行中批次才轮询）。
+ */
+export function useBatches(filter: BatchFilter, opts?: { polling?: boolean | 'probe' }) {
   const token = useAuthStore((s) => s.token);
   const visible = usePageVisible();
   return useQuery<BatchListPage>({
     queryKey: ['assessment', 'batches', filter],
     queryFn: () => fetchBatches(filter),
     enabled: !!token,
-    refetchInterval: opts?.polling && visible ? POLLING_INTERVAL_MS : false,
+    refetchInterval: (query) => resolveInterval(query.state.data, opts, visible),
   });
+}
+
+function resolveInterval(
+  data: BatchListPage | undefined,
+  opts: { polling?: boolean | 'probe' } | undefined,
+  visible: boolean,
+): number | false {
+  if (!visible || !opts?.polling) return false;
+  if (opts.polling === true) return POLLING_INTERVAL_MS;
+  // probe：由数据驱动自收敛
+  const hasRunning = (data?.list ?? []).some((b) => b.status === 'running' && !b.stalled);
+  return hasRunning ? POLLING_INTERVAL_MS : false;
 }
 
 /** useBatchStats：跑批态势统计，随列表同节奏轮询。 */
@@ -60,15 +75,6 @@ export function useBatchPlan() {
     queryKey: ['assessment', 'plan'],
     queryFn: fetchBatchPlan,
     enabled: !!token,
-  });
-}
-
-/** useBatchTargets：批次评估对象全量名单，选中批次后启用。 */
-export function useBatchTargets(batchId: string | null) {
-  return useQuery<BatchTargets>({
-    queryKey: ['assessment', 'targets', batchId],
-    queryFn: () => fetchBatchTargets(batchId as string),
-    enabled: !!batchId,
   });
 }
 

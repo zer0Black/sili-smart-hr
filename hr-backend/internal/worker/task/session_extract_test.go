@@ -53,6 +53,9 @@ func (r *stubRepo) ListByPersonAndRange(ctx context.Context, tokenName string, s
 func (r *stubRepo) CountFailedByTokenNames(ctx context.Context, tokenNames []string, start, end int64) (int64, error) {
 	return 0, nil
 }
+func (r *stubRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
+	return 0, nil
+}
 func (r *stubRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
 	return 0, nil
 }

@@ -86,6 +86,25 @@ describe('previousPeriodRange（specs §4.2.4 规则2 上一完整周期默认�
     });
   });
 
+  // 月末锚点：dayjs subtract(1,'month') 是前滚归一（5/31-1月=5/1），须先 startOf
+  // 消偏移，否则默认窗口落到本月（未来），命中 periodFuture 校验死锁。
+  it('monthly 月末日期不前滚：5/31 回看 4 月整月而非 5 月', () => {
+    expect(previousPeriodRange(new Date('2026-05-31T10:00:00'), 'monthly')).toEqual({
+      start: '2026-04-01',
+      end: '2026-04-30',
+    });
+  });
+
+  it('monthly 月末边界：3/31、7/31、12/31 均回看上月整月', () => {
+    for (const [now, want] of [
+      ['2026-03-31T23:59:59', { start: '2026-02-01', end: '2026-02-28' }],
+      ['2026-07-31T00:00:00', { start: '2026-06-01', end: '2026-06-30' }],
+      ['2026-12-31T12:00:00', { start: '2026-11-01', end: '2026-11-30' }],
+    ] as const) {
+      expect(previousPeriodRange(new Date(now), 'monthly')).toEqual(want);
+    }
+  });
+
   it('返回值为 yyyy-MM-dd 双值且含止日', () => {
     const { start, end } = previousPeriodRange(new Date('2026-09-12T23:59:59'), 'daily');
     expect(start).toMatch(/^\d{4}-\d{2}-\d{2}$/);

@@ -58,16 +58,17 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
 
   const list = staffsQ.data?.list ?? [];
 
-  // 合并已选 + 当页选项，防翻页丢失；staff_id 去重
+  // 合并已选 + 当页选项，防翻页丢失；staff_name 去重（与批次名单同键：预填路径
+  // 不携带 staff_id，staff_name 是唯一稳定标识，空 id 下仍正确）
   const merged = useMemo(() => {
     const map = new Map<string, StaffItem>();
-    for (const s of value.staffs) map.set(s.staff_id, s);
-    for (const s of list) if (!map.has(s.staff_id)) map.set(s.staff_id, s);
+    for (const s of value.staffs) map.set(s.staff_name, s);
+    for (const s of list) if (!map.has(s.staff_name)) map.set(s.staff_name, s);
     return Array.from(map.values());
   }, [value.staffs, list]);
 
-  const selectedIds = useMemo(
-    () => new Set(value.staffs.map((s) => s.staff_id)),
+  const selectedNames = useMemo(
+    () => new Set(value.staffs.map((s) => s.staff_name)),
     [value.staffs],
   );
   const isAll = value.mode === 'all';
@@ -86,20 +87,20 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
       onChange({ mode: 'specified', staffs: [s] });
       return;
     }
-    if (selectedIds.has(s.staff_id)) {
+    if (selectedNames.has(s.staff_name)) {
       onChange({
         mode: 'specified',
-        staffs: value.staffs.filter((x) => x.staff_id !== s.staff_id),
+        staffs: value.staffs.filter((x) => x.staff_name !== s.staff_name),
       });
     } else {
       onChange({ mode: 'specified', staffs: [...value.staffs, s] });
     }
   };
 
-  const remove = (staffId: string) => {
+  const remove = (staffName: string) => {
     onChange({
       mode: 'specified',
-      staffs: value.staffs.filter((x) => x.staff_id !== staffId),
+      staffs: value.staffs.filter((x) => x.staff_name !== staffName),
     });
   };
 
@@ -133,13 +134,13 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
           value.staffs.length > 0 && (
             <>
               {value.staffs.map((s) => (
-                <Badge key={s.staff_id} variant="secondary" className="h-7 gap-1 pr-1">
+                <Badge key={s.staff_name} variant="secondary" className="h-7 gap-1 pr-1">
                   {s.staff_name}
                   <button
                     type="button"
                     aria-label={t('create.targetRemove', { name: s.staff_name })}
                     className="hover:bg-accent rounded-sm"
-                    onClick={() => remove(s.staff_id)}
+                    onClick={() => remove(s.staff_name)}
                   >
                     <X className="size-3" />
                   </button>
@@ -194,11 +195,11 @@ export function StaffMultiSelect({ value, onChange }: StaffMultiSelectProps): JS
               </div>
             ) : (
               merged.map((s) => {
-                const checked = selectedIds.has(s.staff_id);
+                const checked = selectedNames.has(s.staff_name);
                 return (
                   <button
                     type="button"
-                    key={s.staff_id}
+                    key={s.staff_name}
                     onClick={() => toggle(s)}
                     className="hover:bg-accent flex w-full items-center justify-between gap-2 rounded-sm px-2 py-1.5 text-left text-sm"
                   >

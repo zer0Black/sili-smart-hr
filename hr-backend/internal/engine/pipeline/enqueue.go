@@ -1,4 +1,6 @@
 // enqueue.go Asynq 投递适配器：batch-run 与 session-extract 两类任务的窄接口实现。
+// 任务类型常量与 payload 单点定义在 worker/task（消费侧），本包单向 import task
+// 引用同一符号（task 不 import pipeline，无循环）。
 package pipeline
 
 import (
@@ -7,6 +9,17 @@ import (
 	"fmt"
 
 	"github.com/hibiken/asynq"
+
+	"sili-smart-hr/backend/internal/worker/task"
+)
+
+// 队列划分（防互饿）：batch-run 与 session-extract 分队列投递，worker 池按队列
+// 注册处理，抽取洪峰不会占满 batch-run 的消费并发，batch-run 的等待屏障也不会
+// 饿死抽取任务。tick 类分钟级任务走 default 队列保最低延迟。
+const (
+	queueBatchRun   = "batch"
+	queueExtract    = "extract"
+	queueDefault    = "default"
 )
 
 // AsynqEnqueuer Asynq 双任务投递适配器（满足 BatchEnqueuer 与 SessionEnqueuer）。
@@ -19,36 +32,33 @@ func NewAsynqEnqueuer(client *asynq.Client) *AsynqEnqueuer {
 	return &AsynqEnqueuer{client: client}
 }
 
-// batchRunPayload batch-run 任务载荷（03 §4.2：雪花 ID 十进制字符串）。
-type batchRunPayload struct {
-	BatchID string `json:"batch_id"`
-}
-
-// EnqueueBatchRun 投递批次编排任务。
+// EnqueueBatchRun 投递批次编排任务（batch 队列）。
+// MaxRetry 收紧为 6：24h 预算长任务默认 25 次重试会在故障期反复重放整批编排。
 func (e *AsynqEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) error {
-	payload, err := json.Marshal(batchRunPayload{BatchID: fmt.Sprintf("%d", batchID)})
+	payload, err := json.Marshal(task.BatchRunPayload{BatchID: fmt.Sprintf("%d", batchID)})
 	if err != nil {
 		return fmt.Errorf("pipeline: batch-run payload 序列化: %w", err)
 	}
-	if _, err := e.client.EnqueueContext(ctx, asynq.NewTask(typeBatchRun, payload)); err != nil {
+	if _, err := e.client.EnqueueContext(ctx,
+		asynq.NewTask(task.TypeBatchRun, payload),
+		asynq.MaxRetry(6),
+		asynq.Queue(queueBatchRun)); err != nil {
 		return fmt.Errorf("pipeline: batch-run 投递: %w", err)
 	}
 	return nil
 }
 
-// sessionExtractPayload 抽取任务载荷（03 §3.2 同构）。
-type sessionExtractPayload struct {
-	SessionKey string `json:"session_key"`
-	TokenName  string `json:"token_name"`
-}
-
-// EnqueueSessionExtract 投递单会话抽取任务（一会话一任务，specs §5.2.2 步骤3）。
+// EnqueueSessionExtract 投递单会话抽取任务（extract 队列，一会话一任务，
+// specs §5.2.2 步骤3）。MaxRetry=4 对齐会话级重试语义（30s 基准倍增封顶 10min）。
 func (e *AsynqEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, tokenName string) error {
-	payload, err := json.Marshal(sessionExtractPayload{SessionKey: sessionKey, TokenName: tokenName})
+	payload, err := json.Marshal(task.ExtractTaskPayload{SessionKey: sessionKey, TokenName: tokenName})
 	if err != nil {
 		return fmt.Errorf("pipeline: session-extract payload 序列化: %w", err)
 	}
-	if _, err := e.client.EnqueueContext(ctx, asynq.NewTask(typeSessionExtract, payload)); err != nil {
+	if _, err := e.client.EnqueueContext(ctx,
+		asynq.NewTask(task.TypeSessionExtract, payload),
+		asynq.MaxRetry(4),
+		asynq.Queue(queueExtract)); err != nil {
 		return fmt.Errorf("pipeline: session-extract 投递: %w", err)
 	}
 	return nil

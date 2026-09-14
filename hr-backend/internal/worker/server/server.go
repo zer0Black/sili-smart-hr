@@ -38,12 +38,20 @@ func retryDelay(n int) time.Duration {
 }
 
 // NewServer 构造 Asynq worker server，并发度来自配置。
+// 队列按严格优先级分流（防互饿）：default（tick 等分钟级任务）> batch（batch-run
+// 编排）> extract（会话抽取洪峰）。batch-run 的等待屏障靠 extract 持续被消费推进，
+// 同池混跑时洪峰会饿死对方，分流后各队列消费互不挤占。
 func NewServer(opt asynq.RedisConnOpt, concurrency int) *asynq.Server {
 	if concurrency <= 0 {
 		concurrency = 10
 	}
 	return asynq.NewServer(opt, asynq.Config{
 		Concurrency: concurrency,
+		Queues: map[string]int{
+			"default": 6,
+			"batch":   2,
+			"extract": 2,
+		},
 		RetryDelayFunc: func(n int, _ error, _ *asynq.Task) time.Duration {
 			return retryDelay(n)
 		},

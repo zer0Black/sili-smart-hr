@@ -6,6 +6,7 @@ import type { JSX } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useBatchPlan, useBatchStats } from '@/features/assessment/hooks';
+import { targetSummaryText } from '@/features/assessment/target-summary';
 import type { BatchPlan, BatchStats } from '@/lib/contracts';
 
 /** 态势统计卡 + 跑批计划卡组合入口（specs §4.1.2 A/B）。 */
@@ -72,13 +73,8 @@ function StatsCard({ query }: { query: UseQueryResult<BatchStats> }) {
   );
 }
 
-/** 评估对象摘要：specified 超 2 人按「前两人名 等 N 人」，all 或 ≤2 人直显（specs §4.1.2B/§4.1.5）。 */
-function targetSummaryOf(plan: BatchPlan): string {
-  if (plan.target_mode === 'all') return 'all';
-  if (plan.target_count > 2) return 'summary';
-  return 'brief';
-}
-
+/** 评估对象摘要（specs §4.1.2B/§4.1.5）：与批次列表共用 targetSummaryText 口径，
+ * 计数取 target_count（all 模式上游计数的降级 0 不影响展示）。 */
 function PlanCard({ query }: { query: UseQueryResult<BatchPlan> }) {
   const { t } = useTranslation('assessment');
   const navigate = useNavigate();
@@ -120,17 +116,7 @@ function PlanCard({ query }: { query: UseQueryResult<BatchPlan> }) {
             <div>
               <dt className="text-muted-foreground">{t('plan.target')}</dt>
               <dd title={plan.target_names.join('、')}>
-                {(() => {
-                  const mode = targetSummaryOf(plan);
-                  if (mode === 'all') return t('plan.targetAll');
-                  if (mode === 'summary')
-                    return t('plan.targetSummary', {
-                      first: plan.target_brief[0],
-                      second: plan.target_brief[1],
-                      count: plan.target_count,
-                    });
-                  return plan.target_brief.join('、');
-                })()}
+                {targetSummaryText(plan, t)}
               </dd>
             </div>
             <div>

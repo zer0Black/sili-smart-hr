@@ -3,8 +3,8 @@
 //
 // 业务规则（specs P2_ASM_001）：
 //   - §4.1.2A 统计卡三项指标以「本期跑批间隔」为时间归属区间，与周期窗口（评估数据
-//     区间）口径分离；本期跑批间隔恒为按当前周期配置回推的一个周期长度
-//     [NextTriggerAt(now)-一个周期, NextTriggerAt(now))，与历史定时批次无关，
+//     区间）口径分离；本期跑批间隔 = [本期触发点, 下次触发点)，两端由
+//     PrevTriggerAt/NextTriggerAt 纯日历推算，与历史定时批次无关，
 //     周期配置变更不产生超宽间隔（实现固定口径）
 //   - §4.1.2B/§4.1.5 计划卡与列表评估对象超 2 人按「前两人名 等 N 人」摘要口径，
 //     brief 取前 2 人名、names 返全量名单快照供悬浮展示
@@ -231,7 +231,8 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 	}, nil
 }
 
-// List 列表查询：枚举校验 → repo 分页 → 逐行组装 DTO（停滞派生 + 摘要 + 进度）。
+// List 列表查询：枚举校验 → repo 分页 → 单例配置单点读取 → 逐行组装 DTO
+//（停滞派生 + 摘要 + 进度）。
 func (s *assessmentBatchService) List(ctx context.Context, f BatchListFilter) ([]BatchListDTO, int64, error) {
 	if !validBatchTriggerType(f.TriggerType) || !validBatchStatus(f.Status) {
 		return nil, 0, NewError(errcode.BadRequest)
@@ -245,21 +246,23 @@ func (s *assessmentBatchService) List(ctx context.Context, f BatchListFilter) ([
 	if err != nil {
 		return nil, 0, fmt.Errorf("list batches: %w", err)
 	}
+	// 单例配置读一次共享全页行（读失败按非停滞降级，WARN），口径与统计卡
+	// running_batch_count 同函数（03 §4.5 两处口径一致）。
+	cfg, cfgErr := s.configRepo.Get(ctx)
+	if cfgErr != nil {
+		slog.Warn("list batch stalled degrade: config unreadable", "err", cfgErr)
+	}
 	items := make([]BatchListDTO, 0, len(list))
 	for i := range list {
-		items = append(items, s.toListDTO(ctx, &list[i]))
+		items = append(items, s.toListDTO(cfg, cfgErr == nil, &list[i]))
 	}
 	return items, total, nil
 }
 
-// toListDTO 组装列表行。Stalled 派生读当前配置周期，读失败按非停滞降级（WARN），
-// 口径与统计卡 running_batch_count 同函数（03 §4.5 两处口径一致）。
-func (s *assessmentBatchService) toListDTO(ctx context.Context, b *domain.AssessmentBatch) BatchListDTO {
+// toListDTO 组装列表行。configOK=false（配置读取失败）按非停滞降级。
+func (s *assessmentBatchService) toListDTO(cfg *domain.AssessmentConfig, configOK bool, b *domain.AssessmentBatch) BatchListDTO {
 	stalled := false
-	cfg, err := s.configRepo.Get(ctx)
-	if err != nil {
-		slog.Warn("list batch stalled degrade: config unreadable", "batch_id", b.ID, "err", err)
-	} else {
+	if configOK {
 		stalled = pipeline.IsStalled(s.now(), b.TriggeredAt, cfg.Period, b.Status)
 	}
 	names := parseTargetNames(b.TargetNamesJSON)
@@ -284,35 +287,43 @@ func (s *assessmentBatchService) toListDTO(ctx context.Context, b *domain.Assess
 	return dto
 }
 
-// Stats 统计卡：本期跑批间隔 = [NextTriggerAt(now)-一个周期, NextTriggerAt(now))
-//（specs §4.1.2A）。下界恒按当前周期配置回推一个周期长度，与历史定时批次无关，
-// 周期配置变更（如 weekly 改 monthly）不产生超宽间隔。
+// Stats 统计卡：本期跑批间隔 = [本期触发点, 下次触发点)（specs §4.1.2A）。
+// 两端由 PrevTriggerAt/NextTriggerAt 纯日历推算（与历史定时批次无关，周期配置
+// 变更不产生超宽间隔），UTC 口径传入仓储（批次行 triggered_at 以 UTC 落库，
+// SQLite 偏移串字典序可比）。
 func (s *assessmentBatchService) Stats(ctx context.Context) (*BatchStatsDTO, error) {
 	cfg, err := s.configRepo.Get(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get assessment config: %w", err)
 	}
-	end, err := pipeline.NextTriggerAt(s.now(), cfg.Period, cfg.TriggerTime)
+	now := s.now()
+	end, err := pipeline.NextTriggerAt(now, cfg.Period, cfg.TriggerTime)
 	if err != nil {
 		return nil, fmt.Errorf("next trigger at: %w", err)
 	}
-	start := end.Add(-periodLength(cfg.Period, end))
-	evalCount, err := s.batchRepo.CountInRange(ctx, start, end)
+	start, err := pipeline.PrevTriggerAt(now, cfg.Period, cfg.TriggerTime)
+	if err != nil {
+		return nil, fmt.Errorf("prev trigger at: %w", err)
+	}
+	evalCount, err := s.batchRepo.CountInRange(ctx, start.UTC(), end.UTC())
 	if err != nil {
 		return nil, fmt.Errorf("count batches in range: %w", err)
 	}
-	ids, err := s.batchRepo.ListBatchIDsTriggeredBetween(ctx, start, end)
-	if err != nil {
-		return nil, fmt.Errorf("list batch ids in range: %w", err)
-	}
-	personCount, err := s.batchRepo.CountSuccessSideInRanges(ctx, ids)
+	personCount, err := s.batchRepo.CountSuccessSideTriggeredBetween(ctx, start.UTC(), end.UTC())
 	if err != nil {
 		return nil, fmt.Errorf("count success side: %w", err)
 	}
-	// 进行中剔除停滞：running 且触发时点未超 StalledDeadline 即 triggered_at >= now-一个周期长度。
-	runningCount, err := s.batchRepo.CountRunningNonStalled(ctx, s.now().Add(-periodLength(cfg.Period, s.now())))
+	// 进行中剔除停滞：与列表 Stalled 派生同一 IsStalled 函数（03 §4.5 两处口径
+	// 一致），running 批次量级个位，逐行判定替代按周期长度回推的近似口径。
+	triggeredAts, err := s.batchRepo.ListRunningTriggeredAt(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("count running non-stalled: %w", err)
+		return nil, fmt.Errorf("list running triggered_at: %w", err)
+	}
+	runningCount := int64(0)
+	for _, ta := range triggeredAts {
+		if !pipeline.IsStalled(now, ta, cfg.Period, domain.BatchStatusRunning) {
+			runningCount++
+		}
 	}
 	return &BatchStatsDTO{
 		EvalCount:            evalCount,
@@ -353,42 +364,19 @@ func (s *assessmentBatchService) Plan(ctx context.Context) (*BatchPlanDTO, error
 		dto.TargetCount = len(members)
 	} else {
 		// all 模式全员计数：上游不可达（含密钥未配置）降级 0，不报错（03 A3）。
-		secret, serr := s.resolveBatchSecret(ctx)
-		if serr == nil {
+		if secret, serr := ResolveIntegrationSecret(ctx, s.secretRepo, s.encKey); serr == nil {
 			if _, total, terr := s.staffs.ListStaffs(ctx, secret, "", 1, 1); terr == nil {
 				dto.TargetCount = int(total)
 			}
 		}
 	}
-	dims, derr := s.dimRepo.ListEnabledFullByDataSource(ctx, domain.SourceConversation)
+	groupCounts, derr := s.dimRepo.CountEnabledByGroupCode(ctx, domain.SourceConversation)
 	if derr != nil {
-		return nil, fmt.Errorf("list enabled dimensions: %w", derr)
+		return nil, fmt.Errorf("count enabled dimensions: %w", derr)
 	}
-	for i := range dims {
-		if dims[i].GroupCode == nil {
-			continue
-		}
-		switch *dims[i].GroupCode {
-		case domain.GroupBase:
-			dto.DimensionBaseCount++
-		case domain.GroupUpper:
-			dto.DimensionUpperCount++
-		}
-	}
+	dto.DimensionBaseCount = groupCounts[domain.GroupBase]
+	dto.DimensionUpperCount = groupCounts[domain.GroupUpper]
 	return dto, nil
-}
-
-// resolveBatchSecret 解密集成密钥明文，未配置或解密失败返 error 触发 Plan 全员计数降级。
-func (s *assessmentBatchService) resolveBatchSecret(ctx context.Context) (string, error) {
-	secret, err := s.secretRepo.Get(ctx)
-	if err != nil {
-		return "", fmt.Errorf("get integration secret: %w", err)
-	}
-	plaintext, derr := decryptSecretCipher(s.encKey, secret.SecretCipher)
-	if derr != nil {
-		return "", fmt.Errorf("resolve integration secret: %s", derr.Msg)
-	}
-	return plaintext, nil
 }
 
 // Targets 名单查询：返回创建时点完整名单快照与评估时段，供重新发起预填（specs §4.1.3）。
@@ -441,21 +429,6 @@ func (s *assessmentBatchService) Failures(ctx context.Context, batchID int64) (*
 		PeriodEnd:   b.PeriodEndAt.Local().Format("2006-01-02"),
 		List:        list,
 	}, nil
-}
-
-// periodLength 返回一个周期长度的 duration（daily/weekly 固定 24h*1/24h*7，
-// monthly 用 AddDate 语义无法表为固定 duration，故签名带锚点 at：monthly 按 at 所在月长度计）。
-// 与 pipeline.StalledDeadline 的周期长度口径一致（03 §4.5）。
-func periodLength(period string, at time.Time) time.Duration {
-	switch period {
-	case "daily":
-		return 24 * time.Hour
-	case "monthly":
-		// 以锚点所在月为长度：end=at.AddDate(0,1,0) - at
-		return at.AddDate(0, 1, 0).Sub(at)
-	default: // weekly 与未知周期按 7 天兜底（未知周期由 NextTriggerAt 侧拒绝）
-		return 7 * 24 * time.Hour
-	}
 }
 
 // parseTargetNames 解析名单快照 JSON，空或非法均降级空数组（前端稳定序列化契约）。

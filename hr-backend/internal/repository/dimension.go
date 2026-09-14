@@ -38,6 +38,9 @@ type DimensionRepository interface {
 	// 评分口径快照的数据来源），WHERE enabled AND data_source=? AND deleted_at IS NULL，
 	// 按 code ASC 排序。
 	ListEnabledFullByDataSource(ctx context.Context, dataSource string) ([]domain.Dimension, error)
+	// CountEnabledByGroupCode 按分组码统计指定数据来源的启用未删维度数（计划卡轻量
+	// 计数，免拉 prompt/anchor 大字段），只投影 group_code 一列。
+	CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error)
 }
 
 type dimensionRepository struct {
@@ -191,4 +194,23 @@ func (r *dimensionRepository) ListEnabledFullByDataSource(ctx context.Context, d
 		return nil, err
 	}
 	return list, nil
+}
+
+// CountEnabledByGroupCode 只取 group_code 列在内存分组计数（启用维度量级个位到
+// 十位，单列投影免拉 prompt/anchor 大 TEXT 字段）。NULL 分组行不进 map。
+func (r *dimensionRepository) CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error) {
+	var codes []string
+	if err := r.db.WithContext(ctx).Model(&domain.Dimension{}).
+		Where("enabled = ? AND data_source = ? AND deleted_at IS NULL", true, dataSource).
+		Order("code ASC").
+		Pluck("group_code", &codes).Error; err != nil {
+		return nil, err
+	}
+	counts := make(map[string]int)
+	for _, c := range codes {
+		if c != "" {
+			counts[c]++
+		}
+	}
+	return counts, nil
 }

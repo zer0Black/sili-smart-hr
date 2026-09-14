@@ -30,13 +30,13 @@ export function AssessmentCenterPage() {
   // specs §4.2.3 提交成功后通知 BatchTable 重置筛选回第一页
   const [tableResetKey, setTableResetKey] = useState(0);
 
-  // specs §4.2.3 提交成功：toast 与关弹窗由弹窗自身处理，此处只通知 BatchTable 清筛选回第一页
   function onCreateSubmitted() {
     setTableResetKey((k) => k + 1);
   }
 
-  // 轮询推导：存在非停滞的进行中批次才轮询（specs §4.1.3 轮询触发时机）。
-  const batchesProbeQ = useBatches({ page: 1, page_size: DEFAULT_PAGE_SIZE });
+  // 轮询开关（specs §4.1.3）：探针自身条件轮询（存在非停滞 running 时 10s 重查），
+  // 开关随数据收敛：批次全终态即停，首屏无 running 后新批次出现也能感知。
+  const batchesProbeQ = useBatches({ page: 1, page_size: DEFAULT_PAGE_SIZE }, { polling: 'probe' });
   const hasActiveRunning = (batchesProbeQ.data?.list ?? []).some(
     (b) => b.status === 'running' && !b.stalled,
   );
@@ -85,6 +85,7 @@ export function AssessmentCenterPage() {
         onFailuresOpen={setFailureBatchId}
         onReSubmit={(batch) => void onReSubmit(batch)}
         resetKey={tableResetKey}
+        polling={hasActiveRunning}
       />
 
       <CreateBatchDialog

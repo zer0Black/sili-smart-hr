@@ -51,7 +51,9 @@ type fakeBatchRepo struct {
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
 
-func (f *fakeBatchRepo) Create(ctx context.Context, b *domain.AssessmentBatch) error {
+func (f *fakeBatchRepo) CreateWithPersons(ctx context.Context, b *domain.AssessmentBatch, persons func(int64) []domain.AssessmentBatchPerson) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if len(f.createErrs) > 0 {
 		err := f.createErrs[0]
 		f.createErrs = f.createErrs[1:]
@@ -61,6 +63,7 @@ func (f *fakeBatchRepo) Create(ctx context.Context, b *domain.AssessmentBatch) e
 	}
 	b.ID = int64(len(f.created) + 1)
 	f.created = append(f.created, b)
+	f.persons = append(f.persons, persons(b.ID)...)
 	return nil
 }
 
@@ -70,10 +73,6 @@ func (f *fakeBatchRepo) GetByID(ctx context.Context, id int64) (*domain.Assessme
 	return f.stored, nil
 }
 
-func (f *fakeBatchRepo) CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error {
-	f.persons = append(f.persons, persons...)
-	return nil
-}
 func (f *fakeBatchRepo) FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
 	return f.runningScheduled, nil
 }
@@ -162,13 +161,10 @@ func (f *fakeBatchRepo) FailWholeBatch(ctx context.Context, batchID int64, reaso
 func (f *fakeBatchRepo) CountInRange(ctx context.Context, start, end time.Time) (int64, error) {
 	return 0, nil
 }
-func (f *fakeBatchRepo) CountRunningNonStalled(ctx context.Context, stalledBefore time.Time) (int64, error) {
+func (f *fakeBatchRepo) CountSuccessSideTriggeredBetween(ctx context.Context, start, end time.Time) (int64, error) {
 	return 0, nil
 }
-func (f *fakeBatchRepo) CountSuccessSideInRanges(ctx context.Context, batchIDs []int64) (int64, error) {
-	return 0, nil
-}
-func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error) {
+func (f *fakeBatchRepo) ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error) {
 	return nil, nil
 }
 func (f *fakeBatchRepo) ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
@@ -265,6 +261,12 @@ func (f *fakeFeatureRepo) CountFailedByTokenNames(ctx context.Context, tokenName
 	f.start, f.end = start, end
 	return f.failed, nil
 }
+
+func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
+	f.calls++
+	f.start, f.end = start, end
+	return f.failed, nil
+}
 // CountExistingBySessionKeys 等待屏障探针：counts 逐次消费（耗尽保持末值），gotKeys 捕获入参。
 func (f *fakeFeatureRepo) CountExistingBySessionKeys(ctx context.Context, sessionKeys []string) (int64, error) {
 	f.mu.Lock()
@@ -334,7 +336,7 @@ func staffs(names ...string) []userapi.Staff {
 }
 
 func newOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer) *pipeline.Orchestrator {
-	return pipeline.NewOrchestrator(repo, alertRepo, nil, nil, nil, fetcher,
+	return pipeline.NewOrchestrator(repo, nil, nil, nil, fetcher,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		nil, alertWriter(alertRepo), enq, nil)
 }
@@ -581,7 +583,7 @@ func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, session
 // 零值 fake 承载防止 T3 逐人评估段空指针，断言面不涉及其计数）。
 // 等待屏障注入短超时：fakeFeatureRepo 恒返 0 计数时按超时放行，防测试被 30 分钟默认值拖住。
 func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, sessionEnq *fakeSessionEnqueuer) *pipeline.Orchestrator {
-	o := pipeline.NewOrchestrator(repo, alertRepo, &fakeFeatureRepo{}, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -591,7 +593,7 @@ func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fak
 
 // waitOrch 组装含等待屏障全链编排器：featureRepo 承载等待计数探针，注入短超时与轮询间隔。
 func waitOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, sessionEnq *fakeSessionEnqueuer, timeout, interval time.Duration) *pipeline.Orchestrator {
-	o := pipeline.NewOrchestrator(repo, alertRepo, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -882,7 +884,7 @@ func TestPersonTerminal(t *testing.T) {
 // evalOrch 组装含评估器与特征仓储的 RunBatch 全链编排器（退避置 1ms 免测试等待）。
 // 等待屏障参数同时注入短值：featureRepo 恒返 0 计数时按超时放行，防测试被 30 分钟默认值拖住。
 func evalOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, pe *fakePersonEvaluator) *pipeline.Orchestrator {
-	o := pipeline.NewOrchestrator(repo, alertRepo, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -962,9 +964,10 @@ func TestRunBatchTerminalMapping(t *testing.T) {
 	if alertRepo.alerts[0].FailedRatio != 33.33 {
 		t.Errorf("告警占比 = %v, want 33.33", alertRepo.alerts[0].FailedRatio)
 	}
-	// 会话级失败比例分子查询入参：批次名单与窗口半开区间（子计划01 T4 口径）。
-	if len(featureRepo.names) != 3 {
-		t.Errorf("CountFailedByTokenNames 名单 = %v, want 3 人", featureRepo.names)
+	// 会话级失败比例分子查询入参：全量口径（不限名单，与 fetchAllSessions 分母
+	// 同基，specs §5.2.2 步骤8）窗口半开区间（子计划01 T4 口径）。
+	if featureRepo.calls == 0 {
+		t.Error("会话级失败比例分子未查询（CountFailedInRange 未被调用）")
 	}
 	if featureRepo.start != batch.PeriodStartAt.Unix() || featureRepo.end != batch.PeriodEndAt.AddDate(0, 0, 1).Unix() {
 		t.Errorf("失败会话统计窗口 = [%d, %d), want [%d, %d)",
@@ -1106,7 +1109,7 @@ func TestRunBatchWaitExtractReady(t *testing.T) {
 	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1, 2}}
 	pe := &fakePersonEvaluator{}
 	sessionEnq := &fakeSessionEnqueuer{}
-	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, nil, nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -1146,7 +1149,7 @@ func TestRunBatchWaitExtractTimeout(t *testing.T) {
 	}}
 	featureRepo := &fakeFeatureRepo{counts: []int64{1}} // 恒为部分计数（耗尽保持末值 1 < 2）
 	pe := &fakePersonEvaluator{}
-	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, nil, nil, &fakeSessionEnqueuer{})
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -1204,7 +1207,7 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 	featureRepo := &fakeFeatureRepo{counts: []int64{0, 1}} // 集合大小 1，第二轮到齐
 	sessionEnq := &fakeSessionEnqueuer{errs: []error{errFake, nil}}
 	pe := &fakePersonEvaluator{}
-	o := pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, nil, nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)

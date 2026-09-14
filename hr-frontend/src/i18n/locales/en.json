@@ -651,6 +651,7 @@
       "actionFailures": "Failure Details",
       "actionRestart": "Relaunch",
       "actionViewResult": "View Results",
+      "loadError": "Failed to load data, please retry",
       "empty": "No assessments yet. Launch one from the top-right or wait for the scheduled run",
       "total": "{{total}} records",
       "prevPage": "Previous",

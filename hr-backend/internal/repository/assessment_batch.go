@@ -5,6 +5,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -24,10 +26,12 @@ type BatchFilter struct {
 }
 
 // AssessmentBatchRepository 是批次域的数据访问接口（双重接口范式，account 样板）。
+// 时间区间查询（CountInRange/CountSuccessSideTriggeredBetween）参数须传 UTC 口径：
+// SQLite 文本列按 UTC 偏移串落库，字典序比较要求两端偏移串一致。
 type AssessmentBatchRepository interface {
-	Create(ctx context.Context, batch *domain.AssessmentBatch) error
-	// CreatePersons 批量落人员明细行（建批时名单快照，初值 pending/0/""）。
-	CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error
+	// CreateWithPersons 单事务落批次行与人员明细行（建批原子性，防孤儿批次）。
+	// persons 为闭包：批次行 Create 回调填雪花 ID 后再调用取明细，保证关联就绪。
+	CreateWithPersons(ctx context.Context, batch *domain.AssessmentBatch, persons func(batchID int64) []domain.AssessmentBatchPerson) error
 	// GetByID 按主键点查，无行返 (nil, nil)。
 	GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error)
 	// FindLatestRunningScheduled 取最近触发的 running 定时批次（tick 同源阻塞判定），
@@ -35,8 +39,8 @@ type AssessmentBatchRepository interface {
 	FindLatestRunningScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
 	// ListByFilter 按 triggered_at DESC 倒序分页，返回 (list, total)。
 	ListByFilter(ctx context.Context, f BatchFilter) ([]domain.AssessmentBatch, int64, error)
-	// UpdateTotalSessions 单事务回填批次会话总数并逐人更新 session_count
-	// （名单内无会话者为 0，人员行创建时已落）。
+	// UpdateTotalSessions 单事务回填批次会话总数并按人更新 session_count
+	// （单条 CASE 批量 UPDATE，名单内无会话者为 0，人员行创建时已落）。
 	UpdateTotalSessions(ctx context.Context, batchID int64, totalSessions int, personSessions map[string]int) error
 	// AdvancePersonTerminal 单事务推进单人终态并原子自增批次计数（只增不减）。
 	// 人员行 UPDATE 带 status='pending' 幂等守卫：affected==0（重入已终态）跳过计数自增。
@@ -45,18 +49,17 @@ type AssessmentBatchRepository interface {
 	// FinalizeBatch 落批次终态（WHERE status='running' 守卫，终态不可逆）：
 	// affected==0 视为已终态幂等返回 nil。
 	FinalizeBatch(ctx context.Context, batchID int64, status string, sessionFailRatio float64) error
-	// FailWholeBatch 批次级异常整批失败：人员行全落 failed、计数置满 N/N、批次落 failed。
+	// FailWholeBatch 批次级异常整批失败：pending 人员行落 failed（已终态者不动，
+	// 终态不可逆）、计数置满 N/N、批次落 failed。
 	FailWholeBatch(ctx context.Context, batchID int64, reason string) error
 	// CountInRange 统计 triggered_at ∈ [start, end) 的批次数（本期评测次数）。
 	CountInRange(ctx context.Context, start, end time.Time) (int64, error)
-	// CountRunningNonStalled 统计 running 且 triggered_at >= stalledBefore 的批次数。
-	CountRunningNonStalled(ctx context.Context, stalledBefore time.Time) (int64, error)
-	// CountSuccessSideInRanges 在批次 ID 列表范围内统计成功侧终态人员行数；
-	// 空列表直接返回 0 不发 SQL。
-	CountSuccessSideInRanges(ctx context.Context, batchIDs []int64) (int64, error)
-	// ListBatchIDsTriggeredBetween 取 triggered_at ∈ [start, end) 的全部批次 ID（含终态，
-	// 供统计卡「已完成评估人次」按本期跑批间隔圈定批次范围）。
-	ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error)
+	// CountSuccessSideTriggeredBetween 统计 triggered_at ∈ [start, end) 的全部批次中
+	// 成功侧终态人员行数（子查询圈定批次，join 归属仓储层）。
+	CountSuccessSideTriggeredBetween(ctx context.Context, start, end time.Time) (int64, error)
+	// ListRunningTriggeredAt 取全部 running 批次的触发时刻（统计卡停滞剔除，
+	// 逐行判定归 service，口径与列表 Stalled 同源）。
+	ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error)
 	// ListFailedByBatch 取批次内 status='failed' 人员行，按 finished_at ASC 升序
 	//（终态落库先后，走 idx_batch_status；specs §4.3.4 规则1）。
 	ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error)
@@ -71,16 +74,18 @@ func NewAssessmentBatchRepository(db *gorm.DB) AssessmentBatchRepository {
 	return &assessmentBatchRepository{db: db}
 }
 
-func (r *assessmentBatchRepository) Create(ctx context.Context, batch *domain.AssessmentBatch) error {
-	return r.db.WithContext(ctx).Create(batch).Error
-}
-
-// CreatePersons 空切片直接返回 nil 不发 SQL。
-func (r *assessmentBatchRepository) CreatePersons(ctx context.Context, persons []domain.AssessmentBatchPerson) error {
-	if len(persons) == 0 {
-		return nil
-	}
-	return r.db.WithContext(ctx).CreateInBatches(persons, 100).Error
+// CreateWithPersons 批次行与人员明细行同事务落库：明细失败整体回滚，不留无明细的孤儿批次。
+func (r *assessmentBatchRepository) CreateWithPersons(ctx context.Context, batch *domain.AssessmentBatch, persons func(batchID int64) []domain.AssessmentBatchPerson) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(batch).Error; err != nil {
+			return err
+		}
+		rows := persons(batch.ID)
+		if len(rows) == 0 {
+			return nil
+		}
+		return tx.CreateInBatches(rows, 100).Error
+	})
 }
 
 func (r *assessmentBatchRepository) GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error) {
@@ -134,6 +139,8 @@ func (r *assessmentBatchRepository) ListByFilter(ctx context.Context, f BatchFil
 	return list, total, nil
 }
 
+// UpdateTotalSessions 逐人 session_count 用单条 CASE WHEN 批量 UPDATE，规避人数级的
+// DB 往返；token_name 在批次内唯一，分支互斥与 map 迭代序无关。
 func (r *assessmentBatchRepository) UpdateTotalSessions(ctx context.Context, batchID int64, totalSessions int, personSessions map[string]int) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&domain.AssessmentBatch{}).
@@ -141,14 +148,22 @@ func (r *assessmentBatchRepository) UpdateTotalSessions(ctx context.Context, bat
 			Update("total_session_count", totalSessions).Error; err != nil {
 			return err
 		}
-		for name, count := range personSessions {
-			if err := tx.Model(&domain.AssessmentBatchPerson{}).
-				Where("batch_id = ? AND token_name = ?", batchID, name).
-				Update("session_count", count).Error; err != nil {
-				return err
-			}
+		if len(personSessions) == 0 {
+			return nil
 		}
-		return nil
+		names := make([]string, 0, len(personSessions))
+		cases := make([]string, 0, len(personSessions))
+		args := make([]interface{}, 0, len(personSessions)*2+2)
+		for name, count := range personSessions {
+			names = append(names, name)
+			cases = append(cases, "WHEN ? THEN ?")
+			args = append(args, name, count)
+		}
+		stmt := fmt.Sprintf(
+			"UPDATE %s SET session_count = CASE token_name %s ELSE session_count END WHERE batch_id = ? AND token_name IN ?",
+			domain.AssessmentBatchPerson{}.TableName(), strings.Join(cases, " "))
+		args = append(args, batchID, names)
+		return tx.Exec(stmt, args...).Error
 	})
 }
 
@@ -196,12 +211,14 @@ func (r *assessmentBatchRepository) FinalizeBatch(ctx context.Context, batchID i
 		}).Error
 }
 
+// FailWholeBatch 人员行带 status='pending' 守卫：batch-run 重试重放本路径时不覆盖
+// 已终态成功者（与 AdvancePersonTerminal 同款幂等口径）。
 func (r *assessmentBatchRepository) FailWholeBatch(ctx context.Context, batchID int64, reason string) error {
 	reason = truncateRunes(reason, errorSummaryMaxLen)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		now := utcNow()
 		if err := tx.Model(&domain.AssessmentBatchPerson{}).
-			Where("batch_id = ?", batchID).
+			Where("batch_id = ? AND status = ?", batchID, domain.PersonStatusPending).
 			Updates(map[string]any{
 				"status":        domain.PersonStatusFailed,
 				"error_summary": reason,
@@ -229,32 +246,24 @@ func (r *assessmentBatchRepository) CountInRange(ctx context.Context, start, end
 	return n, err
 }
 
-func (r *assessmentBatchRepository) CountRunningNonStalled(ctx context.Context, stalledBefore time.Time) (int64, error) {
+func (r *assessmentBatchRepository) CountSuccessSideTriggeredBetween(ctx context.Context, start, end time.Time) (int64, error) {
 	var n int64
-	err := r.db.WithContext(ctx).Model(&domain.AssessmentBatch{}).
-		Where("status = ? AND triggered_at >= ?", domain.BatchStatusRunning, stalledBefore).
-		Count(&n).Error
-	return n, err
-}
-
-func (r *assessmentBatchRepository) CountSuccessSideInRanges(ctx context.Context, batchIDs []int64) (int64, error) {
-	if len(batchIDs) == 0 {
-		return 0, nil
-	}
-	var n int64
+	sub := r.db.Model(&domain.AssessmentBatch{}).
+		Select("id").
+		Where("triggered_at >= ? AND triggered_at < ?", start, end)
 	err := r.db.WithContext(ctx).Model(&domain.AssessmentBatchPerson{}).
-		Where("batch_id IN ? AND status IN ?", batchIDs,
+		Where("batch_id IN (?) AND status IN ?", sub,
 			[]string{domain.PersonStatusSuccess, domain.PersonStatusReused, domain.PersonStatusDegraded, domain.PersonStatusSkipped}).
 		Count(&n).Error
 	return n, err
 }
 
-func (r *assessmentBatchRepository) ListBatchIDsTriggeredBetween(ctx context.Context, start, end time.Time) ([]int64, error) {
-	var ids []int64
+func (r *assessmentBatchRepository) ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error) {
+	var times []time.Time
 	err := r.db.WithContext(ctx).Model(&domain.AssessmentBatch{}).
-		Where("triggered_at >= ? AND triggered_at < ?", start, end).
-		Pluck("id", &ids).Error
-	return ids, err
+		Where("status = ?", domain.BatchStatusRunning).
+		Pluck("triggered_at", &times).Error
+	return times, err
 }
 
 // truncateRunes 按字符截断至多 max 个 rune，避免多字节字符被腰斩。

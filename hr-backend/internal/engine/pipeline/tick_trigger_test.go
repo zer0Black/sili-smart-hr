@@ -53,9 +53,14 @@ func membersOf(names ...string) []domain.AssessmentConfigMember {
 
 // tickFixture 组装 TickTrigger 链路编排器。
 func tickFixture(repo *fakeBatchRepo, cfgRepo *fakeConfigRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer) *pipeline.Orchestrator {
-	return pipeline.NewOrchestrator(repo, &fakeAlertRepo{}, nil, cfgRepo, nil, fetcher,
+	return tickFixtureWithAlerts(repo, cfgRepo, fetcher, enq, &fakeAlertRepo{})
+}
+
+// tickFixtureWithAlerts 同 tickFixture，另注入可断言的告警仓储。
+func tickFixtureWithAlerts(repo *fakeBatchRepo, cfgRepo *fakeConfigRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer, alertRepo *fakeAlertRepo) *pipeline.Orchestrator {
+	return pipeline.NewOrchestrator(repo, nil, cfgRepo, nil, fetcher,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		nil, alertWriter(&fakeAlertRepo{}), enq, nil)
+		nil, alertWriter(alertRepo), enq, nil)
 }
 
 func weeklyCfg() *domain.AssessmentConfig {
@@ -240,17 +245,45 @@ func TestTickTriggerCreateFail(t *testing.T) {
 	}
 }
 
-// TestTickTriggerEnqueueFail 投递失败上抛（specs §5.1.5 批次创建请求投递失败）。
+// TestTickTriggerEnqueueFail 投递失败上抛交任务级重试（specs §5.1.5 批次创建请求投递失败），
+// 且批次落 failed 终态不留孤儿 running（与 SubmitManualBatch 同款兜底）。
 func TestTickTriggerEnqueueFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
 	enq := &fakeBatchEnqueuer{err: errFake}
-	o := tickFixture(repo, cfgRepo, nil, enq)
+	alertRepo := &fakeAlertRepo{}
+	o := tickFixtureWithAlerts(repo, cfgRepo, nil, enq, alertRepo)
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
 		t.Fatal("入队失败应上抛交任务级重试")
 	}
 	if len(repo.created) != 1 {
-		t.Errorf("入队失败时批次已落库（重试经同源阻塞拦截），实际 %d 条", len(repo.created))
+		t.Fatalf("入队失败时批次已落库，实际 %d 条", len(repo.created))
+	}
+	if !repo.failCalled {
+		t.Error("入队失败应落整批 failed 终态（不留孤儿 running）")
+	}
+	if len(alertRepo.alerts) != 1 {
+		t.Errorf("占比 100.00 超阈应写告警，实际 %d 条", len(alertRepo.alerts))
+	}
+}
+
+// TestTickTriggerAlreadyCreatedThisPeriod 宽限窗内不重复建批：本周期已有定时批次
+//（triggered_at 落在本期触发点之后）时，宽限窗内的重复 tick 直接返回不建批。
+func TestTickTriggerAlreadyCreatedThisPeriod(t *testing.T) {
+	repo := &fakeBatchRepo{runningScheduled: &domain.AssessmentBatch{
+		ID: 9, BatchNo: "B202609132300001", TriggerType: domain.BatchTriggerScheduled,
+		Status: domain.BatchStatusRunning, TriggeredAt: time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local),
+	}}
+	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{}
+	o := tickFixture(repo, cfgRepo, nil, enq)
+
+	// 触发点 1 分钟后（宽限窗内）：已建批判定拦截，不重复建批。
+	if err := o.TickTrigger(context.Background(), tickNow().Add(time.Minute)); err != nil {
+		t.Fatalf("已建批应返回 nil: %v", err)
+	}
+	if len(repo.created) != 0 || len(enq.enqIDs) != 0 {
+		t.Error("本周期已建批不应重复建批或入队")
 	}
 }

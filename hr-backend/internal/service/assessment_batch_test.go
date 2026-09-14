@@ -40,8 +40,8 @@ type fakeBatchRepo struct {
 	idsBetweenErr   error
 	countSuccess    int64
 	countSuccessErr error
-	countRunning    int64
-	countRunningErr error
+	runningTriggeredAts []time.Time
+	listRunningErr      error
 
 	lastFilter            repository.BatchFilter
 	failedListGotID       int64
@@ -51,8 +51,7 @@ type fakeBatchRepo struct {
 	countRunningThreshold time.Time
 }
 
-func (f *fakeBatchRepo) Create(_ context.Context, _ *domain.AssessmentBatch) error { return nil }
-func (f *fakeBatchRepo) CreatePersons(_ context.Context, _ []domain.AssessmentBatchPerson) error {
+func (f *fakeBatchRepo) CreateWithPersons(_ context.Context, _ *domain.AssessmentBatch, _ func(int64) []domain.AssessmentBatchPerson) error {
 	return nil
 }
 func (f *fakeBatchRepo) GetByID(_ context.Context, _ int64) (*domain.AssessmentBatch, error) {
@@ -83,17 +82,12 @@ func (f *fakeBatchRepo) CountInRange(_ context.Context, start, end time.Time) (i
 	f.countInRangeArgs = [2]time.Time{start, end}
 	return f.countInRange, f.countInRangeErr
 }
-func (f *fakeBatchRepo) CountRunningNonStalled(_ context.Context, stalledBefore time.Time) (int64, error) {
-	f.countRunningThreshold = stalledBefore
-	return f.countRunning, f.countRunningErr
-}
-func (f *fakeBatchRepo) CountSuccessSideInRanges(_ context.Context, ids []int64) (int64, error) {
-	f.countSuccessGotIDs = ids
+func (f *fakeBatchRepo) CountSuccessSideTriggeredBetween(_ context.Context, start, end time.Time) (int64, error) {
+	f.countInRangeArgs = [2]time.Time{start, end}
 	return f.countSuccess, f.countSuccessErr
 }
-func (f *fakeBatchRepo) ListBatchIDsTriggeredBetween(_ context.Context, start, end time.Time) ([]int64, error) {
-	f.idsBetweenArgs = [2]time.Time{start, end}
-	return f.idsBetween, f.idsBetweenErr
+func (f *fakeBatchRepo) ListRunningTriggeredAt(_ context.Context) ([]time.Time, error) {
+	return f.runningTriggeredAts, f.listRunningErr
 }
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
@@ -127,6 +121,19 @@ func (f *fakeDimRepo) UpdateActivitySetting(_ context.Context, _, _ int) error {
 func (f *fakeDimRepo) ListEnabledFullByDataSource(_ context.Context, dataSource string) ([]domain.Dimension, error) {
 	f.gotDataSource = dataSource
 	return f.dims, f.err
+}
+func (f *fakeDimRepo) CountEnabledByGroupCode(_ context.Context, dataSource string) (map[string]int, error) {
+	f.gotDataSource = dataSource
+	if f.err != nil {
+		return nil, f.err
+	}
+	counts := make(map[string]int)
+	for _, d := range f.dims {
+		if d.GroupCode != nil && *d.GroupCode != "" {
+			counts[*d.GroupCode]++
+		}
+	}
+	return counts, nil
 }
 
 var _ repository.DimensionRepository = (*fakeDimRepo)(nil)
@@ -327,16 +334,20 @@ func TestListInvalidFilter(t *testing.T) {
 	}
 }
 
-// TestStatsWindow：配置 weekly 23:00、now=09-12 10:00，断言窗口恒为一个周期长度
-// [09-06 23:00, 09-13 23:00)（specs §4.1.2A 本期跑批间隔，与历史定时批次无关）。
+// TestStatsWindow：配置 weekly 23:00、now=09-12 10:00，断言本期跑批间隔窗口
+// [09-06 23:00, 09-13 23:00)（specs §4.1.2A，PrevTriggerAt/NextTriggerAt 纯日历推算）。
 func TestStatsWindow(t *testing.T) {
 	wantStart := time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local)
 	wantEnd := time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local)
+	// running 两批：一未停滞（09-06 触发）、一已停滞（08-30 触发超 7 天），统计卡只计 1。
+	runningAts := []time.Time{
+		time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local),
+		time.Date(2026, 8, 30, 23, 0, 0, 0, time.Local),
+	}
 	batchRepo := &fakeBatchRepo{
-		countInRange: 2,
-		idsBetween:   []int64{9, 10},
-		countSuccess: 96,
-		countRunning: 1,
+		countInRange:      2,
+		countSuccess:      96,
+		runningTriggeredAts: runningAts,
 	}
 	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 
@@ -348,20 +359,8 @@ func TestStatsWindow(t *testing.T) {
 		t.Errorf("CountInRange 窗口 = [%v, %v), want [%v, %v)",
 			batchRepo.countInRangeArgs[0], batchRepo.countInRangeArgs[1], wantStart, wantEnd)
 	}
-	if !batchRepo.idsBetweenArgs[0].Equal(wantStart) || !batchRepo.idsBetweenArgs[1].Equal(wantEnd) {
-		t.Errorf("ListBatchIDsTriggeredBetween 窗口 = [%v, %v), want [%v, %v)",
-			batchRepo.idsBetweenArgs[0], batchRepo.idsBetweenArgs[1], wantStart, wantEnd)
-	}
-	if len(batchRepo.countSuccessGotIDs) != 2 || batchRepo.countSuccessGotIDs[0] != 9 {
-		t.Errorf("CountSuccessSideInRanges ids = %v, want [9 10]", batchRepo.countSuccessGotIDs)
-	}
-	// weekly 停滞边界 7 天：now-7d = 09-05 10:00。
-	wantThreshold := batchFixedNow().AddDate(0, 0, -7)
-	if !batchRepo.countRunningThreshold.Equal(wantThreshold) {
-		t.Errorf("CountRunningNonStalled 边界 = %v, want %v", batchRepo.countRunningThreshold, wantThreshold)
-	}
 	if dto.EvalCount != 2 || dto.EvaluatedPersonCount != 96 || dto.RunningBatchCount != 1 {
-		t.Errorf("dto = %+v, want {2 96 1}", dto)
+		t.Errorf("dto = %+v, want {2 96 1}（停滞 running 不计入）", dto)
 	}
 }
 
