@@ -192,7 +192,7 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 | covered_session_count | INT | INTEGER | 是 | 业务层置 0 | 覆盖会话数：到达成功侧终态的各人窗口内会话数之和，在该人终态时一次性累计；失败人员的会话不计入，含降级与会话（specs §5.2.4 规则3，权威口径） [长度来源：int] |
 | failed_count | INT | INTEGER | 是 | 业务层置 0 | 失败人数：单人评估重试耗尽计数。非零时列表以警示色强调，作为补跑决策依据；批次终态判定与告警判定的分子（specs §8.1 失败人数占比） [长度来源：int] |
 | total_session_count | INT | INTEGER | 是 | 业务层置 0 | 批次展开时拉取去重后的会话总数（含失败人员会话），仅作会话级失败比例的分母，不作列表展示口径（specs §5.2.4 规则3 明文区分两个口径） [长度来源：int] |
-| session_fail_ratio | DOUBLE | DOUBLE PRECISION | 否 | NULL | 会话级失败比例（百分比口径，0 至 100，保留两位小数）：分子为批次内 `status=failed` 会话计数（承接 T4 §6.2 `extract_fail_ratio` 分子口径），分母为 `total_session_count`；批次终态时计算写入，进行中为 NULL；供 F11 工作台呈现 [长度来源：float64，规则文件 §1.6 数值] |
+| session_fail_ratio | DOUBLE | DOUBLE PRECISION | 否 | NULL | 会话级失败比例（百分比口径，0 至 100，保留两位小数）：分子为本批次投递会话中 `status='failed'` 的档案计数（承接 T4 §6.2 `extract_fail_ratio` 分子口径），分母为 `total_session_count`；批次终态时计算写入，进行中为 NULL；供 F11 工作台呈现 [长度来源：float64，规则文件 §1.6 数值] |
 | status | VARCHAR(16) | VARCHAR(16) | 是 | 业务层置 running | 批次状态四态：`running` 进行中 / `success` 成功 / `partial_failed` 部分失败 / `failed` 失败；一经终态不可逆，重新评估通过新批次表达（specs §6.1/6.2） [长度来源：枚举值最长 14 字符] |
 | error_summary | VARCHAR(255) | VARCHAR(255) | 是 | 业务层置空串 | 批次级失败原因摘要（批次级异常导致的整批失败：上游会话列表不可用、`batch-run` 入队失败，见 03 文档 §3.B1 与 §4.6），前端失败明细弹窗在批次级异常时展示；正常批次为空串。写库前截断至 255 字符，禁落原始堆栈（specs §4.3.2） [长度来源：规则文件 §1.6 长文本，摘要语义 255] |
 | period_start_at | DATETIME | TIMESTAMP | 是 | - | 评估时段起点（含）。定时批次取周期窗口起点，手动批次取用户选定起点；接口入参 `period_start` 为 `yyyy-MM-dd`，按当日 00:00:00 写入 [长度来源：规则文件 §1.7 time.Time] |
@@ -216,7 +216,7 @@ COMMENT ON TABLE "assessment_batches" IS '对话分析评估批次记录';
 - **状态机（specs §6.1/§6.2 唯一权威）**：`running` → `success`（全员终态且失败人数占比 ≤ `10.00`）/ `partial_failed`（`10.00` < 占比 < `100.00`）/ `failed`（占比 = `100.00`，或批次级异常）。占比为百分比口径（0 至 100）保留两位小数，与 `batchAlertThreshold` 同精度比较（03 文档 §4.6）。终态无出边，`RunBatch` 对非 `running` 批次幂等返回，重复消费不重复编排（03 文档 §4.4）。
 - **计数原子推进**：`evaluated_count`/`covered_session_count`/`failed_count` 在单人终态回写时用 SQL 自增（`SET col = col + ?`），不做读改写；`evaluated_count = total_count` 的终态判定由调用方在回写事务外读回批次行进行，终态落定以 `WHERE status='running'` 条件更新守卫（affected==0 视为已终态幂等返回），并发双触发不重复落终态、计数不回退。
 - **停滞不落库**：停滞是查询期按 `status='running'` 加 `triggered_at` 与周期长度比较派生的标识，不改写 `status`（specs §6.2 说明），故本表无停滞列。
-- **会话级失败比例口径**：分母取批次展开时确定的 `total_session_count`（本功能定义），分子按同批人员与同时段从 `session_features` 统计 `status='failed'` 计数（承接 T4 口径）。两口径的差异仅来自跨边界会话（展开按上游窗口过滤，档案侧按末轮归属），属已知近似，比例可能轻微低估。
+- **会话级失败比例口径**：分母取批次展开时确定的 `total_session_count`（specified 批次收窄为名单内会话数），分子按本批次投递会话的 session_key 集合从 `session_features` 统计 `status='failed'` 计数（承接 T4 口径，与分母同基）。两口径的差异仅来自跨边界会话（展开按上游窗口过滤，档案侧按末轮归属），属已知近似，比例可能轻微低估。
 - **名单快照不可变**：`target_names_json` 与人员明细行在名单确定时一次性落库（`specified` 为批次创建时，`all` 为批次执行开头展开回填，03 文档 §1.5），此后不再刷新，配置变更与人员变动不回改已落库批次（specs §4.1.4 规则1/4）。编排展开会话列表后按 `token_name` 分组得到的会话集只用于 `EvaluatePerson` 的 sessions 入参与覆盖会话数口径，不增删名单（03 文档 §1.5）。
 - **无软删除**：批次为审计留痕，物理保留供历史追溯与工作台态势消费。
 
@@ -463,13 +463,15 @@ COMMENT ON TABLE "assessment_alerts" IS '批次失败超阈告警信号';
 - 批次的取消、作废与删除（specs §6.2 明确不提供，无软删除列）。
 - 失败会话清单表与单会话重试记录（specs §4.3.4 规则1 明确清单只读；T4 §6.2 已知漏计项本期不补）。
 - 告警阈值的在线配置表（specs §5.3.4 规则1 明确不在本期范围，为包内常量）。
-- `session_features` / `dimension_scores` / `aggregate_scores` / `activity_stats` 的字段扩展（本功能只读消费，结构变更归各自 Feature）。
+- `session_features` 的字段扩展（本功能只读消费，结构变更归各自 Feature）。例外：为会话级失败比例分子的窗口查询性能补建 `idx_first_turn` 索引（纯索引不加列，`first_turn_at` 既有列上叠加），属本功能授权的辅助改动。
 
 ---
 
-**文档版本：** v1.5
-**最后更新：** 2026-09-12
+**文档版本：** v1.6
+**最后更新：** 2026-09-19
 **作者：** lixuetao
+
+**v1.6 变更（代码评审反向同步）：** §3.1 会话级失败比例口径改为分子按本批次投递会话键统计（与 specified 收窄后的分母同基）；§9 补 `idx_first_turn` 索引例外披露。
 
 **v1.5 变更（监理扫描·模式三修复）：** §3.1 计数原子推进条目的终态判定表述按开发计划实现口径修正：终态判定由调用方在回写事务外读回批次行进行，以 FinalizeBatch 的 `WHERE status='running'` 条件更新守卫防并发双触发，原「同事务内判定」表述废弃。
 

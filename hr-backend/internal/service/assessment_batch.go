@@ -166,11 +166,11 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 	if p.PeriodStart == "" || p.PeriodEnd == "" {
 		return nil, NewError(errcode.BadRequest)
 	}
-	start, err := time.ParseInLocation("2006-01-02", p.PeriodStart, time.Local)
+	start, err := time.ParseInLocation(layoutDate, p.PeriodStart, time.Local)
 	if err != nil {
 		return nil, NewError(errcode.BatchPeriodInvalid)
 	}
-	end, err := time.ParseInLocation("2006-01-02", p.PeriodEnd, time.Local)
+	end, err := time.ParseInLocation(layoutDate, p.PeriodEnd, time.Local)
 	if err != nil {
 		return nil, NewError(errcode.BatchPeriodInvalid)
 	}
@@ -277,8 +277,8 @@ func (s *assessmentBatchService) toListDTO(cfg *domain.AssessmentConfig, configO
 		TargetMode:          b.TargetMode,
 		TargetBrief:         briefNames(names, b.TargetMode),
 		TargetNames:         names,
-		PeriodStart:         b.PeriodStartAt.Local().Format("2006-01-02"),
-		PeriodEnd:           b.PeriodEndAt.Local().Format("2006-01-02"),
+		PeriodStart:         b.PeriodStartAt.Local().Format(layoutDate),
+		PeriodEnd:           b.PeriodEndAt.Local().Format(layoutDate),
 		Status:              b.Status,
 		Stalled:             stalled,
 		EvaluatedCount:      b.EvaluatedCount,
@@ -286,7 +286,7 @@ func (s *assessmentBatchService) toListDTO(cfg *domain.AssessmentConfig, configO
 		ProgressPercent:     progressPercent(b.EvaluatedCount, b.TotalCount),
 		CoveredSessionCount: b.CoveredSessionCount,
 		FailedCount:         b.FailedCount,
-		TriggeredAt:         b.TriggeredAt.Local().Format("2006-01-02 15:04"),
+		TriggeredAt:         b.TriggeredAt.Local().Format(layoutDateTime),
 	}
 	return dto
 }
@@ -349,7 +349,7 @@ func (s *assessmentBatchService) Plan(ctx context.Context) (*BatchPlanDTO, error
 		return nil, fmt.Errorf("next trigger at: %w", err)
 	}
 	dto := &BatchPlanDTO{
-		NextTriggerAt: next.Local().Format("2006-01-02 15:04"),
+		NextTriggerAt: next.Local().Format(layoutDateTime),
 		Period:        cfg.Period,
 		TargetMode:    cfg.TargetMode,
 		TargetBrief:   []string{},
@@ -399,8 +399,8 @@ func (s *assessmentBatchService) Targets(ctx context.Context, batchID int64) (*B
 		TargetMode:  b.TargetMode,
 		Names:       names,
 		Total:       len(names),
-		PeriodStart: b.PeriodStartAt.Local().Format("2006-01-02"),
-		PeriodEnd:   b.PeriodEndAt.Local().Format("2006-01-02"),
+		PeriodStart: b.PeriodStartAt.Local().Format(layoutDate),
+		PeriodEnd:   b.PeriodEndAt.Local().Format(layoutDate),
 	}, nil
 }
 
@@ -430,11 +430,17 @@ func (s *assessmentBatchService) Failures(ctx context.Context, batchID int64) (*
 		BatchNo:     b.BatchNo,
 		FailedCount: b.FailedCount,
 		TotalCount:  b.TotalCount,
-		PeriodStart: b.PeriodStartAt.Local().Format("2006-01-02"),
-		PeriodEnd:   b.PeriodEndAt.Local().Format("2006-01-02"),
+		PeriodStart: b.PeriodStartAt.Local().Format(layoutDate),
+		PeriodEnd:   b.PeriodEndAt.Local().Format(layoutDate),
 		List:        list,
 	}, nil
 }
+
+// 日期展示格式（03 A1/A3 响应字段口径）：日与分钟两档。
+const (
+	layoutDate     = "2006-01-02"
+	layoutDateTime = "2006-01-02 15:04"
+)
 
 // parseTargetNames 解析名单快照 JSON，空或非法均降级空数组（前端稳定序列化契约）。
 func parseTargetNames(raw string) []string {

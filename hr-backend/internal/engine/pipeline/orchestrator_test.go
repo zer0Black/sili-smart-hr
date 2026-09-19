@@ -300,6 +300,7 @@ type fakeFeatureRepo struct {
 	start  int64
 	end    int64
 	calls  int
+	keys   []string // 分子统计末次入参（本批次投递会话键）
 
 	landedSets [][]string // 等待差集逐次消费：每轮返回的已落库键集合
 	waitLast   []string
@@ -325,9 +326,12 @@ func (f *fakeFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	return f.byPerson[tokenName], nil
 }
 
-func (f *fakeFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
+func (f *fakeFeatureRepo) CountFailedByKeys(ctx context.Context, sessionKeys []string, start, end int64) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls++
 	f.start, f.end = start, end
+	f.keys = append([]string{}, sessionKeys...)
 	return f.failed, nil
 }
 // ListExistingBySessionKeys 等待屏障差集探针：landedSets 逐次消费（耗尽保持末值），
@@ -1129,10 +1133,13 @@ func TestRunBatchTerminalMapping(t *testing.T) {
 	if alertRepo.alerts[0].FailedRatio != 33.33 {
 		t.Errorf("告警占比 = %v, want 33.33", alertRepo.alerts[0].FailedRatio)
 	}
-	// 会话级失败比例分子查询入参：全量口径（不限名单，与 fetchAllSessions 分母
-	// 同基，specs §5.2.2 步骤8）窗口半开区间（子计划01 T4 口径）。
+	// 会话级失败比例分子查询入参：本批次投递会话键（名单内同基，specs §5.2.2
+	// 步骤8）窗口半开区间（子计划01 T4 口径）。
 	if featureRepo.calls == 0 {
-		t.Error("会话级失败比例分子未查询（CountFailedInRange 未被调用）")
+		t.Error("会话级失败比例分子未查询（CountFailedByKeys 未被调用）")
+	}
+	if len(featureRepo.keys) != 4 {
+		t.Errorf("分子统计入参键数 = %d, want 4（名单内去重后会话数）", len(featureRepo.keys))
 	}
 	if featureRepo.start != batch.PeriodStartAt.Unix() || featureRepo.end != batch.PeriodEndAt.AddDate(0, 0, 1).Unix() {
 		t.Errorf("失败会话统计窗口 = [%d, %d), want [%d, %d)",

@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_ASM_001_FEAT_周期批量评估跑批编排 |
 | 模块代号 | ASM（评估运营域） |
-| 文档版本 | v1.7（2026-09-13：§4.4 流程新增步骤6 抽取落库等待与「等待」参数段，原步骤6-8 顺延为 7-9，同步步骤引用；对应 specs v1.9） |
+| 文档版本 | v1.8（2026-09-19：代码评审反向同步——§4.5 手动批次停滞 24h 预算与 monthly 月末钳位、§4.8 Retry ctx 透传口径、B1 total_count 骨架值澄清、§1.5 specified 收窄到名单内会话） |
 | 创建日期 | 2026-09-11 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md)、[04_model_interface.md](04_model_interface.md) |
@@ -41,7 +41,7 @@ specs §5.1.2 步骤1 描述为「scheduler 按评估周期配置注册周期任
 
 按 specs §4.1.4 规则1（选「全员」时批次先落骨架、执行开头展开为发起时点的全员名单快照）与 §5.1.2 步骤2（触发时读取评估对象快照），全员模式下的人员集合分两步确定：**批次创建时**只做集成密钥探测（密钥缺失立刻报错，不落 0 人批次静默跑空）并落骨架记录（`target_names_json='[]'`、`total_count=0`、无人员明细行），建批同步路径不触上游翻页（60s tick 预算防全员翻页击穿）；**批次执行（batch-run）开头**经人员检索接口 `GET /api/staffs` 全量分页拉取全员名单，原子展开回填 `target_names_json`、`total_count` 并批量写入人员明细（`status=pending`，`'[]'` 守卫防重试双插）。展开仍属发起时点快照语义：展开时点紧随建批入队，批次执行中途的人员变动不影响已展开名单。
 
-编排展开会话列表后的 `token_name` 分组只承担两项用途：供 `EvaluatePerson` 的 sessions 入参注入、供覆盖会话数与会话级失败比例的分母口径消费。名单不因分组结果增删：窗口内无会话的人员照常入批次，其 `sessions` 为空时由 T5 的零档案路径落 `skipped` 终态并计入成功侧，人数口径与 specs §5.2.5「批次内全部人员计入失败计数（列表显示 N/N）」一致。
+编排展开会话列表后的 `token_name` 分组只承担两项用途：供 `EvaluatePerson` 的 sessions 入参注入、供覆盖会话数与会话级失败比例的分母口径消费。specified 批次的投递、等待与会话总数收窄到名单内会话（all 模式名单即全员，不受影响）：上游按人过滤不可用（§1.6 与 T4 §3.2），全量拉取仅用于取数，若对指定少数人的批次投递全组织会话会烧穿 LLM 配额并让等待屏障被无关会话撑爆超时。名单不因分组结果增删：窗口内无会话的人员照常入批次，其 `sessions` 为空时由 T5 的零档案路径落 `skipped` 终态并计入成功侧，人数口径与 specs §5.2.5「批次内全部人员计入失败计数（列表显示 N/N）」一致。
 
 全员名单拉取失败（上游人员接口不可达）时：specified 模式建批前的密钥探测失败与 all 模式执行开头展开失败分别处置——定时链路记 ERROR 上抛 Asynq 任务级重试（§4.3），手动建批返回 1305 不落批次记录（B1 错误码表），展开失败（批次已落库）整批落 failed 终态。`total_count` 在骨架期短暂为 0 属预期（展开通常秒级完成），前端进度分母在展开完成前按 0 处理。
 
@@ -467,7 +467,7 @@ GET /api/assessment/batches/failures?batch_id=1780000000000000009
 | id | string | 批次主键（雪花 ID，string 化） |
 | batch_no | string | 批次号 |
 | status | string | 批次状态，创建后恒为 `running` |
-| total_count | integer | 批次总人数；`specified` 模式为 `staffs` 按 `staff_name` 去重后的条数（§4.8），`all` 模式为全员名单条数（两类均在创建时确定，§1.5） |
+| total_count | integer | 批次总人数；`specified` 模式为 `staffs` 按 `staff_name` 去重后的条数（§4.8），`all` 模式建批时为骨架值 0（名单由批次执行开头异步展开回填，§1.5），前端进度分母在展开完成前按 0 处理 |
 
 **错误码：**
 
@@ -600,13 +600,14 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 
 ### 4.5 停滞判定口径
 
-批次 `status=running` 且 `triggered_at` 距当前时刻超过「一个周期长度」即判停滞（specs §5.1.4 规则2）。周期长度取当前 `assessment_configs` 单例的周期长度，按日历推算：
+批次 `status=running` 且 `triggered_at` 距当前时刻超过「一个周期长度」即判停滞（specs §5.1.4 规则2）。周期长度取当前 `assessment_configs` 单例的周期长度，按日历推算；手动批次的周期长度与其实际执行时长无关（常回溯大时段），按固定 24 小时预算判定（与 batch-run 任务级超时对齐）：
 
-| 周期长度 | 停滞边界 |
-|---------|---------|
-| daily | `triggered_at` + 1 天 |
-| weekly | `triggered_at` + 7 天 |
-| monthly | `triggered_at` + 1 个日历月（`AddDate(0, 1, 0)`） |
+| 批次来源 | 周期长度 | 停滞边界 |
+|---------|---------|---------|
+| scheduled + daily | 1 天 | `triggered_at` + 1 天 |
+| scheduled + weekly | 7 天 | `triggered_at` + 7 天 |
+| scheduled + monthly | 1 个日历月 | `triggered_at` + 1 个日历月（月末溢出时钳位到后月月末同刻，防 1/31 加月归一化越过 2/28 真实边界） |
+| manual（任意周期配置） | — | `triggered_at` + 24 小时 |
 
 停滞是**查询期派生标识，不落库、不改写批次状态**（specs §6.2 说明明确其停留进行中不改写转换规则）。列表接口的 `stalled` 字段与统计卡的 `running_batch_count` 均由同一判定函数产出，保证两处口径一致。
 
@@ -666,7 +667,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 
 | 方法 | 签名（概念形，ctx 略） | 语义 | 需求追溯 |
 |------|----------------------|------|---------|
-| Retry | (fn func(ctx) error, maxAttempts int, baseDelay time.Duration) → error | 通用重试器：固定次数、基准倍增退避、每次尝试派生子 ctx（父 ctx 取消即终止） | specs §5.3.2 步骤3、§5.3.4 规则1 |
+| Retry | (fn func(ctx) error, maxAttempts int, baseDelay time.Duration) → error | 通用重试器：固定次数、基准倍增退避；ctx 原样透传给 fn，需要逐次独立预算时由 fn 内部派生子 ctx（父 ctx 取消即终止） | specs §5.3.2 步骤3、§5.3.4 规则1 |
 | BelowAlertThreshold | (failedCount, totalCount int) → bool | 告警判定纯函数：占比是否超阈（`totalCount=0` 返 false），精度口径与写入一致 | specs §5.2.4 规则4 |
 | WriteAlert | (batch, failedCount, totalCount) → error | 写告警信号记录，`batch_id` 唯一索引幂等覆盖；失败仅记日志不重试 | specs §5.3.2 步骤4 |
 
@@ -731,9 +732,13 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 
 ---
 
-**文档版本：** v1.6
-**最后更新：** 2026-09-13
+**文档版本：** v1.8
+**最后更新：** 2026-09-19
 **作者：** lixuetao
+
+**v1.8 变更（代码评审反向同步）：** §4.5 停滞判定补手动批次固定 24h 预算行与 monthly 月末钳位口径；§4.8 Retry 契约改为 ctx 透传、子 ctx 派生责任归 fn（行为等价：逐次独立预算由编排器在 fn 内派生）；B1 total_count 澄清 all 模式建批返回骨架值 0（消除与 §1.5 骨架口径的内部矛盾）；§1.5 补 specified 批次投递/等待/会话总数收窄到名单内会话的开发期决策。
+
+**v1.7 变更（监理扫描·模式三修复）：** §4.4 流程新增步骤6 抽取落库等待与「等待」参数段，原步骤6-8 顺延为 7-9，同步步骤引用；对应 specs v1.9。
 
 **v1.6 变更（监理扫描·模式三修复）：** A3 响应追加 `target_names` 全量名单字段（计划卡悬浮展示全部名单的承载，此前仅 target_brief 前 2 人名，对齐 A1 v1.5 同款处理）。
 

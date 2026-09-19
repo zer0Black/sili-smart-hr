@@ -26,9 +26,10 @@ type SessionFeatureRepository interface {
 	// start/end 为 Unix 秒，仓储内转 time.Time 走 idx_token_first_turn 组合索引；
 	// 返回全部三态行。
 	ListByPersonAndRange(ctx context.Context, tokenName string, start, end int64) ([]domain.SessionFeature, error)
-	// CountFailedInRange 统计窗口内全部 failed 档案数（不限人员，会话级失败比例分子
-	// 的全量口径，与 fetchAllSessions 全量分母同基）。区间端点半开 [start, end)。
-	CountFailedInRange(ctx context.Context, start, end int64) (int64, error)
+	// CountFailedByKeys 统计给定 session_key 集合中 status=failed 的档案数
+	//（会话级失败比例分子：同批人员同窗口且本批次投递的会话，与名单内会话数
+	// 分母同基）。区间端点半开 [start, end)；sessionKeys 为空直接返回 0。
+	CountFailedByKeys(ctx context.Context, sessionKeys []string, start, end int64) (int64, error)
 	// ListExistingBySessionKeys 取给定 session_key 集合中已有档案行的键（任意状态，
 	// 含 failed 终态行）。供编排器等待屏障查差集：返回集合随完成度收缩轮询代价。
 	// sessionKeys 为空直接返回空切片不发 SQL。
@@ -170,13 +171,16 @@ func (r *sessionFeatureRepository) ListByPersonAndRange(ctx context.Context, tok
 	return list, nil
 }
 
-// CountFailedInRange 窗口内全部 failed 档案数（不限人员，全量分子口径）；端点统一
-// UTC 口径同 ListByPersonAndRange。
-func (r *sessionFeatureRepository) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
+// CountFailedByKeys 给定 session_key 集合中 failed 档案数（走 uk_session_key
+// 索引）；端点统一 UTC 口径同 ListByPersonAndRange。空集合直接返回 0 不发 SQL。
+func (r *sessionFeatureRepository) CountFailedByKeys(ctx context.Context, sessionKeys []string, start, end int64) (int64, error) {
+	if len(sessionKeys) == 0 {
+		return 0, nil
+	}
 	var n int64
 	err := r.db.WithContext(ctx).Model(&domain.SessionFeature{}).
-		Where("status = ? AND first_turn_at >= ? AND first_turn_at < ?",
-			domain.FeatureStatusFailed, time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC()).
+		Where("session_key IN ? AND status = ? AND first_turn_at >= ? AND first_turn_at < ?",
+			sessionKeys, domain.FeatureStatusFailed, time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC()).
 		Count(&n).Error
 	if err != nil {
 		return 0, err

@@ -20,7 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useBatches } from '@/features/assessment/hooks';
+import { useBatches, useRefetchOnVisible } from '@/features/assessment/hooks';
 import { targetSummaryText } from '@/features/assessment/target-summary';
 import type { BatchFilter } from '@/features/assessment/types';
 import type { BatchListItem } from '@/lib/contracts';
@@ -57,6 +57,9 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
   const [filter, setFilter] = useState<BatchFilter>({ page: 1, page_size: DEFAULT_PAGE_SIZE });
 
   const query = useBatches(filter, { polling });
+
+  // 恢复即拉覆盖列表（specs §4.1.3）：统计卡的注册在页面级，列表在此补齐。
+  useRefetchOnVisible([query]);
 
   // 外部 resetKey 变化（跳过首挂载）时把筛选与页码重置为默认，由 filter 变化触发 refetch
   const resetKeyRef = useRef<number | undefined>(resetKey);
@@ -176,8 +179,8 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
                   <TableRow key={item.id}>
                     <TableCell className="font-mono">{item.batch_no}</TableCell>
                     <TableCell>
-                      {/* scheduled 中性、manual 主动操作：均 secondary，手动发起非错误态不用 destructive */}
-                      <Badge variant="secondary">
+                      {/* 定时=系统标签 secondary、手动=警示标签 destructive（specs §4.1.2 D） */}
+                      <Badge variant={item.trigger_type === 'scheduled' ? 'secondary' : 'destructive'}>
                         {item.trigger_type === 'scheduled'
                           ? t('table.triggerScheduled')
                           : t('table.triggerManual')}

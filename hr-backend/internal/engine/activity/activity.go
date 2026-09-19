@@ -104,7 +104,10 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("activity: resolve integration secret: %w", err)
 	}
-	all, err := a.fetchSessionsByToken(ctx, secret, tokenName, period)
+	// 全量翻页周期窗口列表（不按人过滤：中文 token_name 上游过滤不可用，透传
+	// 触发上游 Database error，specs §3.2 / T4 3.2 实测），调用方按 token_name
+	// 内存分组取自己的会话。
+	all, err := FetchAllSessions(ctx, a.cl, secret, period)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -127,16 +130,10 @@ func (a *Activity) StatPersonByKeyWithSessions(ctx context.Context, tokenName st
 	return stat, mine, digests, nil
 }
 
-// fetchSessionsByToken 全量翻页周期窗口列表后按 token_name 内存分组（specs §3.2：
-// 中文 token_name 上游过滤不可用，透传触发上游 Database error，T4 3.2 实测）。
-// 翻页串行（并发翻页返回重复页）；终止唯一可信信号是短页/空页（total 低报时
-// 累计条数判据会提前截断静默丢会话）；页数上限防上游分页失效恒返满页。
-func (a *Activity) fetchSessionsByToken(ctx context.Context, secret, tokenName string, period Period) ([]conversationlog.SessionSummary, error) {
-	return FetchAllSessions(ctx, a.cl, secret, period)
-}
-
 // FetchAllSessions 窗口全量翻页拉取会话列表（不按人过滤）：单人评估与批次编排
 // 两路径共用同一终止判据与页数上限，防两处口径漂移导致同人同周期会话集分叉。
+// 翻页串行（并发翻页返回重复页）；终止唯一可信信号是短页/空页（total 低报时
+// 累计条数判据会提前截断静默丢会话）；页数上限防上游分页失效恒返满页。
 func FetchAllSessions(ctx context.Context, cl SessionListFetcher, secret string, period Period) ([]conversationlog.SessionSummary, error) {
 	var all []conversationlog.SessionSummary
 	for page := 1; page <= listMaxPages; page++ {

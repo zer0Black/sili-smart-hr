@@ -115,7 +115,7 @@ func (r *evalFeatureRepo) ListByPersonAndRange(ctx context.Context, tokenName st
 	return nil, nil
 }
 
-func (r *evalFeatureRepo) CountFailedInRange(ctx context.Context, start, end int64) (int64, error) {
+func (r *evalFeatureRepo) CountFailedByKeys(ctx context.Context, sessionKeys []string, start, end int64) (int64, error) {
 	return 0, nil
 }
 func (r *evalFeatureRepo) ListExistingBySessionKeys(ctx context.Context, sessionKeys []string) ([]string, error) {
