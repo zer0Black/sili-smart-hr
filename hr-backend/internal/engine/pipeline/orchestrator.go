@@ -72,8 +72,9 @@ type BatchEnqueuer interface {
 }
 
 // SessionEnqueuer 会话抽取任务投递窄接口（Asynq 适配器与 fake 满足）。
+// batchID 参与 TaskID 维度：同批次重放去重，跨批次补跑独立投递。
 type SessionEnqueuer interface {
-	EnqueueSessionExtract(ctx context.Context, sessionKey, tokenName string) error
+	EnqueueSessionExtract(ctx context.Context, batchID int64, sessionKey, tokenName string) error
 }
 
 // PersonEvaluator 单人评估窄接口（*evaluator.Evaluator 鸭子满足）。
@@ -191,16 +192,20 @@ func (o *Orchestrator) CreateBatch(ctx context.Context, req CreateBatchRequest) 
 	return nil, fmt.Errorf("pipeline: 批次号序号耗尽（%d 次撞唯一键）", batchNoSeqMax)
 }
 
-// SubmitManualBatch 手动发起入口（03 §4.8）：建批后投递 batch-run。入队失败
-// 落 failed 终态 + 告警不留孤儿，批次已终态故返回入队原始错误仅供提示。
+// SubmitManualBatch 手动发起入口（03 §4.8）：建批后投递 batch-run。入队走
+// WithoutCancel 派生子 ctx：批次已落库，入队不应随 HTTP 请求取消（用户提交后
+// 关页会把整批误杀成 failed）。入队失败落 failed 终态 + 告警不留孤儿，
+// 批次已终态故返回入队原始错误仅供提示。
 func (o *Orchestrator) SubmitManualBatch(ctx context.Context, req CreateBatchRequest) (*domain.AssessmentBatch, error) {
 	batch, err := o.CreateBatch(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	if err := o.batchEnq.EnqueueBatchRun(ctx, batch.ID); err != nil {
+	enqCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := o.batchEnq.EnqueueBatchRun(enqCtx, batch.ID); err != nil {
 		enqErr := fmt.Errorf("pipeline: batch-run 入队失败: %w", err)
-		if failErr := o.failWholeBatch(ctx, batch, enqErr.Error()); failErr != nil {
+		if failErr := o.failWholeBatch(batch, enqErr.Error()); failErr != nil {
 			return nil, failErr
 		}
 		return nil, enqErr
@@ -210,8 +215,9 @@ func (o *Orchestrator) SubmitManualBatch(ctx context.Context, req CreateBatchReq
 
 // failWholeBatch 整批失败收敛：落 failed 终态 + 告警。落库走 WithoutCancel 派生
 // ctx（本路径常见成因就是调用方 ctx 已取消，复用会让兜底必败留孤儿 running）；
-// 告警按落库返回的实况计数，重放场景不虚报 100%。落库成功返 nil，失败上抛重试。
-func (o *Orchestrator) failWholeBatch(_ context.Context, batch *domain.AssessmentBatch, reason string) error {
+// 告警按落库返回的实况计数，total==0（0 人批次或已终态幂等重放）不写，防
+// ratio=0 的无效告警行覆盖既有信号。落库成功返 nil，失败上抛重试。
+func (o *Orchestrator) failWholeBatch(batch *domain.AssessmentBatch, reason string) error {
 	failCtx := context.WithoutCancel(context.Background())
 	failed, total, failErr := o.repo.FailWholeBatch(failCtx, batch.ID, reason)
 	if failErr != nil {
@@ -222,9 +228,9 @@ func (o *Orchestrator) failWholeBatch(_ context.Context, batch *domain.Assessmen
 	if total > 0 {
 		batch.EvaluatedCount = int(total)
 		batch.FailedCount = int(failed)
-	}
-	if o.alerts != nil {
-		_ = o.alerts.WriteAlert(failCtx, batch)
+		if o.alerts != nil {
+			_ = o.alerts.WriteAlert(failCtx, batch)
+		}
 	}
 	return nil
 }
@@ -279,8 +285,10 @@ func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 	}
 
 	// 含止日口径：窗口左闭右开，PeriodStart 为窗口 start 当日零点，PeriodEnd 为
-	// 窗口 end 前一日零点，保证连续周期不重叠不遗漏。
-	start, end := CurrentPeriodWindow(now, cfg.Period)
+	// 窗口 end 前一日零点，保证连续周期不重叠不遗漏。窗口锚定触发点（periodStart）
+	// 而非消费时刻 now：深夜触发点的宽限窗跨零点时 now 已落入次周期，按 now 推算
+	// 会评估错误的周期窗口（TriggerHit 自身按触发点所在日判定，两处须同锚）。
+	start, end := CurrentPeriodWindow(periodStart, cfg.Period)
 	batch, err := o.CreateBatch(ctx, CreateBatchRequest{
 		TriggerType: domain.BatchTriggerScheduled,
 		TargetMode:  cfg.TargetMode,
@@ -308,8 +316,9 @@ func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 }
 
 // RunBatch 批次编排全流程（03 §4.4）：骨架展开 → 分组 → 回填会话数 → 投递抽取
-// → 等待落库 → 逐人评估 → 终态推进。非 running 幂等返回；重放以
-// total_session_count>0 为标记跳过已完成的翻页与投递，只做评估收尾。
+// → 等待落库 → 逐人评估 → 终态推进。非 running 幂等返回。重试重放全链重跑：
+// 列表重拉、抽取任务按批次维度 TaskID 去重、人员行 pending 守卫防双计，
+// 各步骤幂等收敛（无跨步骤跳过，防首跑与重放结果分叉）。
 func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	batch, err := o.repo.GetByID(ctx, batchID)
 	if err != nil {
@@ -323,10 +332,10 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	if batch.TargetMode == domain.BatchTargetAll && batch.TargetNamesJSON == "[]" {
 		names, err := o.fetchAllStaffNames(ctx)
 		if err != nil {
-			return o.failWholeBatch(ctx, batch, fmt.Sprintf("全员名单拉取失败: %v", err))
+			return o.failWholeBatch(batch, fmt.Sprintf("全员名单拉取失败: %v", err))
 		}
 		if len(names) == 0 {
-			return o.failWholeBatch(ctx, batch, "全员名单为空")
+			return o.failWholeBatch(batch, "全员名单为空")
 		}
 		if err := o.repo.ExpandTargets(ctx, batchID, names); err != nil {
 			return fmt.Errorf("pipeline: 全员名单展开落库: %w", err)
@@ -356,63 +365,62 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 		return fmt.Errorf("pipeline: 名单快照反序列化: %w", err)
 	}
 
-	// expanded：重放标记（total_session_count>0 表示展开+投递已完成），
-	// 重放只做评估收尾。
-	expanded := batch.TotalSessionCount > 0
+	sessions, err := activity.FetchAllSessions(ctx, o.cl, secret, period)
+	if err != nil {
+		// 上游列表不可用：整批落 failed 终态；落库失败则上抛交任务级重试
+		//（重试入口幂等守卫快速返回），不留无人管的 running 批次。
+		slog.Error("batch run upstream list failed", "batch_id", batchID, "batch_no", batch.BatchNo, "err", err)
+		return o.failWholeBatch(batch, fmt.Sprintf("会话列表拉取失败: %v", err))
+	}
+	sessions = activity.DedupSessions(sessions) // 跨页重复去重（§5.2.5）
 
-	var sessions []conversationlog.SessionSummary
-	if expanded {
-		// 重试重放：会话集从档案表按窗口回读，不再触上游列表。
-		sessions, err = o.reloadSessionsFromFeatures(ctx, names, period)
-		if err != nil {
-			return fmt.Errorf("pipeline: 会话集回读: %w", err)
+	// specified 批次收窄到名单内：上游不支持按人过滤（中文 token_name 禁用，
+	// T4 §3.2）故仍全量拉取，但投递、等待与会话总数只算名单内会话，防指定
+	// 少数人却抽取全组织会话烧 LLM 配额、等待屏障被无关会话撑爆超时。
+	nameSet := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		nameSet[n] = struct{}{}
+	}
+	scoped := make([]conversationlog.SessionSummary, 0, len(sessions))
+	for _, s := range sessions {
+		if _, ok := nameSet[s.TokenName]; ok {
+			scoped = append(scoped, s)
 		}
-	} else {
-		sessions, err = activity.FetchAllSessions(ctx, o.cl, secret, period)
-		if err != nil {
-			// 上游列表不可用：整批落 failed 终态；落库失败则上抛交任务级重试
-			//（重试入口幂等守卫快速返回），不留无人管的 running 批次。
-			slog.Error("batch run upstream list failed", "batch_id", batchID, "batch_no", batch.BatchNo, "err", err)
-			return o.failWholeBatch(ctx, batch, fmt.Sprintf("会话列表拉取失败: %v", err))
-		}
-		sessions = activity.DedupSessions(sessions) // 跨页重复去重（§5.2.5）
 	}
 
 	groups := make(map[string][]conversationlog.SessionSummary)
-	for _, s := range sessions {
+	for _, s := range scoped {
 		groups[s.TokenName] = append(groups[s.TokenName], s)
 	}
 
 	// 回填会话数（03 §4.4 步骤4）：名单快照全员入明细，无会话者为 0。
-	if !expanded {
-		personSessions := make(map[string]int, len(groups))
-		for name, ss := range groups {
-			personSessions[name] = len(ss)
-		}
-		if err := o.repo.UpdateTotalSessions(ctx, batchID, len(sessions), personSessions); err != nil {
-			return fmt.Errorf("pipeline: 回填会话数: %w", err)
-		}
+	// 重放重跑幂等：total 与逐人计数按同一窗口重算覆盖。
+	personSessions := make(map[string]int, len(groups))
+	for name, ss := range groups {
+		personSessions[name] = len(ss)
+	}
+	if err := o.repo.UpdateTotalSessions(ctx, batchID, len(scoped), personSessions); err != nil {
+		return fmt.Errorf("pipeline: 回填会话数: %w", err)
 	}
 
-	// 逐会话投递抽取任务（一会话一任务）。入队侧 TaskID 用 session_key 去重，
-	// 重放时段已在途/终态的同键任务不重复入队。只把投递成功的 session_key 收进
+	// 逐会话投递抽取任务（一会话一任务）。TaskID 批次维度去重（batchID:session_key）：
+	// 同批次重放时段已在途的同键任务不重复入队；跨批次补跑同会话是独立任务正常投递
+	//（执行侧 FindBySessionKey 幂等预检兜底）。只把投递成功的 session_key 收进
 	// 等待集合：投递失败者无档案行，等待它永不达齐。
-	if !expanded {
-		pendingKeys := make([]string, 0, len(sessions))
-		for _, s := range sessions {
-			if err := o.sessionEnq.EnqueueSessionExtract(ctx, s.SessionKey, s.TokenName); err != nil {
-				// 投递失败该会话无档案行，不计入失败比例分子，记日志继续。
-				slog.Error("session extract enqueue failed", "batch_id", batchID, "session_key", s.SessionKey, "err", err)
-				continue
-			}
-			pendingKeys = append(pendingKeys, s.SessionKey)
+	pendingKeys := make([]string, 0, len(scoped))
+	for _, s := range scoped {
+		if err := o.sessionEnq.EnqueueSessionExtract(ctx, batchID, s.SessionKey, s.TokenName); err != nil {
+			// 投递失败该会话无档案行，不计入失败比例分子，记日志继续。
+			slog.Error("session extract enqueue failed", "batch_id", batchID, "session_key", s.SessionKey, "err", err)
+			continue
 		}
+		pendingKeys = append(pendingKeys, s.SessionKey)
+	}
 
-		// 等待抽取落库：档案未落库时评估会走 skipped，轮询到齐再评估；
-		// 超时按已落库档案继续，不中断不上抛。
-		if err := o.waitExtractReady(ctx, batch, pendingKeys); err != nil {
-			return err
-		}
+	// 等待抽取落库：档案未落库时评估会走 skipped，轮询到齐再评估；
+	// 超时按已落库档案继续，不中断不上抛。
+	if err := o.waitExtractReady(ctx, batch, pendingKeys); err != nil {
+		return err
 	}
 
 	// 逐人评估：固定 4 worker 消费名字通道，协程数与并发度对齐。
@@ -440,25 +448,6 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	wg.Wait()
 
 	return o.finalizeBatch(ctx, batchID, names, period)
-}
-
-// reloadSessionsFromFeatures 重放路径从档案表回读会话集（任意状态行），用于
-// 分组与 session_count，不触上游列表。
-func (o *Orchestrator) reloadSessionsFromFeatures(ctx context.Context, names []string, period activity.Period) ([]conversationlog.SessionSummary, error) {
-	out := make([]conversationlog.SessionSummary, 0)
-	for _, name := range names {
-		features, err := o.featureRepo.ListByPersonAndRange(ctx, name, period.Start, period.End)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range features {
-			out = append(out, conversationlog.SessionSummary{
-				SessionKey: f.SessionKey,
-				TokenName:  f.TokenName,
-			})
-		}
-	}
-	return out, nil
 }
 
 // waitExtractReady 抽取落库等待屏障：轮询查已落库键做差集收缩（查询代价随
@@ -627,6 +616,7 @@ func (o *Orchestrator) fetchAllStaffNames(ctx context.Context) ([]string, error)
 	}
 	names := make([]string, 0)
 	seen := make(map[string]struct{})
+	fetched := 0 // 原始行数累计（未去重），与上游 total 同基
 	for page := 1; page <= staffListMaxPages; page++ {
 		items, total, err := o.staffs.ListStaffs(ctx, secret, "", page, staffPageSize)
 		if err != nil {
@@ -638,15 +628,14 @@ func (o *Orchestrator) fetchAllStaffNames(ctx context.Context) ([]string, error)
 				names = append(names, s.StaffName)
 			}
 		}
-		// 终止：已收齐上游宣告的总数（total>0 时以收齐为准）；
-		// total 未知（0）退回短页/空页终止。
-		if total > 0 {
-			if int64(len(names)) >= total || len(items) == 0 {
-				return names, nil
-			}
-			continue
+		fetched += len(items)
+		// 终止：短页/空页是唯一可信信号（FetchAllSessions 同范式）；total>0
+		// 时按原始行数收齐亦可终止——上游跨页重复行会让去重后 len(names)
+		// 永远追不上 total，误用会打到页数上限整批失败。
+		if len(items) < staffPageSize || len(items) == 0 {
+			return names, nil
 		}
-		if len(items) < staffPageSize {
+		if total > 0 && int64(fetched) >= total {
 			return names, nil
 		}
 	}

@@ -38,8 +38,10 @@ func retryDelay(n int) time.Duration {
 
 // NewServer 构造 Asynq worker server，并发度来自配置。
 // 队列按严格优先级分流（防互饿）：default（tick 等分钟级任务）> batch（batch-run
-// 编排）> extract（会话抽取洪峰）。StrictPriority 必须显式置 true：asynq 默认
-// 是按权重的加权轮询，洪峰期 extract 仍占消费份额，与分流意图不符。
+// 编排）> extract（会话抽取洪峰），三档数值递减不可并列——StrictPriority 下
+// 同数值队列的取队顺序无保证，batch 与 extract 平级会让 batch-run 启动被
+// 抽取洪峰无限推迟。StrictPriority 必须显式置 true：asynq 默认是按权重的
+// 加权轮询，洪峰期 extract 仍占消费份额，与分流意图不符。
 func NewServer(opt asynq.RedisConnOpt, concurrency int) *asynq.Server {
 	if concurrency <= 0 {
 		concurrency = 10
@@ -48,7 +50,7 @@ func NewServer(opt asynq.RedisConnOpt, concurrency int) *asynq.Server {
 		Concurrency: concurrency,
 		Queues: map[string]int{
 			task.QueueDefault: 6,
-			task.QueueBatch:   2,
+			task.QueueBatch:   4,
 			task.QueueExtract: 2,
 		},
 		StrictPriority: true,

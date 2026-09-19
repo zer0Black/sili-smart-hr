@@ -45,7 +45,10 @@ func (e *AsynqEnqueuer) EnqueueBatchRun(ctx context.Context, batchID int64) erro
 
 // EnqueueSessionExtract 投递单会话抽取任务（extract 队列，一会话一任务，
 // specs §5.2.2 步骤3）。MaxRetry=4 对齐会话级重试语义（30s 基准倍增封顶 10min）。
-func (e *AsynqEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, tokenName string) error {
+// TaskID 用 batchID:session_key 批次维度去重：同批次重放撞 ErrTaskIDConflict
+// 视作已在途；跨批次同会话是独立任务正常投递（执行侧档案行幂等预检兜底），
+// 归档死任务（重试耗尽仍占 TaskID）只影响本批次重放，补跑批次可正常重投。
+func (e *AsynqEnqueuer) EnqueueSessionExtract(ctx context.Context, batchID int64, sessionKey, tokenName string) error {
 	payload, err := json.Marshal(task.ExtractTaskPayload{SessionKey: sessionKey, TokenName: tokenName})
 	if err != nil {
 		return fmt.Errorf("pipeline: session-extract payload 序列化: %w", err)
@@ -54,8 +57,7 @@ func (e *AsynqEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, t
 		asynq.NewTask(task.TypeSessionExtract, payload),
 		asynq.MaxRetry(4),
 		asynq.Queue(task.QueueExtract),
-		// TaskID 用 session_key 去重：重放撞 ErrTaskIDConflict 视作已在途。
-		asynq.TaskID(sessionKey)); err != nil {
+		asynq.TaskID(fmt.Sprintf("%d:%s", batchID, sessionKey))); err != nil {
 		if errors.Is(err, asynq.ErrTaskIDConflict) {
 			return nil
 		}

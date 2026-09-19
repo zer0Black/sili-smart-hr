@@ -36,11 +36,15 @@ import {
 } from '@/features/assessment/components/staff-multi-select';
 import { useBatchPlan, useCreateBatch } from '@/features/assessment/hooks';
 import { previousPeriodRange } from '@/features/assessment/period-default';
+import { ErrCode } from '@/lib/contracts';
+import { ApiError } from '@/lib/http-client';
 import { cn } from '@/lib/utils';
 
 /** 预填值：失败明细/重新发起带入的人员名单与评估时段（§4.2.2 默认值列）。
- * staff_id 可选：补跑预填仅需 staff_name（03 B1，staff_id 仅日志定位可省略）。 */
+ * staff_id 可选：补跑预填仅需 staff_name（03 B1，staff_id 仅日志定位可省略）。
+ * mode 可选：all 模式批次重新发起时预填全员（staffs 空），缺省 specified。 */
 export interface CreateBatchPreset {
+  mode?: 'all' | 'specified';
   staffs: { staff_id?: string; staff_name: string }[];
   period: { start: string; end: string };
 }
@@ -128,10 +132,15 @@ export function CreateBatchDialog({
     }
     if (filledRef.current) return;
     if (preset) {
+      // 预填止日钳位到昨天：定时批次的 PeriodEnd 是触发当日（如 daily 当天），
+      // 原样回填会撞后端「终点不含今天」校验 1602，当日补跑被硬拒（§4.3.3）。
+      const yesterdayStr = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
+      const end = preset.period.end > yesterdayStr ? yesterdayStr : preset.period.end;
+      const start = preset.period.start > end ? end : preset.period.start;
       reset({
-        target: { mode: 'specified', staffs: preset.staffs },
-        periodStart: preset.period.start,
-        periodEnd: preset.period.end,
+        target: { mode: preset.mode ?? 'specified', staffs: preset.staffs },
+        periodStart: start,
+        periodEnd: end,
       });
     } else if (planQ.data?.period) {
       const range = previousPeriodRange(new Date(), planQ.data.period);
@@ -194,8 +203,15 @@ export function CreateBatchDialog({
           onSubmitted();
           onClose();
         },
-        onError: () => {
-          toast.error(t('create.toastGeneric'));
+        onError: (err) => {
+          // 业务错误码分桶透出（1602 时段非法 / 1305 上游不可用），其余通用文案。
+          if (err instanceof ApiError && err.code === ErrCode.BatchPeriodInvalid) {
+            toast.error(t('create.toastPeriodInvalid'));
+          } else if (err instanceof ApiError && err.code === ErrCode.StaffListUnavailable) {
+            toast.error(t('create.toastStaffUnavailable'));
+          } else {
+            toast.error(t('create.toastGeneric'));
+          }
         },
       },
     );

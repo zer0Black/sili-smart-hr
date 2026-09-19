@@ -211,7 +211,7 @@ func (f *fakeBatchRepo) CountInRange(ctx context.Context, start, end time.Time) 
 func (f *fakeBatchRepo) CountSuccessSideTriggeredBetween(ctx context.Context, start, end time.Time) (int64, error) {
 	return 0, nil
 }
-func (f *fakeBatchRepo) ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error) {
+func (f *fakeBatchRepo) ListRunningBatches(ctx context.Context) ([]repository.RunningBatch, error) {
 	return nil, nil
 }
 func (f *fakeBatchRepo) ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
@@ -602,6 +602,26 @@ func TestCreateBatchConcurrent(t *testing.T) {
 
 // ---- RunBatch 展开分组与抽取投递（specs §5.2.2 步骤2-3） ----
 
+// scopedFakeFetcher 会话列表 fake：名单外 filler 一律映射到固定 token_name，
+// 验证 specified 批次收窄投递口径（filler 不投递、不计数）。
+type scopedFetcher struct {
+	pages [][]conversationlog.SessionSummary
+	calls int
+}
+
+func (f *scopedFetcher) ListSessions(ctx context.Context, secret string, req conversationlog.ListSessionsRequest) ([]conversationlog.SessionSummary, int64, error) {
+	idx := f.calls
+	f.calls++
+	if idx >= len(f.pages) {
+		return nil, 0, nil
+	}
+	var total int64
+	for _, p := range f.pages {
+		total += int64(len(p))
+	}
+	return f.pages[idx], total, nil
+}
+
 // fakeSessionFetcher 会话列表 fake：pages 逐页返回，耗尽返空页终止；lastReq 记录末次请求。
 type fakeSessionFetcher struct {
 	pages   [][]conversationlog.SessionSummary
@@ -637,7 +657,7 @@ type fakeSessionEnqueuer struct {
 
 var _ pipeline.SessionEnqueuer = (*fakeSessionEnqueuer)(nil)
 
-func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, sessionKey, tokenName string) error {
+func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, batchID int64, sessionKey, tokenName string) error {
 	f.calls++
 	f.keys = append(f.keys, sessionKey)
 	f.tokens = append(f.tokens, tokenName)
@@ -712,8 +732,8 @@ func TestRunBatchDedupAndGroup(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	batch := runBatchFixture(repo)
 	// 2 页：page1 满页（3 行名单会话 + 97 filler），page2 短页含 sk-a 跨页重复与
-	// 王强 1 行；名单内去重后 张敏 1、李芳 2、王强 1；filler 会话属名单外人员，
-	// 计入 total_session_count（全量口径）但不投递给名单内断言面。
+	// 王强 1 行；名单内去重后 张敏 1、李芳 2、王强 1。filler 会话属名单外人员：
+	// specified 批次收窄口径下不投递、不进 total_session_count。
 	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
 		padFullPage([]conversationlog.SessionSummary{
 			{SessionKey: "sk-a", TokenName: "张敏"},
@@ -758,9 +778,13 @@ func TestRunBatchDedupAndGroup(t *testing.T) {
 			t.Errorf("personSessions[%q] = %d, want %d（全量 %v）", name, repo.utsPersons[name], cnt, repo.utsPersons)
 		}
 	}
-	// 总数 = 去重后全部会话（含名单外 filler：100 + 2 - 1 重复 = 101）。
-	if repo.utsTotal != 101 {
-		t.Errorf("totalSessions = %d, want 101（去重后全量）", repo.utsTotal)
+	// 总数 = 名单内去重后会话（filler 收窄剔除：sk-a/b/c/d 去重后 4）。
+	if repo.utsTotal != 4 {
+		t.Errorf("totalSessions = %d, want 4（specified 收窄后名单内去重全量）", repo.utsTotal)
+	}
+	// 投递同样收窄：filler 会话不投递。
+	if sessionEnq.calls != 4 {
+		t.Errorf("EnqueueSessionExtract 调用 = %d, want 4（名单内会话）", sessionEnq.calls)
 	}
 }
 
@@ -784,8 +808,8 @@ func TestRunBatchEnqueuesExtract(t *testing.T) {
 	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
 		t.Fatalf("RunBatch: %v", err)
 	}
-	if sessionEnq.calls != 101 {
-		t.Fatalf("EnqueueSessionExtract 调用 = %d, want 101（去重后全量会话数）", sessionEnq.calls)
+	if sessionEnq.calls != 4 {
+		t.Fatalf("EnqueueSessionExtract 调用 = %d, want 4（名单内去重后会话）", sessionEnq.calls)
 	}
 	for i, k := range sessionEnq.keys {
 		if k == "" {
@@ -1368,24 +1392,25 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 	}
 }
 
-// ---- 重放路径（batch-run 重试，total_session_count>0 标记展开+投递已完成） ----
+// ---- 重放路径（batch-run 重试） ----
 
-// TestRunBatchReplaySkipsExpandAndEnqueue 重放路径：total_session_count>0 的
-// running 批次不再触上游列表、不重复投递、不重复回填，会话集从档案表回读，
-// 直接进入逐人评估与终态。
-func TestRunBatchReplaySkipsExpandAndEnqueue(t *testing.T) {
+// TestRunBatchReplayFullRerun 重放路径：重试全链重跑（重拉列表、按批次维度
+// TaskID 去重重复投递、人员行 pending 守卫防双计），首跑与重放结果收敛一致。
+// 旧实现以 total_session_count>0 跳过翻页投递直接评估，会话集回读丢 TurnCount、
+// 跳过等待屏障致未落库人员被永久降级，已废弃。
+func TestRunBatchReplayFullRerun(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	batch := runBatchFixture(repo)
-	// 模拟首跑已完成展开+投递：会话数已回填，张敏 1 档案、王强 1 档案、李芳无。
+	// 模拟首跑中途失败后重试：会话数已回填、部分人员已终态。
 	batch.TotalSessionCount = 2
-	featureRepo := &fakeFeatureRepo{byPerson: map[string][]domain.SessionFeature{
-		"张敏": {{SessionKey: "sk-a", TokenName: "张敏"}},
-		"王强": {{SessionKey: "sk-d", TokenName: "王强"}},
+	batch.EvaluatedCount = 1
+	repo.persons[0].Status = domain.PersonStatusSuccess // 张敏首跑已终态（pending 守卫防双计探针）
+	fetcher := &fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{
+		{{SessionKey: "sk-a", TokenName: "张敏"}, {SessionKey: "sk-d", TokenName: "王强"}},
 	}}
-	fetcher := &fakeSessionFetcher{err: errors.New("上游不可达也不该被触达")}
 	sessionEnq := &fakeSessionEnqueuer{}
 	pe := &fakePersonEvaluator{}
-	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
 		pe, alertWriter(&fakeAlertRepo{}), nil, sessionEnq)
 	o.SetRetryBaseForTest(time.Millisecond)
@@ -1394,24 +1419,23 @@ func TestRunBatchReplaySkipsExpandAndEnqueue(t *testing.T) {
 	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
 		t.Fatalf("RunBatch: %v", err)
 	}
-	if fetcher.calls != 0 {
-		t.Errorf("重放不应触上游列表，实际 %d 次", fetcher.calls)
+	if fetcher.calls == 0 {
+		t.Error("重放应重拉上游列表（全链重跑）")
 	}
-	if sessionEnq.calls != 0 {
-		t.Errorf("重放不应重复投递抽取任务，实际 %d 次", sessionEnq.calls)
+	if sessionEnq.calls != 2 {
+		t.Errorf("重放应重新投递抽取任务（TaskID 批次维度由投递侧去重），调用 = %d, want 2", sessionEnq.calls)
 	}
-	if repo.utsCalled {
-		t.Error("重放不应重复回填会话数")
+	if repo.utsTotal != 2 {
+		t.Errorf("重放应重算会话数覆盖，utsTotal = %d, want 2", repo.utsTotal)
 	}
-	if len(pe.calls) != 3 {
-		t.Errorf("重放应照常评估全员，评估人数 = %d, want 3", len(pe.calls))
+	if repo.persons[0].Status != domain.PersonStatusSuccess || repo.persons[0].ErrorSummary != "" {
+		t.Errorf("张敏已终态人员重放不被改写，status = %q（守卫跳过计数双计）", repo.persons[0].Status)
+	}
+	if batch.EvaluatedCount != 3 {
+		t.Errorf("EvaluatedCount = %d, want 3（张敏首跑 1 + 李芳王强重放 2，守卫防双计）", batch.EvaluatedCount)
 	}
 	if batch.Status == domain.BatchStatusRunning {
 		t.Error("重放评估完成后应推进批次终态")
-	}
-	// 零会话者李芳：档案表无行，分组为空 → 推进 skipped（评估 fake 返回空结果）。
-	if repo.advanceCalls["李芳"] != 1 {
-		t.Errorf("李芳 AdvancePersonTerminal 调用 = %d, want 1（零会话者照常入编排）", repo.advanceCalls["李芳"])
 	}
 }
 
@@ -1439,8 +1463,9 @@ func TestRunBatchSkeletonExpandStaffFetchFail(t *testing.T) {
 	if repo.expandCalled {
 		t.Error("拉取失败发生在 ExpandTargets 之前，不应调 ExpandTargets")
 	}
-	if len(alertRepo.alerts) != 1 {
-		t.Errorf("占比 100.00 超阈应写告警，实际 %d 条", len(alertRepo.alerts))
+	// 骨架批次 total=0：不写 ratio=0 的无效告警行（04 §3.3 未超阈不写任何行）。
+	if len(alertRepo.alerts) != 0 {
+		t.Errorf("0 人批次不应写告警，实际 %d 条", len(alertRepo.alerts))
 	}
 }
 
@@ -1574,5 +1599,48 @@ func TestRunBatchZeroSessionPersonGetsEmptySlice(t *testing.T) {
 	//（内部拉取会调 fetcher，calls 应仍为 1）。
 	if fetcher.calls != 1 {
 		t.Errorf("上游列表调用 = %d, want 1（零会话者不得触发内部二次翻页）", fetcher.calls)
+	}
+}
+
+// TestSkeletonExpandCrossPageDup 上游名单跨页重复：total 计原始行数（200），
+// 去重后仅 190 人。旧判据以去重 len(names) 追 total 永不收齐会打到页数上限
+// 整批 failed；修复后按原始行数收齐终止，展开人数为去重后 190。
+func TestSkeletonExpandCrossPageDup(t *testing.T) {
+	mkPage := func(prefix string) []userapi.Staff {
+		page := make([]userapi.Staff, 0, 100)
+		for i := 0; i < 100; i++ {
+			page = append(page, userapi.Staff{StaffID: fmt.Sprintf("%s-%d", prefix, i), StaffName: fmt.Sprintf("%s人%d", prefix, i)})
+		}
+		return page
+	}
+	page1 := mkPage("p1")
+	page2 := mkPage("p2")
+	// p2 前 10 行改写为与 p1 同名（跨页重复行），原始行数仍 100。
+	for i := 0; i < 10; i++ {
+		page2[i] = userapi.Staff{StaffID: fmt.Sprintf("dup-%d", i), StaffName: fmt.Sprintf("p1人%d", i)}
+	}
+	fetcher := &fakeStaffFetcher{pages: [][]userapi.Staff{page1, page2}}
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	batch.TargetMode = domain.BatchTargetAll
+	batch.TargetNamesJSON = "[]"
+	batch.TotalCount = 0
+	repo.persons = nil
+	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil,
+		&fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{nil}},
+		fetcher,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{})
+	o.SetRetryBaseForTest(time.Millisecond)
+	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v（跨页重复不应打到页数上限）", err)
+	}
+	if fetcher.calls != 2 {
+		t.Errorf("ListStaffs 调用 = %d, want 2（原始行数收齐后终止）", fetcher.calls)
+	}
+	if batch.TotalCount != 190 {
+		t.Errorf("展开人数 = %d, want 190（200 原始行 - 10 跨页重复）", batch.TotalCount)
 	}
 }

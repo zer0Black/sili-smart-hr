@@ -663,6 +663,7 @@
       "targetAll": "Everyone",
       "toastGeneric": "Operation failed, please retry later",
       "viewResultDisabled": "Profile feature is under construction",
+      "viewResultRunning": "This batch is still running; the profile is incomplete",
       "listSeparator": ", "
     },
     "create": {
@@ -697,7 +698,9 @@
       "cancelConfirm": "People are selected. Discard and close?",
       "cancelConfirmOk": "Discard and close",
       "toastCreated": "Assessment launched; the batch is queued",
-      "toastGeneric": "Launch failed, please retry later"
+      "toastGeneric": "Launch failed, please retry later",
+      "toastPeriodInvalid": "Invalid period: the end date must be before today",
+      "toastStaffUnavailable": "Staff or conversation upstream is unavailable, please retry later"
     },
     "failures": {
       "title": "Failure Details · {{batchNo}}",

@@ -11,7 +11,7 @@ import {
 import { FailureDetailDialog } from '@/features/assessment/components/failure-detail-dialog';
 import { StatsCards } from '@/features/assessment/components/stats-cards';
 import { fetchBatchTargets } from '@/features/assessment/api';
-import { useBatchStats } from '@/features/assessment/hooks';
+import { useBatchStats, useRefetchOnVisible } from '@/features/assessment/hooks';
 import type { BatchListItem } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/assessment/')({
@@ -41,16 +41,23 @@ export function AssessmentCenterPage() {
   // 首屏 stats 未返回前保守开轮询一轮拉到状态（拉到后按数据自收敛）。
   const polling = statsQ.isLoading || hasActiveRunning;
 
+  // 恢复即拉（specs §4.1.3）：refetchOnWindowFocus 全局关闭，切回标签页时
+  // 显式拉一次统计与列表，恢复瞬间数据即时而非等下一个轮询间隔。
+  useRefetchOnVisible([statsQ]);
+
   function openCreateDialog(preset: CreateBatchPreset | null) {
     setCreatePreset(preset);
     setCreateOpen(true);
   }
 
-  // 停滞批次重新发起：fetchBatchTargets 拿完整名单与时段，组装 preset 开弹窗（specs §4.1.3）
+  // 停滞批次重新发起：fetchBatchTargets 拿完整名单与时段，组装 preset 开弹窗
+  //（specs §4.1.3 预填完整名单与时段）。all 模式批次预填全员（staffs 空），
+  // 弹窗按 mode='all' 回填，用户可一键按全员补跑。
   async function onReSubmit(batch: BatchListItem) {
     try {
       const targets = await fetchBatchTargets(batch.id);
       openCreateDialog({
+        mode: targets.target_mode,
         staffs: targets.names.map((n) => ({ staff_name: n })),
         period: { start: targets.period_start, end: targets.period_end },
       });

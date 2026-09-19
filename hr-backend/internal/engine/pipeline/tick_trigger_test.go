@@ -349,3 +349,58 @@ func TestTickTriggerSingleQuery(t *testing.T) {
 		t.Errorf("FindLatestScheduled 调用 = %d, want 1（同 tick 复用快照）", *repo.findCalls)
 	}
 }
+
+// TestTickTriggerMidnightGraceWindow 深夜触发点宽限窗跨零点（daily 23:59，
+// tick 延迟到次日 00:00:30 消费）：窗口须锚定触发点（昨日），评估的是完整
+// 的上一周期，而非消费时刻所在的新周期。旧实现按 now 推窗会评估零数据的
+// 新窗口，上一周期被永久跳过。
+func TestTickTriggerMidnightGraceWindow(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	// daily 23:59：2026-09-13 23:59 触发，宽限窗 [23:59, 00:01)。
+	cfg := &domain.AssessmentConfig{ID: 1, Period: domain.PeriodDaily, TriggerTime: "23:59", TargetMode: domain.BatchTargetSpecified, Version: 1}
+	cfgRepo := &fakeConfigRepo{cfg: cfg, members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{}
+	o := tickFixture(repo, cfgRepo, nil, enq)
+
+	// 消费时刻已跨零点：2026-09-14 00:00:30。
+	consumed := time.Date(2026, 9, 14, 0, 0, 30, 0, time.Local)
+	if err := o.TickTrigger(context.Background(), consumed); err != nil {
+		t.Fatalf("TickTrigger: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("应落 1 条批次，实际 %d", len(repo.created))
+	}
+	b := repo.created[0]
+	// 窗口锚定触发点 09-13（含止日）：[09-13 00:00, 09-14 00:00)。
+	wantStart := time.Date(2026, 9, 13, 0, 0, 0, 0, time.Local)
+	wantEnd := time.Date(2026, 9, 13, 0, 0, 0, 0, time.Local) // 含止日 = 窗口 end 前一日
+	if !b.PeriodStartAt.Equal(wantStart) || !b.PeriodEndAt.Equal(wantEnd) {
+		t.Errorf("跨零点窗口 = [%v, %v], want [%v, %v]（锚定触发点周期）",
+			b.PeriodStartAt, b.PeriodEndAt, wantStart, wantEnd)
+	}
+}
+
+// TestTickTriggerMonthEndGraceWindow 月末 23:59 宽限窗跨月：monthly 8/31 触发、
+// 9/1 00:00:30 消费，窗口须评估 8 月而非 9 月。
+func TestTickTriggerMonthEndGraceWindow(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	cfg := &domain.AssessmentConfig{ID: 1, Period: domain.PeriodMonthly, TriggerTime: "23:59", TargetMode: domain.BatchTargetSpecified, Version: 1}
+	cfgRepo := &fakeConfigRepo{cfg: cfg, members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{}
+	o := tickFixture(repo, cfgRepo, nil, enq)
+
+	consumed := time.Date(2026, 9, 1, 0, 0, 30, 0, time.Local)
+	if err := o.TickTrigger(context.Background(), consumed); err != nil {
+		t.Fatalf("TickTrigger: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("应落 1 条批次，实际 %d", len(repo.created))
+	}
+	b := repo.created[0]
+	wantStart := time.Date(2026, 8, 1, 0, 0, 0, 0, time.Local)
+	wantEnd := time.Date(2026, 8, 31, 0, 0, 0, 0, time.Local)
+	if !b.PeriodStartAt.Equal(wantStart) || !b.PeriodEndAt.Equal(wantEnd) {
+		t.Errorf("跨月窗口 = [%v, %v], want [%v, %v]（锚定 8 月）",
+			b.PeriodStartAt, b.PeriodEndAt, wantStart, wantEnd)
+	}
+}

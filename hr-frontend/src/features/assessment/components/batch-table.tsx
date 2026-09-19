@@ -75,6 +75,14 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / filter.page_size));
 
+  // 页码钳位：total 收缩（删除/筛选）让当前页落空时回落到末页，防轮询刷新后
+  // 渲染「暂无数据」空态误导用户以为记录丢失。
+  useEffect(() => {
+    if (filter.page > totalPages) {
+      setFilter((f) => ({ ...f, page: totalPages }));
+    }
+  }, [totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function onQuery() {
     setFilter({
       trigger_type: draftTrigger === ALL ? undefined : draftTrigger,
@@ -168,7 +176,8 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
                   <TableRow key={item.id}>
                     <TableCell className="font-mono">{item.batch_no}</TableCell>
                     <TableCell>
-                      <Badge variant={item.trigger_type === 'scheduled' ? 'secondary' : 'destructive'}>
+                      {/* scheduled 中性、manual 主动操作：均 secondary，手动发起非错误态不用 destructive */}
+                      <Badge variant="secondary">
                         {item.trigger_type === 'scheduled'
                           ? t('table.triggerScheduled')
                           : t('table.triggerManual')}
@@ -231,7 +240,12 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
                           {t('table.actionRestart')}
                         </Button>
                       )}
-                      <Button variant="link" size="sm" disabled title={t('table.viewResultDisabled')}>
+                      <Button
+                        variant="link"
+                        size="sm"
+                        disabled
+                        title={item.status === 'running' ? t('table.viewResultRunning') : t('table.viewResultDisabled')}
+                      >
                         {t('table.actionViewResult')}
                       </Button>
                     </TableCell>

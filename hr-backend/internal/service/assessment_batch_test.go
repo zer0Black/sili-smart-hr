@@ -40,7 +40,7 @@ type fakeBatchRepo struct {
 	idsBetweenErr   error
 	countSuccess    int64
 	countSuccessErr error
-	runningTriggeredAts []time.Time
+	runningBatches []repository.RunningBatch
 	listRunningErr      error
 
 	lastFilter            repository.BatchFilter
@@ -94,8 +94,8 @@ func (f *fakeBatchRepo) CountSuccessSideTriggeredBetween(_ context.Context, star
 	f.countInRangeArgs = [2]time.Time{start, end}
 	return f.countSuccess, f.countSuccessErr
 }
-func (f *fakeBatchRepo) ListRunningTriggeredAt(_ context.Context) ([]time.Time, error) {
-	return f.runningTriggeredAts, f.listRunningErr
+func (f *fakeBatchRepo) ListRunningBatches(_ context.Context) ([]repository.RunningBatch, error) {
+	return f.runningBatches, f.listRunningErr
 }
 
 var _ repository.AssessmentBatchRepository = (*fakeBatchRepo)(nil)
@@ -213,17 +213,28 @@ func cfgWeekly(members []domain.AssessmentConfigMember) repository.AssessmentCon
 	}
 }
 
+// cfgDaily 返回 daily 配置 fake（manual 停滞预算用例：周期长度最短时 manual 判定与周期无关）。
+func cfgDaily() repository.AssessmentConfigRepository {
+	return &fakeAssessmentConfigRepo{
+		cfg: &domain.AssessmentConfig{
+			ID: 1, Period: "daily", TriggerTime: "23:00", TargetMode: "specified", Version: 1,
+		},
+	}
+}
+
 // TestListDerivesStalled：running 批次 triggered_at=now-8 天（超 weekly 停滞边界 +7 天）派生 stalled=true；
-// triggered_at=now-3 天派生 stalled=false。
+// manual 批次按 24h 固定预算判定，now-3d 已停滞；scheduled now-3d 未超边界不停滞。
 func TestListDerivesStalled(t *testing.T) {
 	batchRepo := &fakeBatchRepo{
 		list: []domain.AssessmentBatch{
 			{ID: 1, BatchNo: "B1", TriggerType: "scheduled", TargetMode: "all", TargetNamesJSON: "[]",
 				Status: "running", TriggeredAt: batchFixedNow().AddDate(0, 0, -8), PeriodStartAt: batchFixedNow().AddDate(0, 0, -14), PeriodEndAt: batchFixedNow().AddDate(0, 0, -8)},
-			{ID: 2, BatchNo: "B2", TriggerType: "manual", TargetMode: "all", TargetNamesJSON: "[]",
+			{ID: 2, BatchNo: "B2", TriggerType: "scheduled", TargetMode: "all", TargetNamesJSON: "[]",
+				Status: "running", TriggeredAt: batchFixedNow().AddDate(0, 0, -3), PeriodStartAt: batchFixedNow().AddDate(0, 0, -3), PeriodEndAt: batchFixedNow().AddDate(0, 0, -3)},
+			{ID: 3, BatchNo: "B3", TriggerType: "manual", TargetMode: "all", TargetNamesJSON: "[]",
 				Status: "running", TriggeredAt: batchFixedNow().AddDate(0, 0, -3), PeriodStartAt: batchFixedNow().AddDate(0, 0, -3), PeriodEndAt: batchFixedNow().AddDate(0, 0, -3)},
 		},
-		listTotal: 2,
+		listTotal: 3,
 	}
 	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 
@@ -231,14 +242,39 @@ func TestListDerivesStalled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
-	if total != 2 || len(list) != 2 {
-		t.Fatalf("total=%d len=%d, want 2/2", total, len(list))
+	if total != 3 || len(list) != 3 {
+		t.Fatalf("total=%d len=%d, want 3/3", total, len(list))
 	}
 	if !list[0].Stalled {
 		t.Errorf("list[0].Stalled = false, want true（triggered_at=now-8d 超 weekly 边界）")
 	}
 	if list[1].Stalled {
-		t.Errorf("list[1].Stalled = true, want false（triggered_at=now-3d 未超边界）")
+		t.Errorf("list[1].Stalled = true, want false（scheduled now-3d 未超 weekly 边界）")
+	}
+	if !list[2].Stalled {
+		t.Errorf("list[2].Stalled = false, want true（manual 超 24h 固定预算）")
+	}
+}
+
+// TestListDerivesStalled_ManualWithinBudget：manual 批次 24h 预算内不停滞
+//（回溯大时段的手动批次与配置周期长度无关，防误标）。
+func TestListDerivesStalled_ManualWithinBudget(t *testing.T) {
+	batchRepo := &fakeBatchRepo{
+		list: []domain.AssessmentBatch{
+			{ID: 1, BatchNo: "B1", TriggerType: "manual", TargetMode: "specified", TargetNamesJSON: `["张三"]`,
+				Status: "running", TriggeredAt: batchFixedNow().Add(-2 * time.Hour),
+				PeriodStartAt: batchFixedNow().AddDate(0, 0, -90), PeriodEndAt: batchFixedNow().AddDate(0, 0, -1)},
+		},
+		listTotal: 1,
+	}
+	svc := newBatchSvc(batchRepo, cfgDaily(), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
+
+	list, _, err := svc.List(context.Background(), service.BatchListFilter{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if list[0].Stalled {
+		t.Errorf("manual 回溯 90 天但触发 2h，Stalled = true, want false（daily 周期下旧口径会误判）")
 	}
 }
 
@@ -348,14 +384,14 @@ func TestStatsWindow(t *testing.T) {
 	wantStart := time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local)
 	wantEnd := time.Date(2026, 9, 13, 23, 0, 0, 0, time.Local)
 	// running 两批：一未停滞（09-06 触发）、一已停滞（08-30 触发超 7 天），统计卡只计 1。
-	runningAts := []time.Time{
-		time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local),
-		time.Date(2026, 8, 30, 23, 0, 0, 0, time.Local),
+	runningBatches := []repository.RunningBatch{
+		{TriggeredAt: time.Date(2026, 9, 6, 23, 0, 0, 0, time.Local), TriggerType: domain.BatchTriggerScheduled},
+		{TriggeredAt: time.Date(2026, 8, 30, 23, 0, 0, 0, time.Local), TriggerType: domain.BatchTriggerScheduled},
 	}
 	batchRepo := &fakeBatchRepo{
 		countInRange:      2,
 		countSuccess:      96,
-		runningTriggeredAts: runningAts,
+		runningBatches:    runningBatches,
 	}
 	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 

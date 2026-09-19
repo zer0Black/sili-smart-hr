@@ -250,11 +250,24 @@ func (s *assessmentBatchService) List(ctx context.Context, f BatchListFilter) ([
 	return items, total, nil
 }
 
+// stalledFor 批次停滞派生：scheduled 按配置周期长度（specs §5.1.4 规则2）；
+// manual 批次常回溯大时段，周期长度与其有效时长无关，按固定 24h 预算判
+//（与 batch-run 任务超时对齐），防长时段手动批次被误标停滞并从运行中统计剔除。
+func stalledFor(now, triggeredAt time.Time, period, triggerType, status string) bool {
+	if triggerType != domain.BatchTriggerScheduled {
+		return now.After(triggeredAt.Add(manualStalledBudget))
+	}
+	return pipeline.IsStalled(now, triggeredAt, period, status)
+}
+
+// manualStalledBudget 手动批次停滞预算（24h，对齐 batch-run 任务超时）。
+const manualStalledBudget = 24 * time.Hour
+
 // toListDTO 组装列表行。configOK=false（配置读取失败）按非停滞降级。
 func (s *assessmentBatchService) toListDTO(cfg *domain.AssessmentConfig, configOK bool, b *domain.AssessmentBatch) BatchListDTO {
 	stalled := false
 	if configOK {
-		stalled = pipeline.IsStalled(s.now(), b.TriggeredAt, cfg.Period, b.Status)
+		stalled = stalledFor(s.now(), b.TriggeredAt, cfg.Period, b.TriggerType, b.Status)
 	}
 	names := parseTargetNames(b.TargetNamesJSON)
 	dto := BatchListDTO{
@@ -304,15 +317,16 @@ func (s *assessmentBatchService) Stats(ctx context.Context) (*BatchStatsDTO, err
 	if err != nil {
 		return nil, fmt.Errorf("count success side: %w", err)
 	}
-	// 进行中剔除停滞：与列表 Stalled 派生同一 IsStalled 函数（03 §4.5 两处口径
-	// 一致），running 批次量级个位，逐行判定替代按周期长度回推的近似口径。
-	triggeredAts, err := s.batchRepo.ListRunningTriggeredAt(ctx)
+	// 进行中剔除停滞：与列表 Stalled 派生同一 stalledFor 口径（03 §4.5 两处口径
+	// 一致）。查询只回 triggered_at，manual 批次按 24h 固定预算判定
+	//（stalledFor 内部区分），scheduled 按配置周期。
+	triggeredAts, err := s.batchRepo.ListRunningBatches(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list running triggered_at: %w", err)
+		return nil, fmt.Errorf("list running batches: %w", err)
 	}
 	runningCount := int64(0)
-	for _, ta := range triggeredAts {
-		if !pipeline.IsStalled(now, ta, cfg.Period, domain.BatchStatusRunning) {
+	for _, rb := range triggeredAts {
+		if !stalledFor(now, rb.TriggeredAt, cfg.Period, rb.TriggerType, domain.BatchStatusRunning) {
 			runningCount++
 		}
 	}

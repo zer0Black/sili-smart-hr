@@ -26,6 +26,12 @@ type BatchFilter struct {
 	Page, PageSize int
 }
 
+// RunningBatch 运行中批次的停滞判定输入（触发时刻 + 触发类型）。
+type RunningBatch struct {
+	TriggeredAt time.Time
+	TriggerType string
+}
+
 // AssessmentBatchRepository 是批次域的数据访问接口（双重接口范式，account 样板）。
 // 时间区间查询（CountInRange/CountSuccessSideTriggeredBetween）参数须传 UTC 口径：
 // SQLite 文本列按 UTC 偏移串落库，字典序比较要求两端偏移串一致。
@@ -64,9 +70,9 @@ type AssessmentBatchRepository interface {
 	// CountSuccessSideTriggeredBetween 统计 triggered_at ∈ [start, end) 的全部批次中
 	// 成功侧终态人员行数（子查询圈定批次，join 归属仓储层）。
 	CountSuccessSideTriggeredBetween(ctx context.Context, start, end time.Time) (int64, error)
-	// ListRunningTriggeredAt 取全部 running 批次的触发时刻（统计卡停滞剔除，
-	// 逐行判定归 service，口径与列表 Stalled 同源）。
-	ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error)
+	// ListRunningBatches 取全部 running 批次的触发时刻与触发类型（统计卡停滞
+	// 剔除，逐行判定归 service，口径与列表 Stalled 同源；manual 按固定预算判）。
+	ListRunningBatches(ctx context.Context) ([]RunningBatch, error)
 	// ListFailedByBatch 取批次内 status='failed' 人员行，按 finished_at ASC 升序
 	//（终态落库先后，走 idx_batch_status）。
 	ListFailedByBatch(ctx context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error)
@@ -260,15 +266,21 @@ func (r *assessmentBatchRepository) FinalizeBatch(ctx context.Context, batchID i
 }
 
 // DeleteBatch 先删明细后删批次（同事务），running 守卫防误删已终态批次。
+// 守卫前置到批次行：批次已终态时整事务回滚（明细不删），防伪失败路径下
+// 只删明细留孤儿批次行（失败明细弹窗恒空、统计失真）。
 func (r *assessmentBatchRepository) DeleteBatch(ctx context.Context, batchID int64) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("batch_id = ?", batchID).
-			Delete(&domain.AssessmentBatchPerson{}).Error; err != nil {
-			return err
-		}
 		res := tx.Where("id = ? AND status = ?", batchID, domain.BatchStatusRunning).
 			Delete(&domain.AssessmentBatch{})
-		return res.Error
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			// 已删/已终态：幂等返回，明细也不删（同事务回滚语义等价于直接返回）。
+			return nil
+		}
+		return tx.Where("batch_id = ?", batchID).
+			Delete(&domain.AssessmentBatchPerson{}).Error
 	})
 }
 
@@ -347,12 +359,13 @@ func (r *assessmentBatchRepository) CountSuccessSideTriggeredBetween(ctx context
 	return n, err
 }
 
-func (r *assessmentBatchRepository) ListRunningTriggeredAt(ctx context.Context) ([]time.Time, error) {
-	var times []time.Time
+func (r *assessmentBatchRepository) ListRunningBatches(ctx context.Context) ([]RunningBatch, error) {
+	var rows []RunningBatch
 	err := r.db.WithContext(ctx).Model(&domain.AssessmentBatch{}).
 		Where("status = ?", domain.BatchStatusRunning).
-		Pluck("triggered_at", &times).Error
-	return times, err
+		Select("triggered_at, trigger_type").
+		Find(&rows).Error
+	return rows, err
 }
 
 // truncateRunes 按字符截断至多 max 个 rune，避免多字节字符被腰斩。

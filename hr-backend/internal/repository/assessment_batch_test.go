@@ -493,8 +493,8 @@ func TestCountInRange(t *testing.T) {
 	}
 }
 
-// TestListRunningTriggeredAt 取全部 running 批次触发时刻（终态排除）。
-func TestListRunningTriggeredAt(t *testing.T) {
+// TestListRunningBatches 取全部 running 批次触发时刻与类型（终态排除）。
+func TestListRunningBatches(t *testing.T) {
 	db := newBatchTestDB(t)
 	repo := repository.NewAssessmentBatchRepository(db)
 	ctx := context.Background()
@@ -510,9 +510,17 @@ func TestListRunningTriggeredAt(t *testing.T) {
 			t.Fatalf("create: %v", err)
 		}
 	}
-	ats, err := repo.ListRunningTriggeredAt(ctx)
+	ats, err := repo.ListRunningBatches(ctx)
 	if err != nil || len(ats) != 2 {
 		t.Fatalf("want 2（仅 running，终态排除）, got (%d,%v)", len(ats), err)
+	}
+	gotTypes := map[string]string{}
+	for _, rb := range ats {
+		gotTypes[rb.TriggeredAt.Format(time.RFC3339)] = rb.TriggerType
+	}
+	if gotTypes[stalled.TriggeredAt.Format(time.RFC3339)] != domain.BatchTriggerScheduled ||
+		gotTypes[fresh.TriggeredAt.Format(time.RFC3339)] != domain.BatchTriggerManual {
+		t.Errorf("trigger_type 回传错配: %v", gotTypes)
 	}
 }
 

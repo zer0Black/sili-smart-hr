@@ -663,6 +663,7 @@
       "targetAll": "全员",
       "toastGeneric": "操作失败，请稍后重试",
       "viewResultDisabled": "个人画像功能建设中",
+      "viewResultRunning": "本批次评估进行中，画像尚不完整",
       "listSeparator": "、"
     },
     "create": {
@@ -697,7 +698,9 @@
       "cancelConfirm": "已选择评估对象，确定放弃并关闭？",
       "cancelConfirmOk": "放弃并关闭",
       "toastCreated": "已发起评测，批次进入评估队列",
-      "toastGeneric": "发起失败，请稍后重试"
+      "toastGeneric": "发起失败，请稍后重试",
+      "toastPeriodInvalid": "评估时段无效：结束日期须早于今天",
+      "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试"
     },
     "failures": {
       "title": "失败明细 · {{batchNo}}",
