@@ -447,7 +447,7 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	close(nameCh)
 	wg.Wait()
 
-	return o.finalizeBatch(ctx, batchID, names, period, pendingKeys)
+	return o.finalizeBatch(ctx, batchID, period, pendingKeys)
 }
 
 // waitExtractReady 抽取落库等待屏障：轮询查已落库键做差集收缩（查询代价随
@@ -554,9 +554,8 @@ func personTerminal(res *evaluator.EvaluateResult) string {
 // finalizeBatch 全员终态后落批次终态（specs §5.2.2 步骤6-8）：evaluated_count <
 // total_count（存在回写失败者）不落终态留 running 停滞处置；否则按失败占比落
 // 终态（≤10.00 success、<100 partial_failed、=100 failed）。会话级失败比例分子
-// 为本批次投递会话中 failed 档案数（与名单内会话数分母同基），分母 0 置 0.00；
-// 占比超阈写告警。
-func (o *Orchestrator) finalizeBatch(ctx context.Context, batchID int64, names []string, period activity.Period, pendingKeys []string) error {
+// 为本批次投递会话中 failed 档案数（分母同基），分母 0 置 0.00；超阈写告警。
+func (o *Orchestrator) finalizeBatch(ctx context.Context, batchID int64, period activity.Period, pendingKeys []string) error {
 	batch, err := o.repo.GetByID(ctx, batchID)
 	if err != nil {
 		return fmt.Errorf("pipeline: 批次读回: %w", err)

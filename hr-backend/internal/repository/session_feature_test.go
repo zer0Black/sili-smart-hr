@@ -356,6 +356,54 @@ func TestListExistingBySessionKeys(t *testing.T) {
 	})
 }
 
+// TestCountFailedByKeys 验证会话级失败比例分子口径（specs P2_ASM_001 §5.2.2 步骤8）：
+// 集合内 status=failed 且 first_turn_at 落半开窗口 [start, end) 才计数，端点 start
+// 含、end 不含；success/skipped、集合外 key、窗外行均不计。
+func TestCountFailedByKeys(t *testing.T) {
+	db := newFeatureTestDB(t, true)
+	repo := repository.NewSessionFeatureRepository(db)
+	start, end := baseUnix, baseUnix+3600
+
+	seeds := []struct {
+		key    string
+		status string
+		at     int64
+	}{
+		{"cf-failed-in", domain.FeatureStatusFailed, start},      // 端点 start 含
+		{"cf-failed-in2", domain.FeatureStatusFailed, start + 10},
+		{"cf-success-in", domain.FeatureStatusSuccess, start + 20}, // 状态过滤
+		{"cf-skipped-in", domain.FeatureStatusSkipped, start + 30}, // 状态过滤
+		{"cf-failed-end", domain.FeatureStatusFailed, end},         // 端点 end 不含
+		{"cf-failed-before", domain.FeatureStatusFailed, start - 1}, // 窗外
+		{"cf-failed-absent", domain.FeatureStatusFailed, start + 40}, // 集合外
+	}
+	for _, s := range seeds {
+		if err := db.Create(makeFeature(s.key, "张三", s.status, time.Unix(s.at, 0).UTC())).Error; err != nil {
+			t.Fatalf("seed %s: %v", s.key, err)
+		}
+	}
+
+	keys := []string{"cf-failed-in", "cf-failed-in2", "cf-success-in", "cf-skipped-in", "cf-failed-end", "cf-failed-before"}
+	n, err := repo.CountFailedByKeys(context.Background(), keys, start, end)
+	if err != nil {
+		t.Fatalf("CountFailedByKeys: unexpected error: %v", err)
+	}
+	if n != 2 {
+		t.Fatalf("want 2（集合内窗口内 failed 恰 2 行，end 端点与窗外不计）, got %d", n)
+	}
+
+	t.Run("空集合直接返回 0", func(t *testing.T) {
+		n, err := repo.CountFailedByKeys(context.Background(), nil, start, end)
+		if err != nil || n != 0 {
+			t.Fatalf("nil 集合 want (0, nil), got (%d, %v)", n, err)
+		}
+		n, err = repo.CountFailedByKeys(context.Background(), []string{}, start, end)
+		if err != nil || n != 0 {
+			t.Fatalf("空切片 want (0, nil), got (%d, %v)", n, err)
+		}
+	})
+}
+
 // TestFindBySessionKey 验证 session_key 点查两态：命中返回该行，未命中返回 (nil, nil) 非 error。
 func TestFindBySessionKey(t *testing.T) {
 	db := newFeatureTestDB(t, true)
