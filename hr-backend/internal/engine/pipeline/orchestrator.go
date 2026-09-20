@@ -186,8 +186,8 @@ func (o *Orchestrator) CreateBatch(ctx context.Context, req CreateBatchRequest) 
 		if !dberr.UniqueViolation(err) {
 			return nil, fmt.Errorf("pipeline: 批次落库: %w", err)
 		}
-		// 撞 uk_batch_no：同分钟内并发建批，序号 +1 重试（specs §5.2.5 交任务级重试前的收敛）。
-		// 批次行与人明细同事务，重试不产生半批次。
+		// 撞 uk_batch_no：同分钟内并发建批，序号 +1 重试。批次行与人明细同事务，
+		// 重试不产生半批次。
 	}
 	return nil, fmt.Errorf("pipeline: 批次号序号耗尽（%d 次撞唯一键）", batchNoSeqMax)
 }
@@ -300,8 +300,8 @@ func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 		return err
 	}
 	if err := o.batchEnq.EnqueueBatchRun(ctx, batch.ID); err != nil {
-		// 入队失败回滚本次建批（删骨架批次行）后上抛交 Asynq 任务级重试
-		//（specs §5.1.5：重试耗尽跳过至下个周期）。回滚是重试可达的前提：
+		// 入队失败回滚本次建批（删骨架批次行）后上抛交 Asynq 任务级重试，
+		// 重试耗尽跳过至下个周期。回滚是重试可达的前提：
 		// 不删则已建批判定拦截重试、批次滞留 running 成孤儿。回滚失败一并上抛
 		// 交重试（DeleteBatch 幂等，重放时批次已删则守卫无命中）。
 		slog.Error("batch-run enqueue failed, rolling back batch",
@@ -353,7 +353,7 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 	if err != nil {
 		return fmt.Errorf("pipeline: 集成密钥解析: %w", err)
 	}
-	// Period 半开区间（03 §2.5）：PeriodStart 当日零点为 Start，PeriodEnd 加一天零点为 End。
+	// Period 半开区间：PeriodStart 当日零点为 Start，PeriodEnd 加一天零点为 End。
 	period := activity.Period{
 		Start: batch.PeriodStartAt.Unix(),
 		End:   batch.PeriodEndAt.AddDate(0, 0, 1).Unix(),
@@ -372,10 +372,10 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 		slog.Error("batch run upstream list failed", "batch_id", batchID, "batch_no", batch.BatchNo, "err", err)
 		return o.failWholeBatch(batch, fmt.Sprintf("会话列表拉取失败: %v", err))
 	}
-	sessions = activity.DedupSessions(sessions) // 跨页重复去重（§5.2.5）
+	sessions = activity.DedupSessions(sessions) // 跨页重复去重
 
-	// specified 批次收窄到名单内：上游不支持按人过滤（中文 token_name 禁用，
-	// T4 §3.2）故仍全量拉取，但投递、等待与会话总数只算名单内会话，防指定
+	// specified 批次收窄到名单内：上游不支持按人过滤（中文 token_name 禁用）故
+	// 仍全量拉取，但投递、等待与会话总数只算名单内会话，防指定
 	// 少数人却抽取全组织会话烧 LLM 配额、等待屏障被无关会话撑爆超时。
 	nameSet := make(map[string]struct{}, len(names))
 	for _, n := range names {
@@ -393,7 +393,7 @@ func (o *Orchestrator) RunBatch(ctx context.Context, batchID int64) error {
 		groups[s.TokenName] = append(groups[s.TokenName], s)
 	}
 
-	// 回填会话数（03 §4.4 步骤4）：名单快照全员入明细，无会话者为 0。
+	// 回填会话数：名单快照全员入明细，无会话者为 0。
 	// 重放重跑幂等：total 与逐人计数按同一窗口重算覆盖。
 	personSessions := make(map[string]int, len(groups))
 	for name, ss := range groups {
@@ -597,7 +597,7 @@ func (o *Orchestrator) finalizeBatch(ctx context.Context, batchID int64, period 
 // uk_batch_person 同键）；all 只做密钥探测后返回空骨架（防密钥缺失时静默跑空）。
 func (o *Orchestrator) resolveNames(ctx context.Context, req CreateBatchRequest) ([]string, error) {
 	if req.TargetMode == domain.BatchTargetSpecified {
-		return dedupeNames(req.TargetNames), nil
+		return DedupeNames(req.TargetNames), nil
 	}
 	// all 骨架：只做密钥探测（配置缺失时立刻报错，不落 0 人批次静默跑空），
 	// 名单展开移至 RunBatch 开头异步执行，建批同步路径不触上游翻页。
@@ -642,8 +642,9 @@ func (o *Orchestrator) fetchAllStaffNames(ctx context.Context) ([]string, error)
 	return nil, fmt.Errorf("%w: 翻页超 %d 页上限（上游分页疑似失效）", ErrStaffFetchFailed, staffListMaxPages)
 }
 
-// dedupeNames 按值去重并保持首次出现序。
-func dedupeNames(names []string) []string {
+// DedupeNames 按值去重并保持首次出现序。staff_name 去重键与 uk_batch_person
+// 同键收敛（同名同人），service 建批入口与本包内共用。
+func DedupeNames(names []string) []string {
 	seen := make(map[string]struct{}, len(names))
 	out := make([]string, 0, len(names))
 	for _, n := range names {
@@ -656,18 +657,8 @@ func dedupeNames(names []string) []string {
 	return out
 }
 
-// buildPersons 展开人员明细 pending 行（specs §5.2.2 步骤1）。
-// 主键由雪花回调填零值，批次行落库后 ID 已就绪。
+// buildPersons 展开人员明细 pending 行：复用仓储同源实现，主键由雪花回调
+// 填零值，批次行落库后 ID 已就绪。
 func buildPersons(batchID int64, names []string) []domain.AssessmentBatchPerson {
-	persons := make([]domain.AssessmentBatchPerson, 0, len(names))
-	for _, n := range names {
-		persons = append(persons, domain.AssessmentBatchPerson{
-			BatchID:      batchID,
-			TokenName:    n,
-			Status:       domain.PersonStatusPending,
-			SessionCount: 0,
-			ErrorSummary: "",
-		})
-	}
-	return persons
+	return repository.BuildPersonRows(batchID, names)
 }

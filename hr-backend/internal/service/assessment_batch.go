@@ -184,20 +184,17 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		if len(p.Staffs) == 0 {
 			return nil, NewError(errcode.BatchTargetInvalid)
 		}
-		names = make([]string, 0, len(p.Staffs))
-		seen := make(map[string]struct{}, len(p.Staffs))
+		trimmed := make([]string, 0, len(p.Staffs))
 		for _, st := range p.Staffs {
-			name := strings.TrimSpace(st.StaffName)
+			trimmed = append(trimmed, strings.TrimSpace(st.StaffName))
+		}
+		for _, name := range trimmed {
 			if name == "" {
 				return nil, NewError(errcode.BatchTargetInvalid)
 			}
-			// staff_name 去重键与 uk_batch_person 同键收敛（同名同人）。
-			if _, ok := seen[name]; ok {
-				continue
-			}
-			seen[name] = struct{}{}
-			names = append(names, name)
 		}
+		// staff_name 去重键与 uk_batch_person 同键收敛（同名同人）。
+		names = pipeline.DedupeNames(trimmed)
 	}
 	batch, err := s.submitter.SubmitManualBatch(ctx, pipeline.CreateBatchRequest{
 		TriggerType: domain.BatchTriggerManual,
@@ -207,9 +204,9 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		PeriodEnd:   end,
 	})
 	if err != nil {
-		// all 模式名单链路失败（含密钥未配置，骨架批次建批前的探测）不落批次
-		// 记录，映射 1305；其余错误统一 1500，前端 toast 留在弹窗。
-		if errors.Is(err, pipeline.ErrStaffFetchFailed) || errors.Is(err, pipeline.ErrSecretResolveFailed) {
+		// all 模式骨架建批前的密钥探测失败不落批次记录，映射 1305；
+		// 其余错误统一 1500，前端 toast 留在弹窗。
+		if errors.Is(err, pipeline.ErrSecretResolveFailed) {
 			return nil, NewError(errcode.StaffListUnavailable)
 		}
 		return nil, NewError(errcode.Internal)

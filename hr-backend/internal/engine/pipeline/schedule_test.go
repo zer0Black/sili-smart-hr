@@ -176,7 +176,7 @@ func TestIsStalled(t *testing.T) {
 	}
 }
 
-// TestTriggerHitGraceWindow 宽限窗（spec v1.9）：触发点后 2 分钟内仍命中，
+// TestTriggerHitGraceWindow 宽限窗（specs §5.1.4 规则4）：触发点后 2 分钟内仍命中，
 // 超窗不命中；worker 队列积压导致 tick 消费晚几分钟不丢整周期触发。
 func TestTriggerHitGraceWindow(t *testing.T) {
 	tests := []struct {

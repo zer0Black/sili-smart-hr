@@ -200,7 +200,7 @@ func (r *assessmentBatchRepository) ExpandTargets(ctx context.Context, batchID i
 		if res.RowsAffected == 0 {
 			return nil // 已展开：重试重放不双插明细
 		}
-		rows := buildPersonRows(batchID, names)
+		rows := BuildPersonRows(batchID, names)
 		if len(rows) == 0 {
 			return errors.New("expand targets: 名单为空")
 		}
@@ -208,8 +208,9 @@ func (r *assessmentBatchRepository) ExpandTargets(ctx context.Context, batchID i
 	})
 }
 
-// buildPersonRows 组装人员明细 pending 行（幂等键 batch_id+token_name）。
-func buildPersonRows(batchID int64, names []string) []domain.AssessmentBatchPerson {
+// BuildPersonRows 组装人员明细 pending 行（幂等键 batch_id+token_name），
+// pipeline 建批与仓储展开名单两处同源消费。
+func BuildPersonRows(batchID int64, names []string) []domain.AssessmentBatchPerson {
 	persons := make([]domain.AssessmentBatchPerson, 0, len(names))
 	for _, n := range names {
 		persons = append(persons, domain.AssessmentBatchPerson{

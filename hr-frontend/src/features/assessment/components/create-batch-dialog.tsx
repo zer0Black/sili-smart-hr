@@ -169,10 +169,10 @@ export function CreateBatchDialog({
     return () => clearTimeout(tmr);
   }, [open, preset, reset, planQ.data, planQ.isError]);
 
-  const staffsSelected = (() => {
+  function staffsSelected(): boolean {
     const v = form.getValues().target;
     return v.mode === 'all' || v.staffs.length > 0;
-  });
+  }
 
   function requestClose() {
     if (createMut.isPending) return;

@@ -9,8 +9,8 @@ import (
 
 // 合法周期取值集合收敛在 domain.Period*（service 校验侧与调度侧共消费）。
 // triggerGraceWindow 触发命中宽限窗：队列积压致 tick 消费晚于理论触发点几分
-// 钟仍应命中（spec v1.9），窗宽 2 分钟覆盖分钟级重试半径；同窗重复建批由
-// 本周期已建批判定拦截。
+// 钟仍应命中（specs §5.1.4 规则4），窗宽 2 分钟覆盖分钟级重试半径；同窗重复
+// 建批由本周期已建批判定拦截。
 const triggerGraceWindow = 2 * time.Minute
 
 // TriggerHit 判定 now 是否命中触发点 [触发点, 触发点+宽限窗) 且触发点当日为
@@ -152,7 +152,7 @@ func StalledDeadline(triggeredAt time.Time, period string) time.Time {
 
 // IsStalled 停滞判定：status=running 且 now 超过 StalledDeadline（specs §5.1.4 规则2）。
 func IsStalled(now, triggeredAt time.Time, period, status string) bool {
-	if status != "running" {
+	if status != domain.BatchStatusRunning {
 		return false
 	}
 	return now.After(StalledDeadline(triggeredAt, period))

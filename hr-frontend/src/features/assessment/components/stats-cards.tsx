@@ -22,7 +22,7 @@ export function StatsCards(): JSX.Element {
   );
 }
 
-function StatBlock(props: { label: string; value?: number; isLoading: boolean; isError: boolean; onRefresh: () => void }) {
+function StatBlock(props: { label: string; value?: number; isLoading: boolean; isError: boolean; isFetching: boolean; onRefresh: () => void }) {
   const { t } = useTranslation('assessment');
   return (
     <Card>
@@ -33,7 +33,7 @@ function StatBlock(props: { label: string; value?: number; isLoading: boolean; i
         {props.isLoading ? (
           <div className="bg-muted h-8 w-16 animate-pulse rounded-md" />
         ) : props.isError ? (
-          <Button variant="outline" size="sm" onClick={props.onRefresh}>
+          <Button variant="outline" size="sm" disabled={props.isFetching} onClick={props.onRefresh}>
             {t('stats.refresh')}
           </Button>
         ) : (
@@ -54,6 +54,7 @@ function StatsCard({ query }: { query: UseQueryResult<BatchStats> }) {
         value={query.data?.eval_count}
         isLoading={query.isLoading}
         isError={query.isError}
+        isFetching={query.isFetching}
         onRefresh={onRefresh}
       />
       <StatBlock
@@ -61,6 +62,7 @@ function StatsCard({ query }: { query: UseQueryResult<BatchStats> }) {
         value={query.data?.evaluated_person_count}
         isLoading={query.isLoading}
         isError={query.isError}
+        isFetching={query.isFetching}
         onRefresh={onRefresh}
       />
       <StatBlock
@@ -68,6 +70,7 @@ function StatsCard({ query }: { query: UseQueryResult<BatchStats> }) {
         value={query.data?.running_batch_count}
         isLoading={query.isLoading}
         isError={query.isError}
+        isFetching={query.isFetching}
         onRefresh={onRefresh}
       />
     </div>
@@ -101,7 +104,7 @@ function PlanCard({ query }: { query: UseQueryResult<BatchPlan> }) {
             ))}
           </div>
         ) : query.isError ? (
-          <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+          <Button variant="outline" size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>
             {t('stats.refresh')}
           </Button>
         ) : plan ? (

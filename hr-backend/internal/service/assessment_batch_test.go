@@ -879,9 +879,9 @@ func TestCreateStaffsDedup(t *testing.T) {
 	}
 }
 
-// TestCreateAllStaffsFail：all 模式 submitter 返哨兵 wrap 的全员拉取错误，断言 *service.Error code==1305 且不落批次。
-func TestCreateAllStaffsFail(t *testing.T) {
-	sub := &fakeManualSubmitter{err: fmt.Errorf("wrap: %w", pipeline.ErrStaffFetchFailed)}
+// TestCreateAllSecretFail：all 模式 submitter 返哨兵 wrap 的密钥解析错误，断言 *service.Error code==1305 且不落批次。
+func TestCreateAllSecretFail(t *testing.T) {
+	sub := &fakeManualSubmitter{err: fmt.Errorf("wrap: %w", pipeline.ErrSecretResolveFailed)}
 	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
 
 	p := createValidPayload()

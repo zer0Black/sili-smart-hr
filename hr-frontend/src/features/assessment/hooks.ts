@@ -13,15 +13,34 @@ import {
 } from './api';
 import type { BatchFailures, BatchFilter, CreateBatchPayload } from './types';
 
-/** 页面可见性状态：specs §4.1.3 隐藏暂停轮询、恢复即拉。 */
+// visibilitychange 模块级单例订阅：usePageVisible（轮询开关）与
+// useRefetchOnVisible（恢复即拉）共享同一监听器，避免每个消费点各挂一份。
+const visibilityListeners = new Set<() => void>();
+let visibilityListenerInstalled = false;
+
+function ensureVisibilityListener() {
+  if (visibilityListenerInstalled || typeof document === 'undefined') return;
+  visibilityListenerInstalled = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      for (const fn of visibilityListeners) fn();
+    }
+  });
+}
+
+/** 页面可见性状态：specs §4.1.3 隐藏暂停轮询、恢复即拉。
+ * 监听器复用模块级单例（与 useRefetchOnVisible 共享一份订阅）。 */
 function usePageVisible(): boolean {
   const [visible, setVisible] = useState(
     () => typeof document === 'undefined' || document.visibilityState === 'visible',
   );
   useEffect(() => {
     const onChange = () => setVisible(document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', onChange);
-    return () => document.removeEventListener('visibilitychange', onChange);
+    visibilityListeners.add(onChange);
+    ensureVisibilityListener();
+    return () => {
+      visibilityListeners.delete(onChange);
+    };
   }, []);
   return visible;
 }
@@ -71,21 +90,22 @@ export function useBatchStats() {
   });
 }
 
-/** usePageVisibilityChange：恢复即拉（specs §4.1.3 后半句）。
+/** useRefetchOnVisible：恢复即拉（specs §4.1.3 后半句）。
  * refetchOnWindowFocus 全局关闭，切回标签页时显式 refetch 一次，
  * 让恢复瞬间的数据即时而非等下一个轮询间隔。 */
 export function useRefetchOnVisible(
   queries: Array<{ refetch: () => Promise<unknown> }>,
 ) {
+  const refetchAll = () => {
+    for (const q of queries) void q.refetch();
+  };
   useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        for (const q of queries) void q.refetch();
-      }
+    ensureVisibilityListener();
+    visibilityListeners.add(refetchAll);
+    return () => {
+      visibilityListeners.delete(refetchAll);
     };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-    // queries 每次渲染都是新数组，但 refetch 引用稳定，挂一次即可
+    // refetch 引用稳定，refetchAll 只需挂一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

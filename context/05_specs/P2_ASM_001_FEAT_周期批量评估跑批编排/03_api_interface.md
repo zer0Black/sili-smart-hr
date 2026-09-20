@@ -6,7 +6,7 @@
 |------|------|
 | Feature | P2_ASM_001_FEAT_周期批量评估跑批编排 |
 | 模块代号 | ASM（评估运营域） |
-| 文档版本 | v1.8（2026-09-19：代码评审反向同步——§4.5 手动批次停滞 24h 预算与 monthly 月末钳位、§4.8 Retry ctx 透传口径、B1 total_count 骨架值澄清、§1.5 specified 收窄到名单内会话） |
+| 文档版本 | v1.9（2026-09-20：代码评审反向同步——1305 语义对齐 §1.5 骨架口径（B1/§5 两处错误码表与 §1.5 失败处置段）、§4.8 BelowAlertThreshold totalCount=0 防御值修正为返 true、§4.7 补 batchRunMaxRetry=6、§4.3 补三队列 StrictPriority 分流、§4.4 步骤7 补 EvaluatePerson sessions 空切片语义） |
 | 创建日期 | 2026-09-11 |
 | 作者 | lixuetao |
 | 依据 | [01_功能需求规格说明书](01_功能需求规格说明书.md)（SSOT）、[AGENTS_DATABASE_API_RULE.md](../../../AGENTS_DATABASE_API_RULE.md)、[architecture.md](../../03_architecture/architecture.md)、[04_model_interface.md](04_model_interface.md) |
@@ -43,7 +43,7 @@ specs §5.1.2 步骤1 描述为「scheduler 按评估周期配置注册周期任
 
 编排展开会话列表后的 `token_name` 分组只承担两项用途：供 `EvaluatePerson` 的 sessions 入参注入、供覆盖会话数与会话级失败比例的分母口径消费。specified 批次的投递、等待与会话总数收窄到名单内会话（all 模式名单即全员，不受影响）：上游按人过滤不可用（§1.6 与 T4 §3.2），全量拉取仅用于取数，若对指定少数人的批次投递全组织会话会烧穿 LLM 配额并让等待屏障被无关会话撑爆超时。名单不因分组结果增删：窗口内无会话的人员照常入批次，其 `sessions` 为空时由 T5 的零档案路径落 `skipped` 终态并计入成功侧，人数口径与 specs §5.2.5「批次内全部人员计入失败计数（列表显示 N/N）」一致。
 
-全员名单拉取失败（上游人员接口不可达）时：specified 模式建批前的密钥探测失败与 all 模式执行开头展开失败分别处置——定时链路记 ERROR 上抛 Asynq 任务级重试（§4.3），手动建批返回 1305 不落批次记录（B1 错误码表），展开失败（批次已落库）整批落 failed 终态。`total_count` 在骨架期短暂为 0 属预期（展开通常秒级完成），前端进度分母在展开完成前按 0 处理。
+全员名单拉取失败（上游人员接口不可达）时：specified 模式建批前的密钥探测失败与 all 模式执行开头展开失败分别处置——定时链路记 ERROR 上抛 Asynq 任务级重试（§4.3），手动建批的同步路径仅做密钥探测，探测失败返回 1305 不落批次记录（B1 错误码表）；全员名单拉取移至批次执行开头异步进行，展开失败（批次已落库）整批落 failed 终态。`total_count` 在骨架期短暂为 0 属预期（展开通常秒级完成），前端进度分母在展开完成前按 0 处理。
 
 ### 1.6 评估对象的展开键
 
@@ -475,7 +475,7 @@ GET /api/assessment/batches/failures?batch_id=1780000000000000009
 |--------|------|
 | 1602 | 评估时段非法（终点早于起点、终点为今天及以后、日期格式不符） |
 | 1603 | 评估对象非法（`specified` 模式人员为空、`staffs` 项缺 `staff_name`；`staff_id` 为可选字段，缺失不拦） |
-| 1305 | 全员名单拉取失败（`target_mode=all` 时上游人员接口不可达，不落批次记录） |
+| 1305 | 集成密钥解析失败（`target_mode=all` 建批前密钥探测失败，不落批次记录；全员名单拉取在批次执行开头异步展开，展开失败时批次已落库、整批落 `failed` 终态，见 §1.5） |
 | 1400 | 参数格式错误（`target_mode` 非枚举值、字段缺失） |
 | 1500 | 服务内部错误（批次记录落库失败，前端 toast 提示后留在弹窗）。批次记录已落库但 `batch-run` 入队失败时，同请求内先将该批次落 `failed` 终态并在 `error_summary` 记入队错误，再返回 1500，不留孤儿进行中批次（见 §4.8 `SubmitManualBatch`） |
 
@@ -545,7 +545,9 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
        建批落库失败、入队失败四类）
 超时:  任务级超时 60s（判定与建批为 DB 读写，名单为上游一次全量拉取；上述四类
        错误之一即上抛重试）
-并发:  由 config.Asynq.Concurrency 承载
+并发:  由 config.Asynq.Concurrency 承载。worker 三队列 StrictPriority 严格优先级
+       分流（default > batch > extract，队列名常量单点在 task 包）：tick 类分钟级
+       任务不与长耗时 batch-run、海量 session-extract 抢占消费并发，防互饿
 日志:  命中与跳过记 INFO/ERROR，字段仅触发时刻、批次号、跳过原因；各类失败记错误摘要
 ```
 
@@ -572,7 +574,9 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
           轮询间隔 10 秒）即进入下一步；投递失败会话不参与等待；超时按已落库
           档案继续评估，不中断批次（specs §5.2.2 步骤4 与 §5.2.5）
        7. 逐人并发（上限 4 路）直调 evaluator.EvaluatePerson，
-           以步骤3 分组结果中该人窗口内的会话列表作 sessions 入参
+           以步骤3 分组结果中该人窗口内的会话列表作 sessions 入参（空切片
+           传已知的零会话，免 worker 路径 nil 触发内部全量翻页的重复取数；
+           sessions==nil 仍保持 TECH_005 既有「内部拉取」语义，两路兼容）
        8. 每人返回即回写该人终态并原子推进批次计数（见 §4.6）
        9. 全部终态后落批次终态、算会话级失败比例、按阈值写告警信号
 返回:  err == nil → 成功（含批次已终态的幂等跳过、上游不可用导致的整批失败终态，
@@ -648,6 +652,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 | `personEvalRetryBaseDelay` | 30s | 退避基准，倍增 |
 | `batchAlertThreshold` | 10.00 | 失败人数占比告警阈值，百分比口径（0 至 100），与占比值同精度比较（§4.6） |
 | `batchRunConcurrency` | 4 | 编排器逐人评估并发上限 |
+| `batchRunMaxRetry` | 6 | batch-run 任务级 `MaxRetry`（入队侧收紧）：24h 预算长任务沿用 Asynq 默认 25 次会在故障期反复重放整批编排，收紧为 6 次，耗尽后批次按幂等守卫收敛 |
 
 三者为包内常量随源码发版，在线配置不在本期范围（specs §5.3.4 规则1）。告警信号写入失败仅记日志不重试（specs §5.3.5）；补跑不自动触发，由运营人员经发起评测手动执行（specs §5.3.4 规则3）。
 
@@ -668,7 +673,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 | 方法 | 签名（概念形，ctx 略） | 语义 | 需求追溯 |
 |------|----------------------|------|---------|
 | Retry | (fn func(ctx) error, maxAttempts int, baseDelay time.Duration) → error | 通用重试器：固定次数、基准倍增退避；ctx 原样透传给 fn，需要逐次独立预算时由 fn 内部派生子 ctx（父 ctx 取消即终止） | specs §5.3.2 步骤3、§5.3.4 规则1 |
-| BelowAlertThreshold | (failedCount, totalCount int) → bool | 告警判定纯函数：占比是否超阈（`totalCount=0` 返 false），精度口径与写入一致 | specs §5.2.4 规则4 |
+| BelowAlertThreshold | (failedCount, totalCount int) → bool | 告警判定纯函数：占比是否超阈（`totalCount=0` 返 true 即不告警，防御式，无零除路径），精度口径与写入一致 | specs §5.2.4 规则4 |
 | WriteAlert | (batch, failedCount, totalCount) → error | 写告警信号记录，`batch_id` 唯一索引幂等覆盖；失败仅记日志不重试 | specs §5.3.2 步骤4 |
 
 **与既有域的调用面（只读消费，无写入）：**
@@ -692,7 +697,7 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 | 1601 | BatchNotFound | 批次不存在 | 失败明细、评估对象名单接口的 batch_id 查无记录 |
 | 1602 | BatchPeriodInvalid | 评估时段非法 | 发起评测：终点早于起点、终点为今天及以后、日期格式不符 |
 | 1603 | BatchTargetInvalid | 评估对象非法 | 发起评测：`specified` 模式人员为空、`staffs` 项缺 `staff_name`（`staff_id` 为可选字段，缺失不拦） |
-| 1305 | StaffListUnavailable | 人员列表暂不可用 | 复用 P2_SYS_001 定义。本功能两处消费：发起评测弹窗的评估对象下拉（C1），以及 `target_mode=all` 时创建批次的全员名单拉取（B1，失败即不落批次记录） |
+| 1305 | StaffListUnavailable | 人员列表暂不可用 | 复用 P2_SYS_001 定义。本功能两处消费：发起评测弹窗的评估对象下拉（C1），以及 `target_mode=all` 时创建批次的建批前集成密钥探测（B1，失败即不落批次记录；全员名单拉取在批次执行开头异步展开，展开失败时批次已落库、整批落 `failed` 终态，不走本码，见 §1.5） |
 
 ---
 
@@ -732,9 +737,11 @@ const TypeBatchRun  = "engine:batch-run"  // 批次编排，payload 携批次主
 
 ---
 
-**文档版本：** v1.8
-**最后更新：** 2026-09-19
+**文档版本：** v1.9
+**最后更新：** 2026-09-20
 **作者：** lixuetao
+
+**v1.9 变更（代码评审反向同步）：** 1305 语义对齐 §1.5 骨架口径——B1 与 §5 两处错误码表由「全员名单拉取失败」修正为「建批前集成密钥探测失败」（名单拉取移至批次执行开头异步展开，展开失败整批落 failed 不走本码），§1.5 失败处置段同步澄清；§4.8 BelowAlertThreshold 的 `totalCount=0` 防御值由返 false 修正为返 true（与子计划 01 T5 契约及实现一致，0 人批次不产出告警）；§4.7 常量表补 `batchRunMaxRetry=6`（入队侧收紧）；§4.3 并发行补三队列 StrictPriority 分流；§4.4 步骤7 补 EvaluatePerson sessions 空切片（已知零会话）与 nil（内部拉取）的二分语义。
 
 **v1.8 变更（代码评审反向同步）：** §4.5 停滞判定补手动批次固定 24h 预算行与 monthly 月末钳位口径；§4.8 Retry 契约改为 ctx 透传、子 ctx 派生责任归 fn（行为等价：逐次独立预算由编排器在 fn 内派生）；B1 total_count 澄清 all 模式建批返回骨架值 0（消除与 §1.5 骨架口径的内部矛盾）；§1.5 补 specified 批次投递/等待/会话总数收窄到名单内会话的开发期决策。
 
