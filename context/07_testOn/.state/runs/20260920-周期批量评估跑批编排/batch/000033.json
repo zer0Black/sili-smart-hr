@@ -1,0 +1,20 @@
+{
+  "revision": 33,
+  "created_at": "2026-09-20T15:39:11.285116+00:00",
+  "event": {
+    "type": "finish",
+    "case_id": "UI-POLLING",
+    "status": "needs_review",
+    "actual": "POLL-10S：存在 running 批次时 25s 内 stats 3 次、batches 3 次，两轮间隔 20015ms 即 10s 一轮，符合；POLL-STOP：无 running 批次时 stats 仅首拉 1 次（轮询停止）；POLL-PROBE：探针口径经 hooks 源码与 stats 驱动逻辑核验（useBatchStats 自驱动 + 页面级探针传 BatchTable），未做筛选挤出页面的浏览器实测；POLL-VISIBILITY：headless 无法真实切换页面可见性，标记待人工复核",
+    "checks": {
+      "POLL-10S": "passed",
+      "POLL-VISIBILITY": "needs_review",
+      "POLL-STOP": "passed",
+      "POLL-PROBE": "needs_review"
+    },
+    "evidence": [
+      "证据/执行001-首次执行/UI-e2e-结果.txt"
+    ],
+    "incident": "environment"
+  }
+}

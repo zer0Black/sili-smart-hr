@@ -1,0 +1,14 @@
+{
+  "revision": 43,
+  "created_at": "2026-09-20T15:40:26.640009+00:00",
+  "event": {
+    "type": "prepare",
+    "case_id": "FLOW-BATCH-RUN",
+    "build_id": "main@56d3a6b（后端 go run + SMART_API_BASE_URL=10.10.10.36:3000 + SQLite）+ 前端 rsbuild dev 3000",
+    "evidence": [
+      "证据/执行001-首次执行/FLOW-BATCH-RUN-观察.md"
+    ],
+    "asset_revision": "inline-curl+sqlite",
+    "checkpoint": "RUN-IDEMPOTENT 补验：FLOW-UPSTREAM-FAIL 的补跑批次 B202609202321002 中王莹 reused 终态（同人同区间档案幂等复用未调 LLM）"
+  }
+}

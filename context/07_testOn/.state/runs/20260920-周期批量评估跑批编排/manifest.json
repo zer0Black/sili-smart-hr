@@ -1,0 +1,32 @@
+{
+  "name": "20260920-周期批量评估跑批编排",
+  "base_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn",
+  "draft_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\.state\\plans\\周期批量评估跑批编排\\1\\draft.json",
+  "cases_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试用例\\周期批量评估跑批编排-v1.md",
+  "run_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\.state\\runs\\20260920-周期批量评估跑批编排\\batch",
+  "report_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试记录\\20260920-周期批量评估跑批编排\\测试报告.md",
+  "evidence_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试记录\\20260920-周期批量评估跑批编排\\证据",
+  "report_hash": "9a3f44b7d32956323b7d87a1748919e6ac3645222033ae1675a619a8db430d9c",
+  "published_revision": 48,
+  "baseline_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\.state\\runs\\20260920-周期批量评估跑批编排\\report-baseline.md",
+  "feedback": [],
+  "executions": [
+    {
+      "name": "首次执行",
+      "evidence_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试记录\\20260920-周期批量评估跑批编排\\证据\\执行001-首次执行",
+      "scripts": []
+    }
+  ],
+  "scripts": [
+    {
+      "path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试脚本\\api\\api_list_test.py",
+      "sha256": "163bbfb1333cdae1daa90bb7946e58d8a970249923e9dc506326adb313a42056",
+      "existing": false
+    },
+    {
+      "path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试脚本\\api\\api_create_test.py",
+      "sha256": "480d41a461ec5a6ae29db949904dd1fa415d25cbac094a3bed3cd8a4e4c9d3ff",
+      "existing": false
+    }
+  ]
+}

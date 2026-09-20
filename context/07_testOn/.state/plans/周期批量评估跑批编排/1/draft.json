@@ -1,0 +1,9 @@
+{
+  "name": "周期批量评估跑批编排",
+  "base_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn",
+  "plan_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\.state\\plans\\周期批量评估跑批编排\\1\\plan.json",
+  "cases_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\测试用例\\周期批量评估跑批编排-v1.md",
+  "draft_path": "E:\\Agent-zone\\sili-smart-hr\\context\\07_testOn\\.state\\plans\\周期批量评估跑批编排\\1\\draft.json",
+  "plan_hash": "393e73531a33ddaa0263a29b3725e100f0b70a541ab656ba37465a168010b148",
+  "cases_hash": "81336e6c307f17d67a8bf897bcb83916a5d55b7e5d0586161062854cf2146bba"
+}

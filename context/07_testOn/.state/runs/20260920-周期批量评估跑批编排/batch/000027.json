@@ -1,0 +1,24 @@
+{
+  "revision": 27,
+  "created_at": "2026-09-20T15:38:56.752936+00:00",
+  "event": {
+    "type": "finish",
+    "case_id": "UI-CENTER",
+    "status": "passed",
+    "actual": "6 条 Playwright 用例全过：页面加载（tab/统计卡三字段/计划卡/列表列头/批次号等宽）；筛选与重置；发起评测弹窗（三类型卡片、另两态 disabled、时段默认回填上一周期 2026-09-07~09-13、空对象提交字段级校验、无对象取消直接关）；全员互斥（选全员后选肖文宇自动移除全员，已选 1 人）；提交流程（提交后弹窗关闭列表顶部出现进行中批次）；查看结果置灰（disabled+title=个人画像功能建设中）。6 张截图在 shots/",
+    "checks": {
+      "UI-STATS-PLAN": "passed",
+      "UI-FILTER": "passed",
+      "UI-LIST-FIELDS": "passed",
+      "UI-DIALOG-TYPE": "passed",
+      "UI-TARGET-MUTEX": "passed",
+      "UI-PERIOD-DEFAULT": "passed",
+      "UI-SUBMIT-FLOW": "passed",
+      "UI-CANCEL-CONFIRM": "passed",
+      "UI-VALIDATE": "passed"
+    },
+    "evidence": [
+      "证据/执行001-首次执行/UI-e2e-结果.txt"
+    ]
+  }
+}

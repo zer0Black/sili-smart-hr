@@ -1,0 +1,21 @@
+{
+  "revision": 45,
+  "created_at": "2026-09-20T15:40:27.066703+00:00",
+  "event": {
+    "type": "finish",
+    "case_id": "FLOW-BATCH-RUN",
+    "status": "passed",
+    "actual": "B202609202233003 全程实测：建批→batch-run 消费→全量拉取（298 条去重 237，跨页重复 61 条去重）→逐会话投递抽取→等待落库→逐人评估（李雪涛 140 会话 degraded、王莹 97 会话 success）→终态 success（2/2，covered=237，session_fail_ratio=29.54 落库）。RUN-IDEMPOTENT 补验：补跑批次同人同区间王莹 reused（档案幂等未调 LLM），无重复计分。全部检查点闭环",
+    "checks": {
+      "RUN-LIFECYCLE": "passed",
+      "RUN-PROGRESS": "passed",
+      "RUN-COVER": "passed",
+      "RUN-ALERT": "passed",
+      "RUN-IDEMPOTENT": "passed"
+    },
+    "evidence": [
+      "证据/执行001-首次执行/FLOW-BATCH-RUN-观察.md",
+      "证据/执行001-首次执行/FLOW-UPSTREAM-FAIL-观察.md"
+    ]
+  }
+}

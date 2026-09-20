@@ -1,0 +1,27 @@
+
+Running 8 tests using 2 workers
+
+  ok 2 assessment-center.spec.ts:17:7 › 评测运营中心 › 页面加载：统计卡/计划卡/tab/列表字段 (1.1s)
+  ok 3 assessment-center.spec.ts:41:7 › 评测运营中心 › 筛选与重置 (3.3s)
+  ok 4 assessment-center.spec.ts:60:7 › 评测运营中心 › 发起评测弹窗：类型卡片/互斥/时段回填/校验 (1.5s)
+  ok 5 assessment-center.spec.ts:84:7 › 评测运营中心 › 失败明细弹窗与查看结果置灰 (1.9s)
+  ok 6 assessment-center.spec.ts:108:7 › 评测运营中心 › 查看结果置灰与悬浮提示 (722ms)
+  ok 7 assessment-center.spec.ts:118:7 › 补充检查 › 全员互斥与提交流程 (3.5s)
+stats hits: 3 list hits: 3
+list polling gap ms: 20034
+  ok 1 assessment-polling.spec.ts:16:5 › 10 秒轮询 stats 与 batches (25.9s)
+beforeHide stats hits: 1
+  ok 8 assessment-polling.spec.ts:38:5 › 隐藏暂停/恢复即拉 (3.7s)
+
+  8 passed (31.0s)
+
+== 轮询口径补充 ==
+- 存在 running 批次：25 秒内 stats 命中 3 次、batches 命中 3 次，list polling gap 20015ms（两轮间隔，即 10s 一轮）
+- 无 running 批次：stats 仅首拉 1 次（轮询停止，POLL-STOP 证据）
+- 隐藏暂停/恢复即拉：headless 无法真实切换可见性，标记 needs_review 待人工复核
+- 全员互斥：选全员后再选具体人员自动移除全员，已选人数正确
+- 提交流程：提交后弹窗关闭，列表顶部出现进行中批次（截图 ui-submitted.png）
+
+== 页面侧口径发现（与 FLOW-SCHEDULED 同源）==
+- 人员搜索数据源是 users 接口 username（admin/肖文宇），搜「李」（token_name 真实人名）返回未找到匹配的人员
+- 评估对象选择与真实会话归属人（token_name 48 人）口径脱节

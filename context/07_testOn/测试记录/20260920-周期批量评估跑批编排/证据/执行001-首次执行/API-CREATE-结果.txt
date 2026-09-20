@@ -1,0 +1,12 @@
+ok-2p	HTTP=200	code=0	msg=ok	batch_no=B202609202233001 status=running total=2 id=2101681083685801984
+end-today	HTTP=200	code=1602	msg=batch period invalid	
+end-future	HTTP=200	code=1602	msg=batch period invalid	
+end-before-start	HTTP=200	code=1602	msg=batch period invalid	
+empty-staffs	HTTP=200	code=1603	msg=batch target invalid	
+no-name	HTTP=200	code=1603	msg=batch target invalid	
+bad-date	HTTP=200	code=1602	msg=batch period invalid	
+bad-mode	HTTP=200	code=1400	msg=bad request	
+dup-names	HTTP=200	code=0	msg=ok	batch_no=B202609202233002 status=running total=2 id=2101681084205895681
+equal-days	HTTP=200	code=0	msg=ok	batch_no=B202609202233003 status=running total=2 id=2101681084231061506
+blank-name	HTTP=200	code=1603	msg=batch target invalid	
+miss-end	HTTP=200	code=1400	msg=bad request	

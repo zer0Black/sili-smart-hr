@@ -1,0 +1,17 @@
+default	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+trig-sch	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+trig-manual	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+trig-bad	HTTP=200	code=1400	null
+st-running	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+st-success	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+st-partial	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+st-failed	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+st-bad	HTTP=200	code=1400	null
+size-101	HTTP=200	code=0	total=0 page=1 page_size=100 rows=0
+size-0	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+size-100	HTTP=200	code=0	total=0 page=1 page_size=100 rows=0
+size-20	HTTP=200	code=0	total=0 page=1 page_size=20 rows=0
+page-0	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+page-bad	HTTP=200	code=0	total=0 page=1 page_size=10 rows=0
+noauth	HTTP=401	code=1003	null
+DESC_ORDER	 PASS (空)

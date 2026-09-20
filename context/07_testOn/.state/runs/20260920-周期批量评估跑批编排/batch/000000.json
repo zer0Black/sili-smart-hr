@@ -1,0 +1,658 @@
+{
+  "schema_version": 1,
+  "plan": {
+    "plan_id": "周期批量评估跑批编排",
+    "revision": "1",
+    "source_version": "specs P2_ASM_001 v2.1（2026-09-19）+ 接口设计 v1.9（2026-09-20）+ 当前 main 分支代码（56d3a6b）",
+    "scope": [
+      "评测运营中心页（批次列表/统计卡/计划卡）",
+      "发起评测弹窗（手动定向分析）",
+      "失败明细弹窗与补跑",
+      "周期跑批调度（batch-tick）",
+      "跑批编排（batch-run 全流程）",
+      "失败兜底（重试/告警/停滞判定）"
+    ],
+    "changes": [
+      "P2_ASM_001 首次系统测试：前后端全链路与引擎编排均为本轮验证对象",
+      "已有 130+ 个 Go 单测为既有资产，本轮在真实环境补 API 层与页面层证据"
+    ],
+    "out_of_scope": [
+      "F7 主动测试评估运营（AI 管理能力/九型 tab，未开发）",
+      "F9 个人画像与 F10 看板（查看结果按钮置灰属预期）",
+      "F11 工作台告警消费界面（本功能只产信号）",
+      "告警阈值与重试次数的在线配置（本期为代码常量）",
+      "批次取消/作废/删除（specs 明确不提供）"
+    ],
+    "budget": {
+      "max_attempts_per_case": 3,
+      "max_total_attempts": 30
+    },
+    "cases": [
+      {
+        "id": "API-LIST",
+        "scenario": "批次列表查询与筛选",
+        "risk": "high",
+        "layer": "api",
+        "mode": "data",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "后端与 Redis 已启动，存在至少一个已登录账号",
+          "库内已有批次记录（可由本用例前置的 B1 创建产生）"
+        ],
+        "steps": [
+          "以合法 token 调 GET /api/assessment/batches 默认分页",
+          "分别传 trigger_type=scheduled / manual / 非法值",
+          "分别传 status=running / success / partial_failed / failed / 非法值",
+          "传 page 与 page_size 边界值（page_size=10/20/50/100/101/0）",
+          "无 token 调一次"
+        ],
+        "data": [
+          {
+            "id": "default",
+            "params": ""
+          },
+          {
+            "id": "trig-sch",
+            "params": "trigger_type=scheduled"
+          },
+          {
+            "id": "trig-bad",
+            "params": "trigger_type=xyz"
+          },
+          {
+            "id": "st-bad",
+            "params": "status=xyz"
+          },
+          {
+            "id": "size-101",
+            "params": "page_size=101"
+          },
+          {
+            "id": "size-0",
+            "params": "page_size=0"
+          },
+          {
+            "id": "noauth",
+            "params": "无token"
+          }
+        ],
+        "checks": [
+          {
+            "id": "LIST-OK",
+            "source": "03 §3.A1：响应 {code:0, data:{list,total,page,page_size}}，按触发时间倒序",
+            "expected": "默认查询返回 code=0，list 内 triggered_at 倒序，字段含 id(string)/batch_no/trigger_type/status/stalled 等"
+          },
+          {
+            "id": "LIST-FILTER",
+            "source": "03 §3.A1：trigger_type/status 空串=全部，枚举外返回 1400",
+            "expected": "合法枚举值正常过滤；非法枚举返回 code=1400"
+          },
+          {
+            "id": "LIST-PAGE",
+            "source": "03 §3.A1：page_size 实现 1-100 宽松超集，>100 钳 100，≤0 兜底 10",
+            "expected": "page_size=101 实际按 100 返回（响应 page_size=100）；page_size=0 按 10 返回"
+          },
+          {
+            "id": "LIST-AUTH",
+            "source": "03 §2.1：无 token 返 HTTP 401 + code 1003",
+            "expected": "无 token 请求返回 HTTP 401 与 code=1003"
+          }
+        ]
+      },
+      {
+        "id": "API-STATS-PLAN",
+        "scenario": "跑批态势统计与计划卡",
+        "risk": "high",
+        "layer": "api",
+        "mode": "data",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "评估周期配置存在（首启 seed 单例）",
+          "维度已 seed（对话分析 8 维）"
+        ],
+        "steps": [
+          "调 GET /api/assessment/batches/stats",
+          "调 GET /api/assessment/batches/plan",
+          "核对 stats 三项口径与库内批次数据的一致性",
+          "核对 plan 的 next_trigger_at 与周期配置推算结果"
+        ],
+        "checks": [
+          {
+            "id": "STATS-FIELDS",
+            "source": "03 §3.A2：eval_count/evaluated_person_count/running_batch_count",
+            "expected": "返回 code=0 与三字段；eval_count 等于本期跑批间隔内批次数（定时+手动）；running_batch_count 剔除停滞批次"
+          },
+          {
+            "id": "PLAN-FIELDS",
+            "source": "03 §3.A3：next_trigger_at/period/target_mode/target_names/target_count/dimension_base_count/dimension_upper_count",
+            "expected": "next_trigger_at 为 yyyy-MM-dd HH:mm 且晚于当前时刻；dimension_base_count+upper_count 与当前启用维度数一致"
+          },
+          {
+            "id": "PLAN-ALL-DEGRADE",
+            "source": "03 §3.A3：all 模式上游不可达时 target_count 返 0 不报错",
+            "expected": "集成密钥未配置或上游不可达时 plan 仍 code=0，target_count=0"
+          }
+        ]
+      },
+      {
+        "id": "API-TARGETS-FAILURES",
+        "scenario": "批次名单与失败明细查询",
+        "risk": "medium",
+        "layer": "api",
+        "mode": "data",
+        "depends_on": [
+          "API-CREATE"
+        ],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "已存在至少一个批次（API-CREATE 产生）"
+        ],
+        "steps": [
+          "用已存在批次 id 调 GET /api/assessment/batches/targets",
+          "用同一 id 调 GET /api/assessment/batches/failures",
+          "用不存在的批次 id（如 999）调两接口",
+          "不传 batch_id 调两接口"
+        ],
+        "checks": [
+          {
+            "id": "TGT-OK",
+            "source": "03 §3.A4：返回 names 完整名单与 period_start/period_end",
+            "expected": "返回 code=0，names 与创建时名单一致，时段与创建参数一致"
+          },
+          {
+            "id": "FAIL-OK",
+            "source": "03 §3.A5：failed_count 与 list 条数一致，list 含 token_name 与 error_summary",
+            "expected": "返回 code=0；批次未失败时 failed_count=0 且 list 为空数组"
+          },
+          {
+            "id": "TGT-404",
+            "source": "03 §3.A4/§5：批次不存在返 1601",
+            "expected": "不存在批次返回 code=1601"
+          },
+          {
+            "id": "TGT-BADREQ",
+            "source": "03 §3.A4/§5：batch_id 缺失或非法返 1400",
+            "expected": "缺 batch_id 返回 code=1400"
+          }
+        ]
+      },
+      {
+        "id": "API-CREATE",
+        "scenario": "发起手动定向分析（B1）",
+        "risk": "high",
+        "layer": "api",
+        "mode": "data",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "集成密钥已配置（specified 模式建批与入队依赖）",
+          "Redis 可用（batch-run 入队依赖）"
+        ],
+        "steps": [
+          "提交合法 specified 请求（2 人、历史时段）",
+          "提交终点为今天/未来的请求",
+          "提交终点早于起点的请求",
+          "提交 specified 空 staffs、staffs 项缺 staff_name、日期格式非法、target_mode 非法",
+          "提交同名重复人员请求与单日时段请求",
+          "提交 all 模式请求（若集成密钥可用）"
+        ],
+        "data": [
+          {
+            "id": "ok-2p",
+            "body": "specified+2人+上周"
+          },
+          {
+            "id": "end-today",
+            "body": "period_end=今天"
+          },
+          {
+            "id": "end-before-start",
+            "body": "end<start"
+          },
+          {
+            "id": "empty-staffs",
+            "body": "specified+[]"
+          },
+          {
+            "id": "no-name",
+            "body": "staffs=[{staff_id:x}]"
+          },
+          {
+            "id": "bad-date",
+            "body": "period_start=2026/09/01"
+          },
+          {
+            "id": "bad-mode",
+            "body": "target_mode=xyz"
+          },
+          {
+            "id": "dup-names",
+            "body": "同名2人重复提交"
+          },
+          {
+            "id": "equal-days",
+            "body": "start=end=昨天"
+          }
+        ],
+        "checks": [
+          {
+            "id": "CREATE-OK",
+            "source": "03 §3.B1：返回 id(string)/batch_no/status=running/total_count=去重人数",
+            "expected": "code=0；batch_no 形如 B+yyyyMMddHHmm+3位序号；total_count 按去重后人数；随后列表顶部出现该 running 批次"
+          },
+          {
+            "id": "CREATE-PERIOD",
+            "source": "specs §4.2.4 规则2：终点不含今天及以后",
+            "expected": "终点为今天/未来或早于起点返回 code=1602"
+          },
+          {
+            "id": "CREATE-TARGET",
+            "source": "03 §3.B1：1603 场景（空人员/缺 staff_name）",
+            "expected": "specified 空人员、缺 staff_name 返回 code=1603"
+          },
+          {
+            "id": "CREATE-BADREQ",
+            "source": "03 §3.B1：target_mode 非枚举、字段缺失返 1400；日期格式非法返 1602",
+            "expected": "target_mode=xyz 返回 1400；日期格式非法返回 1602"
+          },
+          {
+            "id": "CREATE-DEDUP",
+            "source": "03 §4.8：staff_name 去重键，同名同人收敛",
+            "expected": "重复同名提交后 total_count 只计 1 人，人员明细无重复行"
+          },
+          {
+            "id": "CREATE-ALL",
+            "source": "03 §1.5：all 模式建批返回骨架 total_count=0，密钥探测失败返 1305 不落批次",
+            "expected": "all 模式成功时响应 total_count=0（骨架），列表出现该批次，稍后总人数被异步展开回填；密钥缺失时返回 1305 且列表无新批次"
+          }
+        ]
+      },
+      {
+        "id": "FLOW-BATCH-RUN",
+        "scenario": "手动批次端到端跑批闭环",
+        "risk": "high",
+        "layer": "api",
+        "mode": "agent",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号（运营人员）"
+        ],
+        "preconditions": [
+          "Redis + 后端已启动",
+          "集成密钥指向真实上游",
+          "大模型配置已排他启用一个可用模型",
+          "选定 1-2 名真实存在会话数据的人员作为评估对象"
+        ],
+        "steps": [
+          "通过 B1 接口发起 specified 批次（选 1-2 人、近一周历史时段）",
+          "轮询 A1 列表观察该批次状态与进度推进",
+          "批次到达终态后核对 evaluated_count/total_count/covered_session_count/failed_count",
+          "核对失败明细接口与人员终态分布",
+          "再次对同批同人同时段发起第二个批次（幂等收敛验证）"
+        ],
+        "checks": [
+          {
+            "id": "RUN-LIFECYCLE",
+            "source": "specs §6.1/§6.2：running → success/partial_failed/failed",
+            "expected": "批次从 running 推进到终态；终态与失败占比一致（≤10% success，>10% 且 <100% partial_failed，=100% failed）"
+          },
+          {
+            "id": "RUN-PROGRESS",
+            "source": "specs §4.1.4 规则2：进度=终态人数/总人数只增不减",
+            "expected": "轮询期间 progress_percent 单调不减"
+          },
+          {
+            "id": "RUN-COVER",
+            "source": "specs §5.2.4 规则3：覆盖会话数=成功侧各人会话数之和",
+            "expected": "covered_session_count ≤ total_session_count，失败人员会话不计入"
+          },
+          {
+            "id": "RUN-ALERT",
+            "source": "specs §5.2.4 规则4：超阈批次至多一条告警，assessment_alerts 可查",
+            "expected": "失败占比 >10% 时库内 assessment_alerts 出现该批次一条记录；≤10% 时无记录"
+          },
+          {
+            "id": "RUN-IDEMPOTENT",
+            "source": "specs §4.1.4 规则3：同人同区间重复评估收敛同一评分",
+            "expected": "第二批次同人评估大概率 reused 终态，评分结果无重复计分行"
+          }
+        ]
+      },
+      {
+        "id": "FLOW-SCHEDULED",
+        "scenario": "定时批次周期触发",
+        "risk": "high",
+        "layer": "api",
+        "mode": "agent",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "系统调度（Asynq scheduler）"
+        ],
+        "preconditions": [
+          "后端运行中，scheduler 每分钟投递 batch-tick",
+          "评估周期配置可修改（系统参数页或直接改库）"
+        ],
+        "steps": [
+          "把周期改为 daily、触发时刻改为 2-3 分钟后的时点",
+          "等待 tick 消费命中触发",
+          "观察批次列表出现 scheduled 批次与周期窗口正确性",
+          "把触发时刻再改为下一分钟验证宽限窗防重复建批",
+          "恢复原周期配置"
+        ],
+        "checks": [
+          {
+            "id": "SCHED-TRIGGER",
+            "source": "specs §5.1.4 规则4 + 03 §4.3：触发点 2 分钟宽限窗 + 本周期已建批判定防重复",
+            "expected": "命中触发点后自动创建 scheduled 批次且仅一条；宽限窗内剩余 tick 不会重复建批；daily 批次评估时段为当日"
+          },
+          {
+            "id": "SCHED-WINDOW",
+            "source": "specs §5.1.4 规则1：日→当日、周→本周一至本周日、月→本月1日至月末",
+            "expected": "定时批次评估时段与周期窗口推算口径一致（以 daily 实测，weekly/monthly 依赖单测证据）"
+          },
+          {
+            "id": "SCHED-CONFIG-EFFECT",
+            "source": "specs §4.1.4 规则4：配置变更下次触发生效",
+            "expected": "修改周期配置后，下一次触发按新配置执行，进行中批次不受影响"
+          }
+        ]
+      },
+      {
+        "id": "FLOW-UPSTREAM-FAIL",
+        "scenario": "上游不可用时整批失败兜底",
+        "risk": "high",
+        "layer": "api",
+        "mode": "agent",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号（运营人员）"
+        ],
+        "preconditions": [
+          "可临时制造会话列表上游不可用（停用集成密钥或指向不可达地址）",
+          "存在一个已配置好的评估环境"
+        ],
+        "steps": [
+          "将集成密钥改为无效值（或指向不可达上游）",
+          "发起一个 specified 小批次",
+          "观察批次状态推进",
+          "打开失败明细核对全员失败与批次级原因",
+          "恢复集成密钥，从失败明细按失败对象重新发起补跑"
+        ],
+        "checks": [
+          {
+            "id": "FAIL-WHOLE",
+            "source": "specs §5.2.5 第一行：上游不可用整批落 failed，全员计入失败（N/N）",
+            "expected": "批次终态 failed，failed_count=total_count，列表失败人数显示 N/N"
+          },
+          {
+            "id": "FAIL-REASON",
+            "source": "specs §4.3.2：批次级异常时 error_summary 为批次级失败原因",
+            "expected": "失败明细中每个失败人员的 error_summary 为会话列表拉取失败类原因（截断至 255 字符内）"
+          },
+          {
+            "id": "FAIL-RERUN",
+            "source": "specs §5.3.2 步骤5：失败明细按失败对象重新发起补跑",
+            "expected": "补跑批次成功执行并收敛，原失败批次状态不变（终态不可逆）"
+          }
+        ]
+      },
+      {
+        "id": "UI-CENTER",
+        "scenario": "评测运营中心页面功能",
+        "risk": "high",
+        "layer": "browser",
+        "mode": "agent",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "前端 dev（localhost:3000）与后端已启动",
+          "库内已有多种状态的批次数据（running/终态/含失败）"
+        ],
+        "steps": [
+          "登录后从顶栏进入评估运营→评测运营中心",
+          "核对统计卡三数字与计划卡四字段渲染",
+          "使用筛选与查询/重置按钮",
+          "核对列表字段（批次号等宽、触发方式标签、对象摘要、时段、状态标签、进度条、失败人数警示色、触发时间格式）",
+          "发起评测：弹窗三类型卡片（对话分析可选、另两态置灰点击提示）、评估对象搜索与全员互斥、时段默认回填与禁选今天",
+          "提交后弹窗关闭、筛选重置回第一页、列表顶部出现进行中批次",
+          "取消时二次确认；表单校验失败逐项标红不弹 toast"
+        ],
+        "checks": [
+          {
+            "id": "UI-STATS-PLAN",
+            "source": "specs §4.1.2 A/B：三统计数字与计划卡字段渲染",
+            "expected": "统计卡与计划卡正常渲染，下次执行高亮，周期长度/评估对象/评估维度正确展示"
+          },
+          {
+            "id": "UI-FILTER",
+            "source": "specs §4.1.3：查询按筛选刷新回第一页，重置清空条件",
+            "expected": "筛选后列表刷新回到第一页；重置后条件清空并刷新"
+          },
+          {
+            "id": "UI-LIST-FIELDS",
+            "source": "specs §4.1.2 D：批次列表显示字段",
+            "expected": "批次号等宽字体；触发方式/状态为标签；对象超 2 人显示前两名等 N 人（悬浮全名单）；进度条仅进行中显示；失败人数非零警示色；时间为 yyyy-MM-dd HH:mm"
+          },
+          {
+            "id": "UI-DIALOG-TYPE",
+            "source": "specs §4.2.2：三类型卡片，另两态置灰点击提示后续开放",
+            "expected": "AI 管理能力与九型人格卡片置灰，点击 toast 提示后续开放"
+          },
+          {
+            "id": "UI-TARGET-MUTEX",
+            "source": "specs §4.2.4 规则1：全员与指定人员互斥",
+            "expected": "选全员后其余清空独占；再选具体人员自动移除全员"
+          },
+          {
+            "id": "UI-PERIOD-DEFAULT",
+            "source": "specs §4.2.4 规则2：默认回填上一完整周期窗口，结束日期禁选今天及未来",
+            "expected": "弹窗打开时段已回填上一周期窗口；结束日期选择器今天及未来禁用"
+          },
+          {
+            "id": "UI-SUBMIT-FLOW",
+            "source": "specs §4.2.3：提交成功关弹窗、重置筛选回第一页、列表顶部出现进行中批次",
+            "expected": "提交后弹窗关闭，列表刷新且顶部出现新 running 批次"
+          },
+          {
+            "id": "UI-CANCEL-CONFIRM",
+            "source": "specs §4.2.3：取消时对象非空先二次确认；提交中不可关闭",
+            "expected": "已选人员时取消弹二次确认；提交进行中关闭入口不可用"
+          },
+          {
+            "id": "UI-VALIDATE",
+            "source": "specs §4.2.5：校验失败逐项标红，字段下方提示，不弹 toast",
+            "expected": "清空必填项提交后字段标红，错误文案在字段下方"
+          }
+        ]
+      },
+      {
+        "id": "UI-FAILURE-RERUN",
+        "scenario": "失败明细弹窗与补跑、停滞批次重新发起",
+        "risk": "high",
+        "layer": "browser",
+        "mode": "agent",
+        "depends_on": [
+          "UI-CENTER"
+        ],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "存在一个失败人数非零的批次（可由 FLOW-UPSTREAM-FAIL 产生）",
+          "存在一个停滞批次（库内手工构造：running 且触发时间早于停滞边界）"
+        ],
+        "steps": [
+          "在失败人数非零批次行点失败明细",
+          "核对弹窗清单字段与只读快照",
+          "点按失败对象重新发起，核对预填的失败人员与原时段",
+          "在停滞批次行点重新发起，核对预填完整名单与时段（止日为今天及以后时钳位到昨天）",
+          "核对失败明细入口与重新发起入口的可见性条件"
+        ],
+        "checks": [
+          {
+            "id": "UIR-FAIL-DIALOG",
+            "source": "specs §4.3.2/§4.3.4：姓名与失败原因摘要只读快照，无分页筛选",
+            "expected": "弹窗列出失败人员姓名与原因摘要；无重试/删除等操作按钮；条数与批次失败人数一致"
+          },
+          {
+            "id": "UIR-FAIL-PREFILL",
+            "source": "specs §4.3.3：带入本批次评估时段与全部失败人员",
+            "expected": "发起弹窗打开时评估对象为失败人员、时段为原批次时段"
+          },
+          {
+            "id": "UIR-STALL-PREFILL",
+            "source": "specs §4.1.3：停滞且失败人数为零行内显示重新发起，预填完整名单与时段，止日钳位昨天",
+            "expected": "停滞批次行显示已停滞标识；失败人数为零时显示重新发起、非零时只显示失败明细；预填名单为完整名单（非摘要）"
+          },
+          {
+            "id": "UIR-VIEW-DISABLED",
+            "source": "specs §4.1.3：F9 建成前查看结果置灰，悬浮提示建设中",
+            "expected": "查看结果按钮置灰不可点，悬浮提示个人画像功能建设中"
+          }
+        ]
+      },
+      {
+        "id": "UI-POLLING",
+        "scenario": "进行中批次轮询与页面可见性",
+        "risk": "medium",
+        "layer": "browser",
+        "mode": "agent",
+        "depends_on": [
+          "UI-CENTER"
+        ],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "存在一个进行中的长跑批次（真实发起或构造）",
+          "浏览器 DevTools 网络面板可用"
+        ],
+        "steps": [
+          "页面停留时观察网络请求：stats 与 batches 是否 10 秒一轮",
+          "切换浏览器标签页隐藏后再切回",
+          "观察隐藏期间是否暂停轮询、恢复时是否立即拉一次",
+          "批次全终态后观察轮询是否停止",
+          "用筛选把进行中批次挤出当前页（筛 success），核对轮询是否仍以统计卡为探针继续"
+        ],
+        "checks": [
+          {
+            "id": "POLL-10S",
+            "source": "specs §4.1.3 后台自动流程：10 秒间隔轮询列表与统计卡",
+            "expected": "存在 running 批次时每约 10 秒发出 stats 与 batches 请求"
+          },
+          {
+            "id": "POLL-VISIBILITY",
+            "source": "specs §4.1.3：页面隐藏暂停，恢复可见立即拉一次",
+            "expected": "隐藏期间无轮询请求；切回后立即触发一次 stats 与列表请求"
+          },
+          {
+            "id": "POLL-STOP",
+            "source": "specs §4.1.3：所有非停滞批次离开进行中后停止轮询",
+            "expected": "批次终态后轮询停止（不再发出周期请求）"
+          },
+          {
+            "id": "POLL-PROBE",
+            "source": "specs §4.1.3：轮询开关以统计卡 running 计数为探针，不受翻页筛选影响",
+            "expected": "筛选 success 无进行中行时，若统计卡仍报进行中批次则轮询继续"
+          }
+        ]
+      },
+      {
+        "id": "UNIT-REGRESSION",
+        "scenario": "既有自动化资产回归确认",
+        "risk": "medium",
+        "layer": "unit",
+        "mode": "script",
+        "depends_on": [],
+        "asset_refs": [],
+        "roles": [],
+        "preconditions": [
+          "Go 工具链可用，前端 pnpm 环境可用（node ≥20）"
+        ],
+        "steps": [
+          "hr-backend 下 go test ./...",
+          "hr-frontend 下 pnpm test 与 pnpm type-check",
+          "记录汇总结果作为证据"
+        ],
+        "checks": [
+          {
+            "id": "UNIT-GO",
+            "source": "项目测试约定：后端全量测试通过",
+            "expected": "go test ./... 全部 ok，无失败用例"
+          },
+          {
+            "id": "UNIT-FE",
+            "source": "hr-frontend/CLAUDE.md：type-check 与 vitest 必须通过",
+            "expected": "pnpm type-check 零错误；pnpm test 全部通过"
+          }
+        ]
+      },
+      {
+        "id": "UI-EXPLORE",
+        "scenario": "页面体验探索",
+        "risk": "low",
+        "layer": "exploration",
+        "mode": "agent",
+        "depends_on": [
+          "UI-CENTER"
+        ],
+        "asset_refs": [],
+        "roles": [
+          "已登录平台账号"
+        ],
+        "preconditions": [
+          "评测运营中心页可用，具备多状态批次数据"
+        ],
+        "steps": [
+          "浏览页面整体布局与信息层级",
+          "检查空状态文案（无批次数据的库）",
+          "检查失败态与刷新入口（停后端模拟）",
+          "长时间运行页面的轮询对交互的影响",
+          "记录体验疑点截图"
+        ],
+        "checks": [
+          {
+            "id": "EXP-EMPTY",
+            "source": "specs §4.1.5：空状态引导文案",
+            "expected": "空列表显示「暂无评测记录，点击右上角发起评测或等待周期自动跑批」"
+          },
+          {
+            "id": "EXP-LOADING",
+            "source": "specs §4.1.5：加载完成前显示占位骨架；卡片失败展示刷新入口",
+            "expected": "加载中有骨架占位；停后端后卡片展示失败态与刷新按钮"
+          },
+          {
+            "id": "EXP-GENERAL",
+            "source": "探索章程：体验疑点交人判断",
+            "expected": "记录布局、反馈、文案与交互困难点，附截图，交测试人员判断"
+          }
+        ]
+      }
+    ]
+  },
+  "build_id": "main@56d3a6b（后端 go run + SMART_API_BASE_URL=10.10.10.36:3000 + SQLite）+ 前端 rsbuild dev 3000",
+  "environment": "本机开发环境",
+  "created_at": "2026-09-20T14:30:34.242955+00:00"
+}

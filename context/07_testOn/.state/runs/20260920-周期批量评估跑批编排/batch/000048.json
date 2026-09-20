@@ -1,0 +1,19 @@
+{
+  "revision": 48,
+  "created_at": "2026-09-20T15:40:46.360620+00:00",
+  "event": {
+    "type": "finish",
+    "case_id": "API-STATS-PLAN",
+    "status": "passed",
+    "actual": "stats：eval_count 与库内批次一致、running_batch_count 剔除终态正确；plan：next_trigger_at 周日推算正确、dimension 4+4、target_count=2。PLAN-ALL-DEGRADE 补验：密钥无效时 plan 仍 code=0 且 target_count 降级 0，恢复后回到 2，降级分支符合 03 §3.A3",
+    "checks": {
+      "STATS-FIELDS": "passed",
+      "PLAN-FIELDS": "passed",
+      "PLAN-ALL-DEGRADE": "passed"
+    },
+    "evidence": [
+      "证据/执行001-首次执行/API-STATS-PLAN-结果.txt",
+      "证据/执行001-首次执行/API-STATS-PLAN-补验.txt"
+    ]
+  }
+}

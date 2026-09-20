@@ -1,0 +1,4 @@
+== stats ==
+{"code":0,"message":"ok","data":{"eval_count":3,"evaluated_person_count":0,"running_batch_count":1}}
+== plan ==
+{"code":0,"message":"ok","data":{"next_trigger_at":"2026-09-20 23:00","period":"weekly","target_mode":"all","target_brief":[],"target_names":[],"target_count":2,"dimension_base_count":4,"dimension_upper_count":4}}

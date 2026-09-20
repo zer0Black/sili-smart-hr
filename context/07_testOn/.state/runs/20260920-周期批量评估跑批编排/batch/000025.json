@@ -1,0 +1,14 @@
+{
+  "revision": 25,
+  "created_at": "2026-09-20T15:30:23.501627+00:00",
+  "event": {
+    "type": "prepare",
+    "case_id": "UI-CENTER",
+    "build_id": "main@56d3a6b（后端 go run + SMART_API_BASE_URL=10.10.10.36:3000 + SQLite）+ 前端 rsbuild dev 3000",
+    "evidence": [
+      "证据/执行001-首次执行/UI-e2e-结果.txt"
+    ],
+    "asset_revision": "e2e/assessment-center.spec.ts",
+    "checkpoint": "前端 dev 经 [::1]:3000 可达（3000 IPv4 被另一项目占用），admin 登录正常，库内已有 success/failed/running 多状态批次"
+  }
+}

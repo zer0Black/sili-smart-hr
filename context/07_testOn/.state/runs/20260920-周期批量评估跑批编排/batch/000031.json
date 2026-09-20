@@ -1,0 +1,14 @@
+{
+  "revision": 31,
+  "created_at": "2026-09-20T15:39:10.881811+00:00",
+  "event": {
+    "type": "prepare",
+    "case_id": "UI-POLLING",
+    "build_id": "main@56d3a6b（后端 go run + SMART_API_BASE_URL=10.10.10.36:3000 + SQLite）+ 前端 rsbuild dev 3000",
+    "evidence": [
+      "证据/执行001-首次执行/UI-e2e-结果.txt"
+    ],
+    "asset_revision": "e2e/assessment-polling.spec.ts",
+    "checkpoint": "发起 B202609202329001（前日窗口单人）构造 running 批次供轮询观察"
+  }
+}

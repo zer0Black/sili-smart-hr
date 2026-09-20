@@ -1,0 +1,14 @@
+{
+  "revision": 2,
+  "created_at": "2026-09-20T14:31:58.144767+00:00",
+  "event": {
+    "type": "prepare",
+    "case_id": "API-LIST",
+    "build_id": "main@56d3a6b（后端 go run + SMART_API_BASE_URL=10.10.10.36:3000 + SQLite）+ 前端 rsbuild dev 3000",
+    "evidence": [
+      "证据/执行001-首次执行/API-LIST-准备.txt"
+    ],
+    "asset_revision": "api_list_test.py@sha256:163bbfb1",
+    "checkpoint": "admin 账号已重置为测试密码并登录拿 token；后端 8080 health ok；当前库内批次 0 条（空列表即预期之一）"
+  }
+}

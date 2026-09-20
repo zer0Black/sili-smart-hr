@@ -1,0 +1,2 @@
+$ tsc --noEmit
+typecheck_exit=0
