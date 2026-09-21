@@ -1,4 +1,0 @@
-密钥无效时 GET /api/assessment/batches/plan：
-{"code":0,"message":"ok","data":{"next_trigger_at":"2026-09-27 23:00","period":"weekly","target_mode":"all","target_brief":[],"target_names":[],"target_count":0,"dimension_base_count":4,"dimension_upper_count":4}}
-恢复密钥后 target_count=2。
-结论：PLAN-ALL-DEGRADE 通过——上游不可达时 plan 仍 code=0 且 target_count 降级返 0 不报错。

@@ -1,8 +1,0 @@
-{
-  "revision": 14,
-  "created_at": "2026-09-20T14:40:52.994795+00:00",
-  "event": {
-    "type": "start",
-    "case_id": "FLOW-BATCH-RUN"
-  }
-}

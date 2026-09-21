@@ -1,9 +1,0 @@
-{
-  "revision": 1,
-  "created_at": "2026-09-20T14:30:50.612478+00:00",
-  "event": {
-    "type": "approve_plan",
-    "human_ref": "用户 2026-09-20 会话消息：'1'（确认用例，随后 '1和2都可以' 授权真实上游执行与临时改坏集成密钥）",
-    "note": "12 条用例 v1 确认；FLOW-BATCH-RUN 用真实上游与真实 LLM；FLOW-UPSTREAM-FAIL 允许临时改坏集成密钥后恢复"
-  }
-}

@@ -1,6 +1,0 @@
-时间：2026-09-20 22:30 前后
-环境：后端 go run main@56d3a6b 监听 8080（SMART_API_BASE_URL=http://10.10.10.36:3000），SQLite data/sili-smart-hr.db，Redis docker sili-redis 6379
-账号：admin（本地库唯一账号，密码已重置为测试值 Qa@Test2026，bcrypt 直改库属测试环境数据准备）
-健康探测：GET /health => {"status":"ok"}；POST /api/system/health-check => database connected / integration reachable / llm reachable / redis connected
-库内现状：assessment_batches 0 条，assessment_configs weekly/23:00/all，dimensions 8 条（4 base + 4 upper），llm_configs 已排他启用 QA测试模型(glm-5.3-flash @ 10.10.10.36:3000 anthropic 协议)
-上游：会话日志 88462 条，近一周活跃 token_name 见李雪涛/王伟力/王莹/李玲玉/田晓旭/周小鑫/丹诗豪
