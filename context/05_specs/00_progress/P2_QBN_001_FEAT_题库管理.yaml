@@ -1,0 +1,43 @@
+feature_id: "P2_QBN_001_FEAT_题库管理"          # [阶段]_[模块代号]_[序号]_[类型]_[功能简述]
+module_code: "QBN"                                # 模块代号（2-4位大写字母）：题库域，AI 管理题生成/量表引入/批量审核/题库维护
+phase: "P2"                                       # 阶段：P0/P1/P2/P3/P4
+type: "FEAT"                                      # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
+root_base: null                                   # 变更根节点（原始需求的feature_id），首次创建为null
+base_on: null                                     # 直接基线 feature_id，新建时为null
+change_group: null                                # 跨模块变更组，单模块变更时为null
+change_history: []                                # 历史基线链：[root_base → ... → base_on]，当前节点由feature_id表示
+dependencies:                                     # 直接依赖的feature_id列表
+  - "P1_ACC_001_FEAT_登录与用户管理"               # 本页挂 _authenticated 顶栏，依赖 account 账号模型与登录鉴权基建
+  - "P2_TECH_001_TECH_LLM调用底座"                 # AI 管理题生成走 LLM 调用底座，模型与密钥配置经 P2_SYS_001 间接依赖
+  - "P2_DIM_001_FEAT_维度与权重配置"                # 生成页维度选项与题目标签取自维度配置（复用 dimensions/tree），量表引入事务 ensure ENNEAGRAM 型别维度写 dimensions 表（specs 7.2 数据依赖）
+feature_name: "题库管理"
+creator: "lixuetao"
+created_at: "2026-09-21T15:03:52Z"
+updated_at: "2026-09-23T00:00:00Z"
+stages:
+  specs:
+    status: "completed"
+    started_at: null
+    completed_at: "2026-09-23T00:00:00Z"
+    check_owner: "lixuetao"   # 各阶段通过检查的人
+  interface:
+    status: "in_progress"
+    started_at: "2026-09-23T00:00:00Z"
+    completed_at: null
+    check_owner: null
+  dev_plan:
+    status: "pending"
+    started_at: null
+    completed_at: null
+    check_owner: null
+  dev_exec:
+    status: "pending"
+    started_at: null
+    completed_at: null
+    check_owner: null
+rollback_history: []
+  # - timestamp: "2026-01-01T00:00:00Z"
+  #   from_stage: "dev_exec"
+  #   to_stage: "specs"
+  #   reason: "用户重新执行jero3/产品Owner/业务feature生成"
+  #   type: "rollback"            # rollback（回滚）或 skip（跳过）
