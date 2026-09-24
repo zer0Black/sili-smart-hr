@@ -87,6 +87,10 @@ func InitializeApp(configPath string) (*App, error) {
 		// 投递适配器 + Orchestrator + 批次 handler 经参数注入 NewMux。
 		repository.NewAssessmentBatchRepository,
 		repository.NewAssessmentAlertRepository,
+		// 题库域：question 仓储 + service + handler（03 §3.1-§3.4/§3.6 questions 五接口）。
+		repository.NewQuestionRepository,
+		service.NewQuestionService,
+		handler.NewQuestionHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,

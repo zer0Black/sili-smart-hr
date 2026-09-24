@@ -31,6 +31,7 @@ func NewRouter(
 	assessmentBatchHandler *handler.AssessmentBatchHandler,
 	llmConfigHandler *handler.LLMConfigHandler,
 	integrationSecretHandler *handler.IntegrationSecretHandler,
+	questionHandler *handler.QuestionHandler,
 	rdb *redis.Client,
 ) *gin.Engine {
 	r := gin.New()
@@ -118,6 +119,13 @@ func NewRouter(
 	auth.GET("/assessment/batches/targets", assessmentBatchHandler.Targets)
 	auth.GET("/assessment/batches/failures", assessmentBatchHandler.Failures)
 	auth.POST("/assessment/batches/create", assessmentBatchHandler.Create)
+	// 题库域：五接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵五行 / BR1）。
+	// /questions/:id 参数路由与 /questions 静态路由不冲突（Gin 静态优先）。
+	auth.GET("/questions", questionHandler.List)
+	auth.GET("/questions/:id", questionHandler.Detail)
+	auth.POST("/questions/update", questionHandler.Update)
+	auth.POST("/questions/toggle-status", questionHandler.ToggleStatus)
+	auth.POST("/questions/delete", questionHandler.Delete)
 
 	return r
 }
