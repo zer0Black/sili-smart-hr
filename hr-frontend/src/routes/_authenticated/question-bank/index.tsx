@@ -9,6 +9,7 @@ import { QuestionFormDialog } from '@/features/question-bank/components/question
 import { QuestionTable } from '@/features/question-bank/components/question-table';
 import { QuestionViewDialog } from '@/features/question-bank/components/question-view-dialog';
 import { ReviewView } from '@/features/question-bank/components/review-view';
+import { ScaleImportDialog } from '@/features/question-bank/components/scale-import-dialog';
 import { fetchQuestionDetail } from '@/features/question-bank/api';
 import type { QuestionTab } from '@/features/question-bank/types';
 import type { QuestionDetail, QuestionListItem } from '@/lib/contracts';
@@ -34,6 +35,8 @@ export function QuestionBankPage() {
   const [formMode, setFormMode] = useState<'edit' | 'resubmit'>('edit');
   // tab 头计数：未加载（undefined）省略数（specs §4.1.5）
   const [totals, setTotals] = useState<Record<QuestionTab, number | undefined>>({ AI: undefined, SCALE: undefined });
+  // 量表引入两步弹窗开关（specs §4.1.3 引入九型量表）
+  const [scaleImportOpen, setScaleImportOpen] = useState(false);
 
   const onTotalChange = useCallback((tab: QuestionTab, total: number) => {
     setTotals((prev) => (prev[tab] === total ? prev : { ...prev, [tab]: total }));
@@ -100,12 +103,12 @@ export function QuestionBankPage() {
         }}
       />
 
-      {/* 页面级工具栏：两入口 SP3/SP4 前禁用占位（specs §4.1.1 / §4.1.3） */}
+      {/* 页面级工具栏（specs §4.1.1 / §4.1.3）：生成入口 SP4 前禁用占位，引入入口接通两步弹窗 */}
       <div className="flex items-center justify-end gap-2">
         <Button disabled title={t('toolbar.pendingHint')}>
           {t('toolbar.generateAction')}
         </Button>
-        <Button disabled title={t('toolbar.pendingHint')}>
+        <Button onClick={() => setScaleImportOpen(true)}>
           {t('toolbar.importAction')}
         </Button>
       </div>
@@ -143,6 +146,7 @@ export function QuestionBankPage() {
             onView={(q) => setViewId(q.id)}
             onResubmit={(q) => void openFormFromList(q, 'resubmit')}
             onTotalChange={onTotalChange}
+            onImportScale={tab === 'SCALE' ? () => setScaleImportOpen(true) : undefined}
           />
         </div>
       ))}
@@ -161,6 +165,16 @@ export function QuestionBankPage() {
         question={editQuestion}
         mode={formMode}
         onSaved={() => setEditQuestion(null)}
+      />
+      {/* 量表引入两步弹窗（specs §4.1.3 / §4.1.2 F）：「进入审核」携批次 ID 切审核视图 */}
+      <ScaleImportDialog
+        open={scaleImportOpen}
+        onOpenChange={setScaleImportOpen}
+        onEnterReview={(batchId) => {
+          setScaleImportOpen(false);
+          setActiveBatchId(batchId);
+          setViewMode('review');
+        }}
       />
     </div>
   );

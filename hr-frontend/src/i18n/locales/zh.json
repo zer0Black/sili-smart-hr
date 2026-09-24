@@ -881,6 +881,33 @@
       "rejectReason": "驳回原因",
       "close": "关闭",
       "edit": "编辑"
+    },
+    "scaleImport": {
+      "title": "引入九型量表",
+      "intro": "九型人格采用标准量表作为固定题库，AI 仅做型别判定不重写量表文本。",
+      "loadError": "候选量表加载失败，请重试",
+      "retry": "重试",
+      "imported": "已引入",
+      "cardMeta": "{{count}} 题 · 约 {{minutes}} 分钟",
+      "next": "下一步",
+      "prev": "上一步",
+      "confirmImport": "确认引入",
+      "submitting": "引入中…",
+      "sumSource": "量表来源",
+      "sumCount": "题目数量",
+      "countText": "{{count}} 题",
+      "sumScoring": "计分方式",
+      "sumScoringValue": "Likert 5 级，9 型倾向聚合",
+      "sumDuration": "预估作答",
+      "durationText": "约 {{minutes}} 分钟",
+      "sumBatch": "审核批次",
+      "sumBatchValue": "独立成批，不与 AI 管理题混审",
+      "batchPreview": "引入后将生成审核批次 {{no}}",
+      "batchDone": "本批 {{no}} 已进入待审核队列",
+      "laterReview": "稍后审核",
+      "enterReview": "进入审核",
+      "toastImported": "已引入量表，批次 {{no}}",
+      "toastImportedError": "该量表已引入"
     }
   }
 }

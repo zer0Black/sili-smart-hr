@@ -581,6 +581,25 @@ export interface QuestionMutationResult {
   updated_at: string;
 }
 
+// 量表引入域契约（与后端 scale service DTO 同构，03_api_interface §3.11/§3.12）
+
+/** 量表候选卡（03 §3.11）。imported 为实时标记，前端据此置灰并标注「已引入」。 */
+export interface ScaleCandidate {
+  scale_key: string;
+  name: string;
+  question_count: number;
+  estimated_minutes: number;
+  description: string;
+  imported: boolean;
+}
+
+/** POST /api/scales/import 响应 data（03 §3.12）。batch_id 为雪花 ID JSON string 化。 */
+export interface ImportScaleResult {
+  batch_id: string;
+  batch_no: string;
+  question_count: number;
+}
+
 // 题库批次域契约（与后端 question_batch service DTO 同构，03_api_interface §3.7-§3.10）
 
 /** 待审核批次卡（03 §3.7）。id 为雪花 ID JSON string 化；created_at 为 RFC3339。 */

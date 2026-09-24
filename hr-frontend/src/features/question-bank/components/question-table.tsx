@@ -46,6 +46,8 @@ export interface QuestionTableProps {
   onResubmit: (q: QuestionListItem) => void;
   /** 列表 total 上报，供父页渲染 tab 头「共 N 题」（specs §4.1.5）。 */
   onTotalChange?: (tab: QuestionTab, total: number) => void;
+  /** 打开量表引入弹窗（仅 SCALE tab 空态内嵌按钮，specs §4.1.5）。 */
+  onImportScale?: () => void;
 }
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -70,7 +72,7 @@ function useTabDimensions(tab: QuestionTab) {
   return leaves.filter((d) => d.enabled).map((d) => ({ id: d.id, name: d.name }));
 }
 
-export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange }: QuestionTableProps): JSX.Element {
+export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, onImportScale }: QuestionTableProps): JSX.Element {
   const { t } = useTranslation('questionBank');
   const dimensions = useTabDimensions(tab);
 
@@ -256,14 +258,14 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange }
           </Button>
         </div>
       ) : list.length === 0 ? (
-        /* 空状态：引导文案 + 内嵌占位按钮（specs §4.1.5，SP3/SP4 前禁用） */
+        // 空状态：引导文案 + 内嵌按钮（specs §4.1.5）：AI 生成入口 SP4 前禁用，量表引入入口接通
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-12 text-center">
           <p className="text-base font-medium">{t(`table.emptyTitle.${tab}`)}</p>
           <p className="text-muted-foreground text-sm">{t(`table.emptyDesc.${tab}`)}</p>
           {tab === 'AI' ? (
             <Button disabled title={t('table.pendingHint')}>{t('table.generateAction')}</Button>
           ) : (
-            <Button disabled title={t('table.pendingHint')}>{t('table.importAction')}</Button>
+            <Button onClick={onImportScale}>{t('table.importAction')}</Button>
           )}
         </div>
       ) : (

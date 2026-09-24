@@ -881,6 +881,33 @@
       "rejectReason": "Reject Reason",
       "close": "Close",
       "edit": "Edit"
+    },
+    "scaleImport": {
+      "title": "Import Enneagram Scale",
+      "intro": "The Enneagram uses a standard scale as the fixed bank; AI only determines the type and never rewrites scale text.",
+      "loadError": "Failed to load scale candidates, please retry",
+      "retry": "Retry",
+      "imported": "Imported",
+      "cardMeta": "{{count}} questions · approx. {{minutes}} min",
+      "next": "Next",
+      "prev": "Back",
+      "confirmImport": "Confirm Import",
+      "submitting": "Importing…",
+      "sumSource": "Scale Source",
+      "sumCount": "Questions",
+      "countText": "{{count}} questions",
+      "sumScoring": "Scoring",
+      "sumScoringValue": "Likert 5, aggregated by 9-type tendency",
+      "sumDuration": "Estimated Duration",
+      "durationText": "approx. {{minutes}} min",
+      "sumBatch": "Review Batch",
+      "sumBatchValue": "Independent batch, never mixed with AI questions",
+      "batchPreview": "Review batch {{no}} will be created after import",
+      "batchDone": "Batch {{no}} has entered the pending review queue",
+      "laterReview": "Review Later",
+      "enterReview": "Start Review",
+      "toastImported": "Scale imported, batch {{no}}",
+      "toastImportedError": "This scale has already been imported"
     }
   }
 }

@@ -287,13 +287,18 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     expect(screen.queryByRole('button', { name: '引入九型量表' })).not.toBeInTheDocument();
   });
 
-  it('TestEmptyStateScale：SCALE tab 空数据渲染禁用的「引入九型量表」按钮（§4.1.5）', async () => {
+  it('TestEmptyStateScale：SCALE tab 空数据「引入九型量表」按钮接通 onImportScale（§4.1.5）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([]));
+    const onImportScale = vi.fn();
 
-    renderTable(<QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
+    renderTable(
+      <QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} onImportScale={onImportScale} />,
+    );
 
     const imp = await screen.findByRole('button', { name: '引入九型量表' });
-    expect(imp).toBeDisabled();
+    expect(imp).toBeEnabled();
+    fireEvent.click(imp);
+    expect(onImportScale).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('button', { name: '生成 AI 管理题' })).not.toBeInTheDocument();
   });
 
