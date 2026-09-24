@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 sili-smart-hr 是综合人才测评平台：把兄弟系统 sili-smart-api（LLM 网关）沉淀的 AI 对话日志周期性转化为能力评分，叠加主动测试形成人才画像，用于能力盘点与培训提升。
 
-当前处于 B 档可运行脚手架阶段，account 登录链路（POST /api/login、GET /api/me）是首个样板，用户管理、维度配置、系统参数、大模型配置、集成密钥等链路已前后端贯通。engine 在后端的 extractor（会话特征抽取）、activity（使用活跃度统计）、evaluator（跨会话综合评估）、scorer（多维聚合）、fallback（失败重试与告警兜底）、pipeline（跑批编排）六个子域已实现，answer / questionbank / profile / dashboard / workspace 等业务域前后端均未开工。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
+当前处于 B 档可运行脚手架阶段，account 登录链路（POST /api/login、GET /api/me）是首个样板，用户管理、维度配置、系统参数、大模型配置、集成密钥、题库管理等链路已前后端贯通。engine 在后端的 extractor（会话特征抽取）、activity（使用活跃度统计）、evaluator（跨会话综合评估）、scorer（多维聚合）、fallback（失败重试与告警兜底）、pipeline（跑批编排）六个子域已实现，questionbank（题库管理）域的台账与维护链路（题目列表/详情/编辑/启停/删除）已前后端贯通，批次展开、量表引入、AI 生成归后续子计划，answer / profile / dashboard / workspace 等业务域前后端均未开工。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
 
 规格依据在 [context/](context/) 目录，[context/03_architecture/architecture.md](context/03_architecture/architecture.md) 是模块划分与依赖关系的权威来源，第 4 章承载运行时约定。
 
