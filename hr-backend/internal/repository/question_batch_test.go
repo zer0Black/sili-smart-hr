@@ -553,6 +553,50 @@ func TestVoidBatchNotPending(t *testing.T) {
 	}
 }
 
+// TestListQuestionsByBatchID 批内题目全量列表：question_no 升序、软删自动过滤、
+// 其他批次题目不混入。
+func TestListQuestionsByBatchID(t *testing.T) {
+	db := newQBatchTestDB(t)
+	b := seedBatch(t, db, "#G0925", domain.QuestionSourceAI, domain.QuestionBatchTypeGenerate, domain.QuestionBatchStatusPending, 3)
+	other := seedBatch(t, db, "#S0925", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusPending, 1)
+	seedBatchQuestion(t, db, b.ID, "Q-AG-0002", domain.QuestionSourceAI, domain.QuestionStatusPending, "")
+	seedBatchQuestion(t, db, b.ID, "Q-AG-0001", domain.QuestionSourceAI, domain.QuestionStatusPending, "")
+	deleted := seedBatchQuestion(t, db, b.ID, "Q-AG-0003", domain.QuestionSourceAI, domain.QuestionStatusPending, "")
+	if err := db.Delete(&deleted).Error; err != nil {
+		t.Fatalf("seed delete: %v", err)
+	}
+	seedBatchQuestion(t, db, other.ID, "Q-Scale-0001", domain.QuestionSourceScale, domain.QuestionStatusPending, "")
+
+	repo := repository.NewQuestionBatchRepository(db)
+	rows, err := repo.ListQuestionsByBatchID(context.Background(), b.ID)
+	if err != nil {
+		t.Fatalf("ListQuestionsByBatchID: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows (soft-deleted filtered, foreign excluded), got %d", len(rows))
+	}
+	if rows[0].QuestionNo != "Q-AG-0001" || rows[1].QuestionNo != "Q-AG-0002" {
+		t.Fatalf("want question_no ASC [Q-AG-0001 Q-AG-0002], got [%s %s]", rows[0].QuestionNo, rows[1].QuestionNo)
+	}
+}
+
+// TestListQuestionsByBatchID_EmptyBatch 空批与不存在批均返回空列表非 nil 非 error。
+func TestListQuestionsByBatchID_EmptyBatch(t *testing.T) {
+	db := newQBatchTestDB(t)
+	b := seedBatch(t, db, "#G0925", domain.QuestionSourceAI, domain.QuestionBatchTypeGenerate, domain.QuestionBatchStatusPending, 0)
+
+	repo := repository.NewQuestionBatchRepository(db)
+	for _, id := range []int64{b.ID, 999999} {
+		rows, err := repo.ListQuestionsByBatchID(context.Background(), id)
+		if err != nil {
+			t.Fatalf("empty batch %d: %v", id, err)
+		}
+		if rows == nil || len(rows) != 0 {
+			t.Fatalf("empty batch %d want non-nil empty slice, got %v", id, rows)
+		}
+	}
+}
+
 // TestNextBatchNoFirst 同日同前缀无既有批：首批无后缀。
 func TestNextBatchNoFirst(t *testing.T) {
 	db := newQBatchTestDB(t)

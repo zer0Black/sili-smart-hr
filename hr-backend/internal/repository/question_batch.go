@@ -43,6 +43,9 @@ type QuestionBatchRepository interface {
 	ListPending(ctx context.Context) ([]domain.QuestionBatch, error)
 	// FindByID 主键查。
 	FindByID(ctx context.Context, id int64) (*domain.QuestionBatch, error)
+	// ListQuestionsByBatchID 批内题目全量列表（question_no 升序，不分页），软删自动过滤。
+	// 批次明细组装与确认入库的归属比对/计数一致性校验共用（04 §3.1 idx_questions_batch 索引用途）。
+	ListQuestionsByBatchID(ctx context.Context, batchID int64) ([]domain.Question, error)
 	// FindPendingResubmitBatch 查待并入的重新送审批次：source=AI 且 batch_type=RESUBMIT
 	// 且 status=PENDING，created_at 最早一条（并入语义取最早开批的），无则返回 ErrRecordNotFound。
 	FindPendingResubmitBatch(ctx context.Context) (*domain.QuestionBatch, error)
@@ -92,6 +95,19 @@ func (r *questionBatchRepository) FindByID(ctx context.Context, id int64) (*doma
 		return nil, err
 	}
 	return &b, nil
+}
+
+// ListQuestionsByBatchID GORM DeletedAt 作用域自动过滤软删行；等宽编号下
+// question_no 字典序与数值序一致。空结果归一空切片（前端契约稳定）。
+func (r *questionBatchRepository) ListQuestionsByBatchID(ctx context.Context, batchID int64) ([]domain.Question, error) {
+	var list []domain.Question
+	if err := r.db.WithContext(ctx).
+		Where("batch_id = ?", batchID).
+		Order("question_no ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 func (r *questionBatchRepository) FindPendingResubmitBatch(ctx context.Context) (*domain.QuestionBatch, error) {
