@@ -1,5 +1,6 @@
-// 题目编辑弹窗（specs §4.1.2 E / §4.1.4 规则9 / §4A.4）。RHF+Zod，mode 固定 edit，预载详情回填。
-// 维度下拉限当前启用 AI_MGMT 集合；保存成功 toast 后留在列表态（关闭弹窗）。
+// 题目编辑弹窗（specs §4.1.2 E / §4.1.4 规则9 / §4A.4）。RHF+Zod，mode=edit/resubmit（重新提交
+// 复用同表单换标题与提交接口，specs §4.1.4 规则6），预载详情回填。维度下拉限当前启用 AI_MGMT
+// 集合；保存成功 toast 后留在列表态（关闭弹窗）。
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect, useMemo } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -25,7 +26,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { useDimensionTree } from '@/features/dimension/hooks';
-import { useUpdateQuestion } from '@/features/question-bank/hooks';
+import { useResubmitQuestion, useUpdateQuestion } from '@/features/question-bank/hooks';
 import type { QuestionDetail } from '@/lib/contracts';
 import { ErrCode } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
@@ -36,6 +37,8 @@ export interface QuestionFormDialogProps {
   onOpenChange: (o: boolean) => void;
   question: QuestionDetail | null;
   onSaved: () => void;
+  /** edit=编辑保存；resubmit=驳回题修正后重新送审（specs §4.1.4 规则6）。 */
+  mode?: 'edit' | 'resubmit';
 }
 
 interface QuestionFormValues {
@@ -54,9 +57,12 @@ function useEnabledAiMgmtDimensions() {
   return leaves.filter((d) => d.enabled).map((d) => ({ id: d.id, name: d.name }));
 }
 
-export function QuestionFormDialog({ open, onOpenChange, question, onSaved }: QuestionFormDialogProps) {
+export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode = 'edit' }: QuestionFormDialogProps) {
   const { t } = useTranslation('questionBank');
   const updateMut = useUpdateQuestion();
+  const resubmitMut = useResubmitQuestion();
+  const mut = mode === 'resubmit' ? resubmitMut : updateMut;
+  const submitting = mode === 'resubmit' ? t('form.resubmitting') : t('form.submitting');
   const dimensions = useEnabledAiMgmtDimensions();
 
   const schema = useMemo(
@@ -98,7 +104,7 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved }: Qu
 
   const onSubmit = (values: QuestionFormValues) => {
     if (!question) return;
-    updateMut.mutate(
+    mut.mutate(
       {
         id: question.id,
         dimension_id: values.dimension_id,
@@ -109,7 +115,8 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved }: Qu
       },
       {
         onSuccess: () => {
-          toast.success(t('form.saved'));
+          // 重新提交成功 toast 去向文案（specs §4.1.4 规则6 / §4.1.5）
+          toast.success(mode === 'resubmit' ? t('form.resubmitted') : t('form.saved'));
           onOpenChange(false);
           onSaved();
         },
@@ -131,7 +138,7 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved }: Qu
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>{t('form.title')}</DialogTitle>
+          <DialogTitle>{mode === 'resubmit' ? t('form.resubmitTitle') : t('form.title')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
           {/* 所属维度：下拉限当前启用集合；原维度已停用时保留原值展示（§4.1.2 E） */}
@@ -187,11 +194,11 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved }: Qu
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={updateMut.isPending}>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mut.isPending}>
               {t('form.cancel', { ns: 'common' })}
             </Button>
-            <Button type="submit" disabled={updateMut.isPending}>
-              {updateMut.isPending ? t('form.submitting') : t('form.submit')}
+            <Button type="submit" disabled={mut.isPending}>
+              {mut.isPending ? submitting : mode === 'resubmit' ? t('form.resubmitSubmit') : t('form.submit')}
             </Button>
           </DialogFooter>
         </form>

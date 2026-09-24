@@ -5,6 +5,8 @@ import type {
   QuestionDetail,
   QuestionListPage,
   QuestionMutationResult,
+  ResubmitQuestionPayload,
+  ResubmitQuestionResult,
   ToggleQuestionStatusPayload,
   UpdateQuestionPayload,
 } from '@/lib/contracts';
@@ -14,6 +16,7 @@ import {
   deleteQuestion,
   fetchQuestionDetail,
   fetchQuestions,
+  resubmitQuestion,
   toggleQuestionStatus,
   updateQuestion,
 } from './api';
@@ -65,6 +68,17 @@ export function useDeleteQuestion() {
   const qc = useQueryClient();
   return useMutation<void, Error, DeleteQuestionPayload>({
     mutationFn: deleteQuestion,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['question-bank'] });
+    },
+  });
+}
+
+/** useResubmitQuestion：驳回 AI 题修正后重新送审，成功废弃 ['question-bank']（列表与批次卡区一并刷新）。 */
+export function useResubmitQuestion() {
+  const qc = useQueryClient();
+  return useMutation<ResubmitQuestionResult, Error, ResubmitQuestionPayload>({
+    mutationFn: resubmitQuestion,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['question-bank'] });
     },

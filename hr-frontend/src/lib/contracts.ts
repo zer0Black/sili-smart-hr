@@ -548,6 +548,18 @@ export interface UpdateQuestionPayload {
   version: number;
 }
 
+/** POST /api/questions/resubmit 请求体（03 §3.5，同 update 五字段）。 */
+export type ResubmitQuestionPayload = UpdateQuestionPayload;
+
+/** POST /api/questions/resubmit 响应 data（03 §3.5）。 */
+export interface ResubmitQuestionResult {
+  id: string;
+  status: 'PENDING';
+  batch_id: string;
+  batch_no: string;
+  version: number;
+}
+
 /** POST /api/questions/toggle-status 请求体。target_status 限 ACTIVE/DISABLED 互切。 */
 export interface ToggleQuestionStatusPayload {
   id: string;

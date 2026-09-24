@@ -109,7 +109,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     );
 
     renderTable(
-      <QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} />,
+      <QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />,
     );
 
     await screen.findByText('Q-Scale-0001');
@@ -126,7 +126,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestAiTabActiveRow：AI 题 ACTIVE 行渲染 查看/编辑/停用/删除，无作答方式列', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem()]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     await screen.findByText('Q-AG-0001');
     expect(screen.getByRole('button', { name: '查看' })).toBeInTheDocument();
@@ -138,13 +138,16 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     expect(screen.getByText('启用')).toBeInTheDocument();
   });
 
-  it('TestAiRejectedRow：REJECTED AI 行有「重新提交」且 disabled、无停用（SP2 前占位禁用）', async () => {
+  it('TestAiRejectedRow：REJECTED AI 行「重新提交」可点并回调父层，无停用/启用（§4.1.4 规则6）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem({ status: 'REJECTED', question_no: 'Q-AG-0002' })]));
+    const onResubmit = vi.fn();
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={onResubmit} />);
 
     const resubmit = await screen.findByRole('button', { name: '重新提交' });
-    expect(resubmit).toBeDisabled();
+    expect(resubmit).toBeEnabled();
+    fireEvent.click(resubmit);
+    expect(onResubmit).toHaveBeenCalledWith(expect.objectContaining({ id: '1780000000000000101', status: 'REJECTED' }));
     expect(screen.queryByRole('button', { name: '停用' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '启用' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '删除' })).toBeInTheDocument();
@@ -154,7 +157,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestDisabledRowToggle：DISABLED AI 行操作为 查看/编辑/启用/删除', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem({ status: 'DISABLED' })]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     await screen.findByText('Q-AG-0001');
     expect(screen.getByRole('button', { name: '启用' })).toBeInTheDocument();
@@ -167,7 +170,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     const onEdit = vi.fn();
     const onView = vi.fn();
 
-    renderTable(<QuestionTable tab="AI" onEdit={onEdit} onView={onView} />);
+    renderTable(<QuestionTable tab="AI" onEdit={onEdit} onView={onView} onResubmit={vi.fn()} />);
 
     await screen.findByText('Q-AG-0001');
     fireEvent.click(screen.getByRole('button', { name: '查看' }));
@@ -179,7 +182,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestDraftFilterTwoPhase：改查询条件不发请求，点「查询」才携带条件发请求（§4.1.5）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem()]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
     fetchQuestionsMock.mockClear();
 
@@ -200,7 +203,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestResetClears：重置清空当前 tab 全部查询条件（§4.1.3）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem()]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
 
     await openSelect(screen.getByRole('combobox', { name: '状态' }), '启用');
@@ -222,7 +225,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestToggleMutate：停用按钮确认后直接 mutate 携带 id 与目标状态', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem()]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
 
     fireEvent.click(screen.getByRole('button', { name: '停用' }));
@@ -241,7 +244,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
       cb?.onError?.(new ApiError(1705, 'referenced'));
     });
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
 
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
@@ -262,7 +265,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
       cb?.onError?.(new ApiError(1713, 'conflict'));
     });
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
 
     fireEvent.click(screen.getByRole('button', { name: '删除' }));
@@ -276,7 +279,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestEmptyState：AI tab 空数据渲染引导文案与禁用的「生成 AI 管理题」按钮（§4.1.5）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     const gen = await screen.findByRole('button', { name: '生成 AI 管理题' });
     expect(gen).toBeDisabled();
@@ -287,7 +290,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestEmptyStateScale：SCALE tab 空数据渲染禁用的「引入九型量表」按钮（§4.1.5）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([]));
 
-    renderTable(<QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     const imp = await screen.findByRole('button', { name: '引入九型量表' });
     expect(imp).toBeDisabled();
@@ -298,7 +301,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     const long = '长'.repeat(60);
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem({ summary: long })]));
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     const cell = await screen.findByTitle(long);
     expect(cell.textContent!.length).toBeLessThan(60);
@@ -310,7 +313,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
       Promise.resolve(makePage([makeItem()], 30 - p.page)),
     );
 
-    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-AG-0001');
 
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
@@ -324,7 +327,7 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
   it('TestScaleSourceParam：SCALE tab 查询 source 参数为 SCALE', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([makeItem({ source: 'SCALE', question_no: 'Q-Scale-0001' })]));
 
-    renderTable(<QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} />);
+    renderTable(<QuestionTable tab="SCALE" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
     await screen.findByText('Q-Scale-0001');
 
     expect(fetchQuestionsMock).toHaveBeenCalledWith(

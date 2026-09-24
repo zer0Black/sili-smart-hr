@@ -13,8 +13,10 @@ Element.prototype.releasePointerCapture = () => {};
 Element.prototype.scrollIntoView = () => {};
 
 const updateMock = vi.fn();
+const resubmitMock = vi.fn();
 vi.mock('@/features/question-bank/hooks', () => ({
   useUpdateQuestion: () => ({ mutate: updateMock, isPending: false }),
+  useResubmitQuestion: () => ({ mutate: resubmitMock, isPending: false }),
 }));
 
 vi.mock('@/features/dimension/hooks', () => ({
@@ -80,6 +82,7 @@ function setTextareaValue(id: string, value: string) {
 
 beforeEach(() => {
   updateMock.mockReset();
+  resubmitMock.mockReset();
 });
 
 describe('QuestionFormDialog 编辑弹窗（specs §4.1.2 E）', () => {
@@ -194,5 +197,39 @@ describe('QuestionFormDialog 编辑弹窗（specs §4.1.2 E）', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('操作失败，请稍后重试'));
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
+  });
+
+  it('TestResubmitMode：mode=resubmit 换标题与提交按钮，提交调 resubmit 接口（§4.1.4 规则6）', async () => {
+    const { toast } = await import('sonner');
+    resubmitMock.mockImplementation((_payload, cb) => {
+      cb?.onSuccess?.({
+        id: baseDetail.id,
+        status: 'PENDING',
+        batch_id: '1785000000000000009',
+        batch_no: '#R0923',
+        version: 4,
+      });
+    });
+    const rejectedDetail = { ...baseDetail, status: 'REJECTED' as const };
+    const onSaved = vi.fn();
+
+    render(
+      <QuestionFormDialog open onOpenChange={vi.fn()} question={rejectedDetail} onSaved={onSaved} mode="resubmit" />,
+    );
+
+    expect(screen.getByText('重新提交题目')).toBeInTheDocument();
+    const submit = screen.getAllByRole('button').find((b) => b.getAttribute('type') === 'submit')!;
+    expect(submit).toHaveTextContent('提交复审');
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(resubmitMock).toHaveBeenCalled());
+    expect(resubmitMock.mock.calls[0][0]).toMatchObject({
+      id: rejectedDetail.id,
+      dimension_id: '201',
+      version: 3,
+    });
+    expect(updateMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith('已提交复审，进入重新送审批次'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 });

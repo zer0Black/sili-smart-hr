@@ -4,6 +4,8 @@ import type {
   QuestionDetail,
   QuestionListPage,
   QuestionMutationResult,
+  ResubmitQuestionPayload,
+  ResubmitQuestionResult,
   ToggleQuestionStatusPayload,
   UpdateQuestionPayload,
 } from '@/lib/contracts';
@@ -34,6 +36,12 @@ export async function fetchQuestionDetail(id: string): Promise<QuestionDetail> {
 /** POST /api/questions/update：题目编辑（仅 AI 题 ACTIVE/DISABLED 可编辑）。 */
 export async function updateQuestion(payload: UpdateQuestionPayload): Promise<QuestionMutationResult> {
   const { data } = await httpClient.post<QuestionMutationResult>('/questions/update', payload);
+  return data;
+}
+
+/** POST /api/questions/resubmit：驳回 AI 题修正后重新送审（03 §3.5，仅 AI 且 REJECTED）。 */
+export async function resubmitQuestion(payload: ResubmitQuestionPayload): Promise<ResubmitQuestionResult> {
+  const { data } = await httpClient.post<ResubmitQuestionResult>('/questions/resubmit', payload);
   return data;
 }
 

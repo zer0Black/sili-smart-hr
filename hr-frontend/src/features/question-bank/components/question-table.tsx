@@ -42,6 +42,8 @@ export interface QuestionTableProps {
   onEdit: (q: QuestionListItem) => void;
   /** 查看弹窗。 */
   onView: (q: QuestionListItem) => void;
+  /** 打开重新提交弹窗（仅 REJECTED AI 题，specs §4.1.4 规则6）。 */
+  onResubmit: (q: QuestionListItem) => void;
   /** 列表 total 上报，供父页渲染 tab 头「共 N 题」（specs §4.1.5）。 */
   onTotalChange?: (tab: QuestionTab, total: number) => void;
 }
@@ -68,7 +70,7 @@ function useTabDimensions(tab: QuestionTab) {
   return leaves.filter((d) => d.enabled).map((d) => ({ id: d.id, name: d.name }));
 }
 
-export function QuestionTable({ tab, onEdit, onView, onTotalChange }: QuestionTableProps): JSX.Element {
+export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange }: QuestionTableProps): JSX.Element {
   const { t } = useTranslation('questionBank');
   const dimensions = useTabDimensions(tab);
 
@@ -307,8 +309,8 @@ export function QuestionTable({ tab, onEdit, onView, onTotalChange }: QuestionTa
                       </Button>
                     )}
                     {tab === 'AI' && item.status === 'REJECTED' && (
-                      /* 重新提交占位禁用，SP2 T6 接通（specs §4.1.4 规则6） */
-                      <Button variant="link" size="sm" disabled title={t('table.pendingHint')}>
+                      /* 驳回题修正并入重新提交（specs §4.1.4 规则6）：打开编辑弹窗 resubmit 复用 */
+                      <Button variant="link" size="sm" onClick={() => onResubmit(item)}>
                         {t('table.actionResubmit')}
                       </Button>
                     )}

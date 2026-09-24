@@ -805,6 +805,35 @@
       "toastVoided": "批次已作废",
       "toastClosed": "批次已关闭或已作废，请刷新"
     },
+    "review": {
+      "backToList": "返回题库",
+      "batchTitle": "{{source}} · {{title}}（{{no}}）",
+      "hintAi": "本批为 LLM 动态生成的 AI 管理能力题，审核重点为情境合理性、子能力命中度与潜在偏见（性别、年龄、地域），对不合适题目标记驳回，未标记题默认通过入库。",
+      "hintScale": "本批为标准九型人格量表，AI 仅做型别判定不重写量表文本，审核重点为本公司业务场景适用性与表述歧义，对不合适题目标记驳回，未标记题默认通过入库。",
+      "statusDefault": "（默认通过）",
+      "statusRejected": "（已标记驳回）",
+      "scenario": "情境描述",
+      "requirement": "作答要求",
+      "focusPoint": "考察点",
+      "rejectReason": "驳回原因",
+      "rejectReasonAria": "驳回原因（必填 1-500 字）",
+      "reasonRequired": "请填写驳回原因，空则标记不生效",
+      "reasonMaxLength": "驳回原因不超过 500 字",
+      "markReject": "标记驳回",
+      "unmark": "取消标记",
+      "clearAll": "全部不标（默认通过）",
+      "confirm": "确认入库",
+      "confirmSubmitting": "提交中…",
+      "totalCount": "本批共 {{count}} 题",
+      "rejectedCount": "已标记驳回 {{count}} 题",
+      "admittedCount": "将默认入库 {{count}} 题",
+      "toastConfirmed": "入库 {{admitted}} 题，驳回 {{rejected}} 题",
+      "exitTitle": "离开审核确认",
+      "exitDesc": "已标记的驳回将不提交、不保存，批次保持待审核。确认离开审核视图？",
+      "exitConfirm": "确认离开",
+      "loadError": "数据加载失败，请重试",
+      "retry": "重试"
+    },
     "form": {
       "title": "编辑题目",
       "dimension": "所属维度",
@@ -822,7 +851,11 @@
       "focusPointMaxLength": "考察点不超过 500 字符",
       "submit": "保存",
       "submitting": "保存中…",
-      "saved": "已保存"
+      "saved": "已保存",
+      "resubmitTitle": "重新提交题目",
+      "resubmitSubmit": "提交复审",
+      "resubmitting": "提交中…",
+      "resubmitted": "已提交复审，进入重新送审批次"
     },
     "view": {
       "title": "题目详情",
