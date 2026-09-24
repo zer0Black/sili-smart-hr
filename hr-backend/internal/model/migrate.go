@@ -310,5 +310,6 @@ func allModels() []any {
 		&domain.AssessmentBatchPerson{},
 		&domain.AssessmentAlert{},
 		&domain.Question{},
+		&domain.QuestionBatch{},
 	}
 }
