@@ -568,3 +568,43 @@ export interface QuestionMutationResult {
   version: number;
   updated_at: string;
 }
+
+// 题库批次域契约（与后端 question_batch service DTO 同构，03_api_interface §3.7-§3.10）
+
+/** 待审核批次卡（03 §3.7）。id 为雪花 ID JSON string 化；created_at 为 RFC3339。 */
+export interface QuestionBatchCard {
+  id: string;
+  batch_no: string;
+  title: string;
+  source: 'AI' | 'SCALE';
+  batch_type: 'GENERATE' | 'IMPORT' | 'RESUBMIT';
+  question_count: number;
+  created_at: string;
+}
+
+/** 审核视图逐题全文（03 §3.8）。reject_reason 恒空串，标记在前端进行。 */
+export interface ReviewQuestionItem {
+  id: string;
+  question_no: string;
+  dimension_id: string;
+  dimension_name: string;
+  answer_mode: 'CHAT' | 'LIKERT5';
+  scenario: string;
+  requirement: string;
+  focus_point: string;
+  reject_reason: string;
+}
+
+/** GET /api/question-batches/:id/questions 响应 data（03 §3.8）。全量不分页，question_no 升序。 */
+export interface BatchQuestionsResult {
+  batch: QuestionBatchCard;
+  questions: ReviewQuestionItem[];
+}
+
+/** POST /api/question-batches/:id/confirm 响应 data（03 §3.9，后端 ConfirmResult 直译）。 */
+export interface ConfirmBatchResult {
+  batch_id: string;
+  batch_status: string;
+  admitted_count: number;
+  rejected_count: number;
+}

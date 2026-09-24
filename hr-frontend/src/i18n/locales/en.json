@@ -790,6 +790,21 @@
     },
     "toastConflict": "Data has changed, please refresh and retry",
     "toastGeneric": "Operation failed, please retry later",
+    "batchStrip": {
+      "title": "Pending Review Batches",
+      "source": {
+        "AI": "AI Question",
+        "SCALE": "Scale Item"
+      },
+      "questionCount": "{{count}} questions",
+      "actionVoid": "Void",
+      "actionReview": "Start Review",
+      "voidTitle": "Void Batch",
+      "voidDesc": "Void batch {{no}}? Questions in generated/scale batches will be removed. This cannot be undone.",
+      "voidSubmitting": "Voiding…",
+      "toastVoided": "Batch voided",
+      "toastClosed": "Batch already closed or voided, please refresh"
+    },
     "form": {
       "title": "Edit Question",
       "dimension": "Dimension",

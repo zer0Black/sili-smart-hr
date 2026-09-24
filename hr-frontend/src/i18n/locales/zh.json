@@ -790,6 +790,21 @@
     },
     "toastConflict": "数据已变更，请刷新后重试",
     "toastGeneric": "操作失败，请稍后重试",
+    "batchStrip": {
+      "title": "待审核批次",
+      "source": {
+        "AI": "AI 管理题",
+        "SCALE": "九型量表"
+      },
+      "questionCount": "共 {{count}} 题",
+      "actionVoid": "作废",
+      "actionReview": "开始审核",
+      "voidTitle": "作废批次确认",
+      "voidDesc": "确认作废批次 {{no}}？生成/量表批次内题目将随之删除，作废后不可恢复。",
+      "voidSubmitting": "作废中…",
+      "toastVoided": "批次已作废",
+      "toastClosed": "批次已关闭或已作废，请刷新"
+    },
     "form": {
       "title": "编辑题目",
       "dimension": "所属维度",
