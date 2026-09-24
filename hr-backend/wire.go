@@ -95,6 +95,10 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewQuestionBatchRepository,
 		service.NewQuestionBatchService,
 		handler.NewQuestionBatchHandler,
+		// 量表引入域：scale 仓储 + service + handler（03 §3.11/§3.12 scales 两接口）。
+		repository.NewScaleRepository,
+		service.NewScaleService,
+		handler.NewScaleHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
