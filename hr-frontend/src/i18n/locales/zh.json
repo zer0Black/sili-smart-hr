@@ -713,5 +713,126 @@
       "restartByFailures": "按失败对象重新发起",
       "close": "关闭"
     }
+  },
+  "questionBank": {
+    "page": {
+      "title": "题库管理",
+      "subtitle": "双题库台账与维护：AI 管理题库动态生成，九型人格量表标准引入"
+    },
+    "tabs": {
+      "ai": "AI 管理题库",
+      "scale": "九型人格量表",
+      "count": "共 {{count}} 题"
+    },
+    "toolbar": {
+      "generateAction": "生成 AI 管理题",
+      "importAction": "引入九型量表",
+      "pendingHint": "功能建设中，敬请期待"
+    },
+    "table": {
+      "filterDimension": "维度",
+      "filterDimensionAll": "全部维度",
+      "filterStatus": "状态",
+      "filterStatusAll": "全部状态",
+      "keywordLabel": "关键词",
+      "keywordPlaceholder": "按题目编号与内容搜索",
+      "query": "查询",
+      "reset": "重置",
+      "colQuestionNo": "题目编号",
+      "colSummary": "题目摘要",
+      "colDimension": "所属维度",
+      "colAnswerMode": "作答方式",
+      "colStatus": "状态",
+      "colActions": "操作",
+      "status": {
+        "ACTIVE": "启用",
+        "DISABLED": "已停用",
+        "REJECTED": "已驳回",
+        "PENDING": "待审核"
+      },
+      "answerMode": {
+        "CHAT": "对话作答",
+        "LIKERT5": "Likert 5 级"
+      },
+      "actionView": "查看",
+      "actionEdit": "编辑",
+      "actionResubmit": "重新提交",
+      "actionDisable": "停用",
+      "actionEnable": "启用",
+      "actionDelete": "删除",
+      "emptyTitle": {
+        "AI": "AI 管理题库为空",
+        "SCALE": "九型人格量表未引入"
+      },
+      "emptyDesc": {
+        "AI": "生成 AI 管理能力题，经审核入库后用于主动测试",
+        "SCALE": "引入标准九型量表，建立固定题库"
+      },
+      "generateAction": "生成 AI 管理题",
+      "importAction": "引入九型量表",
+      "pendingHint": "功能建设中，敬请期待",
+      "loadError": "数据加载失败，请重试",
+      "retry": "重试",
+      "total": "共 {{total}} 条",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageSize10": "10 条/页",
+      "pageSize20": "20 条/页",
+      "pageSize50": "50 条/页",
+      "pageSizeLabel": "每页条数",
+      "deleteTitle": "删除确认",
+      "deleteDesc": "确认删除题目 {{no}}？删除后不可恢复。",
+      "deleteSubmitting": "删除中…",
+      "toastDeleted": "题目已删除",
+      "toastDisabled": "题目已停用",
+      "toastEnabled": "题目已启用",
+      "toastReferenced": "该题已被测试引用，只可停用"
+    },
+    "toastConflict": "数据已变更，请刷新后重试",
+    "toastGeneric": "操作失败，请稍后重试",
+    "form": {
+      "title": "编辑题目",
+      "dimension": "所属维度",
+      "dimensionRequired": "请选择所属维度",
+      "dimensionDisabled": "已停用",
+      "scenario": "情境描述",
+      "scenarioRequired": "请输入情境描述",
+      "scenarioMaxLength": "情境描述不超过 1000 字符",
+      "requirement": "作答要求",
+      "requirementRequired": "请输入作答要求",
+      "requirementMaxLength": "作答要求不超过 2000 字符",
+      "requirementHint": "选择题选项以 A… B… 行内书写",
+      "focusPoint": "考察点",
+      "focusPointRequired": "请输入考察点",
+      "focusPointMaxLength": "考察点不超过 500 字符",
+      "submit": "保存",
+      "submitting": "保存中…",
+      "saved": "已保存"
+    },
+    "view": {
+      "title": "题目详情",
+      "source": {
+        "AI": "AI 管理题",
+        "SCALE": "九型量表"
+      },
+      "answerMode": {
+        "CHAT": "对话作答",
+        "LIKERT5": "Likert 5 级"
+      },
+      "status": {
+        "ACTIVE": "启用",
+        "DISABLED": "已停用",
+        "REJECTED": "已驳回",
+        "PENDING": "待审核"
+      },
+      "createdAt": "入库时间 {{time}}",
+      "referenceCount": "被引用次数 {{count}} 次",
+      "scenario": "情境描述",
+      "requirement": "作答要求",
+      "focusPoint": "考察点",
+      "rejectReason": "驳回原因",
+      "close": "关闭",
+      "edit": "编辑"
+    }
   }
 }

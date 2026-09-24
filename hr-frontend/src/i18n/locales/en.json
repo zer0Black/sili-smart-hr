@@ -713,5 +713,126 @@
       "restartByFailures": "Relaunch for Failed",
       "close": "Close"
     }
+  },
+  "questionBank": {
+    "page": {
+      "title": "Question Bank",
+      "subtitle": "Dual bank ledger and maintenance: AI management questions generated dynamically, Enneagram scale imported as standard"
+    },
+    "tabs": {
+      "ai": "AI Management Bank",
+      "scale": "Enneagram Scale",
+      "count": "{{count}} questions"
+    },
+    "toolbar": {
+      "generateAction": "Generate AI Questions",
+      "importAction": "Import Enneagram Scale",
+      "pendingHint": "Under construction"
+    },
+    "table": {
+      "filterDimension": "Dimension",
+      "filterDimensionAll": "All dimensions",
+      "filterStatus": "Status",
+      "filterStatusAll": "All statuses",
+      "keywordLabel": "Keyword",
+      "keywordPlaceholder": "Search by question no. or content",
+      "query": "Query",
+      "reset": "Reset",
+      "colQuestionNo": "Question No.",
+      "colSummary": "Summary",
+      "colDimension": "Dimension",
+      "colAnswerMode": "Answer Mode",
+      "colStatus": "Status",
+      "colActions": "Actions",
+      "status": {
+        "ACTIVE": "Active",
+        "DISABLED": "Disabled",
+        "REJECTED": "Rejected",
+        "PENDING": "Pending"
+      },
+      "answerMode": {
+        "CHAT": "Conversational",
+        "LIKERT5": "Likert 5"
+      },
+      "actionView": "View",
+      "actionEdit": "Edit",
+      "actionResubmit": "Resubmit",
+      "actionDisable": "Disable",
+      "actionEnable": "Enable",
+      "actionDelete": "Delete",
+      "emptyTitle": {
+        "AI": "AI management bank is empty",
+        "SCALE": "Enneagram scale not imported"
+      },
+      "emptyDesc": {
+        "AI": "Generate AI management questions; they enter tests after review",
+        "SCALE": "Import the standard Enneagram scale to build the fixed bank"
+      },
+      "generateAction": "Generate AI Questions",
+      "importAction": "Import Enneagram Scale",
+      "pendingHint": "Under construction",
+      "loadError": "Failed to load data, please retry",
+      "retry": "Retry",
+      "total": "{{total}} items",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageSize10": "10 / page",
+      "pageSize20": "20 / page",
+      "pageSize50": "50 / page",
+      "pageSizeLabel": "Page size",
+      "deleteTitle": "Confirm Deletion",
+      "deleteDesc": "Delete question {{no}}? This cannot be undone.",
+      "deleteSubmitting": "Deleting…",
+      "toastDeleted": "Question deleted",
+      "toastDisabled": "Question disabled",
+      "toastEnabled": "Question enabled",
+      "toastReferenced": "This question is referenced by tests and can only be disabled"
+    },
+    "toastConflict": "Data has changed, please refresh and retry",
+    "toastGeneric": "Operation failed, please retry later",
+    "form": {
+      "title": "Edit Question",
+      "dimension": "Dimension",
+      "dimensionRequired": "Please select a dimension",
+      "dimensionDisabled": "Disabled",
+      "scenario": "Scenario",
+      "scenarioRequired": "Please enter the scenario",
+      "scenarioMaxLength": "Scenario must be at most 1000 characters",
+      "requirement": "Requirement",
+      "requirementRequired": "Please enter the requirement",
+      "requirementMaxLength": "Requirement must be at most 2000 characters",
+      "requirementHint": "Write options inline as A… B…",
+      "focusPoint": "Focus Point",
+      "focusPointRequired": "Please enter the focus point",
+      "focusPointMaxLength": "Focus point must be at most 500 characters",
+      "submit": "Save",
+      "submitting": "Saving…",
+      "saved": "Saved"
+    },
+    "view": {
+      "title": "Question Detail",
+      "source": {
+        "AI": "AI Question",
+        "SCALE": "Scale Item"
+      },
+      "answerMode": {
+        "CHAT": "Conversational",
+        "LIKERT5": "Likert 5"
+      },
+      "status": {
+        "ACTIVE": "Active",
+        "DISABLED": "Disabled",
+        "REJECTED": "Rejected",
+        "PENDING": "Pending"
+      },
+      "createdAt": "Created {{time}}",
+      "referenceCount": "Referenced {{count}} times",
+      "scenario": "Scenario",
+      "requirement": "Requirement",
+      "focusPoint": "Focus Point",
+      "rejectReason": "Reject Reason",
+      "close": "Close",
+      "edit": "Edit"
+    }
   }
 }
