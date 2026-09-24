@@ -103,6 +103,11 @@ func InitializeApp(configPath string) (*App, error) {
 		NewQuestionDimensionSpecReader,
 		NewQuestionGenProvider,
 		NewQuestionGenerateHandlerTyped,
+		// 生成会话域（04 T5）：Asynq 投递适配器（service.GenerationEnqueuer）+
+		// service + handler（03 §3.13/§3.14 生成三接口）。
+		NewAsynqGenerationEnqueuer,
+		service.NewQuestionGenerationService,
+		handler.NewQuestionGenerationHandler,
 		// 量表引入域：scale 仓储 + service + handler（03 §3.11/§3.12 scales 两接口）。
 		repository.NewScaleRepository,
 		service.NewScaleService,
@@ -136,6 +141,8 @@ func InitializeApp(configPath string) (*App, error) {
 		NewRSAManager,
 		wire.Bind(new(service.PasswordDecryptor), new(*rsakey.Manager)),
 		wire.Bind(new(service.ConversationlogPinger), new(*conversationlog.Client)),
+		// 生成任务投递：*AsynqGenerationEnqueuer 绑定 service.GenerationEnqueuer 窄接口。
+		wire.Bind(new(service.GenerationEnqueuer), new(*AsynqGenerationEnqueuer)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

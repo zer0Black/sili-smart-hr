@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -475,6 +476,37 @@ type QuestionGenerateHandler func(context.Context, *asynq.Task) error
 func NewQuestionGenerateHandlerTyped(gen *questiongen.Generator) QuestionGenerateHandler {
 	return QuestionGenerateHandler(task.NewQuestionGenerateHandler(gen))
 }
+
+// AsynqGenerationEnqueuer 把 AsynqClient 适配为 service.GenerationEnqueuer
+// 窄接口（pipeline/enqueue.go 同款）：service 层不 import asynq。
+type AsynqGenerationEnqueuer struct {
+	client *asynq.Client
+}
+
+// NewAsynqGenerationEnqueuer 组装生成任务投递适配器。
+func NewAsynqGenerationEnqueuer(client *asynq.Client) *AsynqGenerationEnqueuer {
+	return &AsynqGenerationEnqueuer{client: client}
+}
+
+// EnqueueGenerate 投递生成任务（default 队列，03 §3.13）：payload 为雪花 ID 十进制
+// 字符串（worker/task 消费侧同构）。MaxRetry(3) 与任务 handler 的不重试终态语义
+// 对齐：仅基础设施级失败（进程崩溃等）重放，业务终态经 MarkRunning 幂等吸收。
+func (e *AsynqGenerationEnqueuer) EnqueueGenerate(ctx context.Context, generationID int64) error {
+	payload, err := json.Marshal(task.QuestionGeneratePayload{GenerationID: fmt.Sprintf("%d", generationID)})
+	if err != nil {
+		return fmt.Errorf("question generation payload 序列化: %w", err)
+	}
+	if _, err := e.client.EnqueueContext(ctx,
+		asynq.NewTask(task.TypeQuestionGenerate, payload),
+		asynq.MaxRetry(3),
+		asynq.Queue(task.QueueDefault)); err != nil {
+		return fmt.Errorf("question generation 投递: %w", err)
+	}
+	return nil
+}
+
+// 编译期断言：适配器满足 service.GenerationEnqueuer 窄接口。
+var _ service.GenerationEnqueuer = (*AsynqGenerationEnqueuer)(nil)
 
 // NewOrchestratorProvider 装配批次编排器（十参，specs §5.2.2）：配置读取复用
 // AssessmentConfigRepository，密钥走 service.ResolveIntegrationSecret 收敛点

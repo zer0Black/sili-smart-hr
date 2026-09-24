@@ -43,6 +43,9 @@ type QuestionGenerationRepository interface {
 	// RequestCancel 协作式取消：仅 QUEUED/RUNNING 置 CANCELED（error_code=CANCELED），
 	// 已终态幂等成功（RowsAffected=0 视为已终态，返回 nil）。
 	RequestCancel(ctx context.Context, id int64) error
+	// Delete 按主键物理删除行（表无软删列）：发起侧投递失败回滚用，
+	// 防止 QUEUED 孤儿行（worker 永不领取）。
+	Delete(ctx context.Context, id int64) error
 }
 
 type questionGenerationRepository struct {
@@ -170,4 +173,9 @@ func (r *questionGenerationRepository) RequestCancel(ctx context.Context, id int
 			"updated_at": time.Now(),
 		})
 	return res.Error
+}
+
+// Delete 按主键物理删除（表无软删列），行不存在静默成功。
+func (r *questionGenerationRepository) Delete(ctx context.Context, id int64) error {
+	return r.db.WithContext(ctx).Delete(&domain.QuestionGeneration{}, id).Error
 }

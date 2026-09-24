@@ -33,6 +33,7 @@ func NewRouter(
 	integrationSecretHandler *handler.IntegrationSecretHandler,
 	questionHandler *handler.QuestionHandler,
 	questionBatchHandler *handler.QuestionBatchHandler,
+	questionGenerationHandler *handler.QuestionGenerationHandler,
 	scaleHandler *handler.ScaleHandler,
 	rdb *redis.Client,
 ) *gin.Engine {
@@ -134,6 +135,10 @@ func NewRouter(
 	auth.GET("/question-batches/:id/questions", questionBatchHandler.BatchQuestions)
 	auth.POST("/question-batches/:id/confirm", questionBatchHandler.Confirm)
 	auth.POST("/question-batches/:id/void", questionBatchHandler.Void)
+	// 生成会话域：三接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵生成行 / BR1）。
+	auth.POST("/question-generations/create", questionGenerationHandler.Create)
+	auth.GET("/question-generations/:id", questionGenerationHandler.Progress)
+	auth.POST("/question-generations/:id/cancel", questionGenerationHandler.Cancel)
 	// 量表引入域：两接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵量表两行）。
 	auth.GET("/scales", scaleHandler.List)
 	auth.POST("/scales/import", scaleHandler.Import)
