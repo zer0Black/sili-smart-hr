@@ -68,8 +68,8 @@ func (f *fakeQuestionService) DeleteQuestion(_ context.Context, id int64, versio
 var _ service.QuestionService = (*fakeQuestionService)(nil)
 
 func newQuestionRouter(svc *fakeQuestionService) *gin.Engine {
-	// dimSvc 本子计划未用，签名预留，传 nil。
-	h := handler.NewQuestionHandler(svc, nil)
+	// dimSvc/batchSvc 本测试未触达（resubmit 归 batch 测试文件），传 nil。
+	h := handler.NewQuestionHandler(svc, nil, nil)
 	r := gin.New()
 	r.GET("/api/questions", h.List)
 	r.GET("/api/questions/:id", h.Detail)

@@ -32,6 +32,7 @@ func NewRouter(
 	llmConfigHandler *handler.LLMConfigHandler,
 	integrationSecretHandler *handler.IntegrationSecretHandler,
 	questionHandler *handler.QuestionHandler,
+	questionBatchHandler *handler.QuestionBatchHandler,
 	rdb *redis.Client,
 ) *gin.Engine {
 	r := gin.New()
@@ -119,13 +120,19 @@ func NewRouter(
 	auth.GET("/assessment/batches/targets", assessmentBatchHandler.Targets)
 	auth.GET("/assessment/batches/failures", assessmentBatchHandler.Failures)
 	auth.POST("/assessment/batches/create", assessmentBatchHandler.Create)
-	// 题库域：五接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵五行 / BR1）。
+	// 题库域：六接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵六行 / BR1）。
 	// /questions/:id 参数路由与 /questions 静态路由不冲突（Gin 静态优先）。
 	auth.GET("/questions", questionHandler.List)
 	auth.GET("/questions/:id", questionHandler.Detail)
 	auth.POST("/questions/update", questionHandler.Update)
 	auth.POST("/questions/toggle-status", questionHandler.ToggleStatus)
 	auth.POST("/questions/delete", questionHandler.Delete)
+	auth.POST("/questions/resubmit", questionHandler.Resubmit)
+	// 题库批次域：四接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵批次四行 / BR1）。
+	auth.GET("/question-batches", questionBatchHandler.ListBatches)
+	auth.GET("/question-batches/:id/questions", questionBatchHandler.BatchQuestions)
+	auth.POST("/question-batches/:id/confirm", questionBatchHandler.Confirm)
+	auth.POST("/question-batches/:id/void", questionBatchHandler.Void)
 
 	return r
 }

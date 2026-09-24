@@ -13,15 +13,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// QuestionHandler 承载题库域五接口：列表、详情、编辑、启停、删除。
+// QuestionHandler 承载题库域题目行级接口：列表、详情、编辑、启停、删除、重新提交。
 // dimSvc 为构造契约预留形参（后续批次子计划扩展用），本子计划未消费。
+// batchSvc 承载重新提交归批（03 §3.5），行级维护与归批分属两个 service。
 type QuestionHandler struct {
-	svc    service.QuestionService
-	dimSvc service.DimensionService
+	svc      service.QuestionService
+	dimSvc   service.DimensionService
+	batchSvc service.QuestionBatchService
 }
 
-func NewQuestionHandler(svc service.QuestionService, dimSvc service.DimensionService) *QuestionHandler {
-	return &QuestionHandler{svc: svc, dimSvc: dimSvc}
+func NewQuestionHandler(svc service.QuestionService, dimSvc service.DimensionService, batchSvc service.QuestionBatchService) *QuestionHandler {
+	return &QuestionHandler{svc: svc, dimSvc: dimSvc, batchSvc: batchSvc}
 }
 
 // updateQuestionRequest 对齐 03 §3.3：ID 类字段 string 经 parseID，version 乐观锁。
@@ -149,6 +151,39 @@ func (h *QuestionHandler) ToggleStatus(c *gin.Context) {
 		return
 	}
 	res, err := h.svc.ToggleQuestionStatus(c.Request.Context(), id, req.TargetStatus, req.Version)
+	if err != nil {
+		handleServiceError(c, err)
+		return
+	}
+	response.OKWithData(c, res)
+}
+
+// Resubmit 处理 POST /api/questions/resubmit：请求体同编辑（03 §3.5），委托 batchSvc 归批。
+func (h *QuestionHandler) Resubmit(c *gin.Context) {
+	var req updateQuestionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusOK, errcode.BadRequest)
+		return
+	}
+	id, err := parseID(req.ID)
+	if err != nil {
+		response.Fail(c, http.StatusOK, errcode.BadRequest)
+		return
+	}
+	dimID, err := parseID(req.DimensionID)
+	if err != nil {
+		response.Fail(c, http.StatusOK, errcode.BadRequest)
+		return
+	}
+	in := service.ResubmitInput{
+		ID:          id,
+		DimensionID: dimID,
+		Scenario:    req.Scenario,
+		Requirement: req.Requirement,
+		FocusPoint:  req.FocusPoint,
+		Version:     req.Version,
+	}
+	res, err := h.batchSvc.ResubmitQuestion(c.Request.Context(), in)
 	if err != nil {
 		handleServiceError(c, err)
 		return

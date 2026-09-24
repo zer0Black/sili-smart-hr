@@ -91,6 +91,10 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewQuestionRepository,
 		service.NewQuestionService,
 		handler.NewQuestionHandler,
+		// 题库批次域：batch 仓储 + service + handler（03 §3.5/§3.7-§3.10 批次四接口与重新提交）。
+		repository.NewQuestionBatchRepository,
+		service.NewQuestionBatchService,
+		handler.NewQuestionBatchHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
