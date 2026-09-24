@@ -11,7 +11,7 @@ sub_plans:
   - id: "02"
     name: "批次审核与作废"
     file: "02_批次审核与作废.md"
-    status: "pending"
+    status: "completed"
   - id: "03"
     name: "量表引入"
     file: "03_量表引入.md"
