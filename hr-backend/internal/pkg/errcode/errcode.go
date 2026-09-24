@@ -39,6 +39,13 @@ const (
 	BatchNotFound      = 1601 // 批次不存在
 	BatchPeriodInvalid = 1602 // 评估时段非法
 	BatchTargetInvalid = 1603 // 评估对象非法
+	// 题库管理 17xx 段（03 §4.1）。本子计划先落 T3/T4 用到的 1701/1705/1707/1708/1713，
+	// 1702/1703/1704/1706/1709 由批次/生成/量表子任务补全。
+	QuestionNotFound        = 1701 // 题目不存在（含已软删除）
+	QuestionReferenced      = 1705 // 题目已被测试引用，只可停用
+	QuestionNotEditable     = 1707 // 题目不可编辑（量表题或状态不符）
+	QuestionStatusInvalid   = 1708 // 题目状态转换前置校验失败
+	QuestionVersionConflict = 1713 // 题目乐观锁版本冲突（并发变更）
 )
 
 var messages = map[int]string{
@@ -75,6 +82,11 @@ var messages = map[int]string{
 	BatchNotFound:                    "batch not found",
 	BatchPeriodInvalid:               "batch period invalid",
 	BatchTargetInvalid:               "batch target invalid",
+	QuestionNotFound:                 "question not found",
+	QuestionReferenced:               "question referenced",
+	QuestionNotEditable:              "question not editable",
+	QuestionStatusInvalid:            "question status invalid",
+	QuestionVersionConflict:          "question version conflict",
 }
 
 // Message 返回错误码对应文案，未注册返回 "error"。
