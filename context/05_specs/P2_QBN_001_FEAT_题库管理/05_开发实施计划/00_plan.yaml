@@ -7,7 +7,7 @@ sub_plans:
   - id: "01"
     name: "题库台账与维护"
     file: "01_题库台账与维护.md"
-    status: "pending"
+    status: "completed"
   - id: "02"
     name: "批次审核与作废"
     file: "02_批次审核与作废.md"
