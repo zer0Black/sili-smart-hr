@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"sili-smart-hr/backend/internal/engine/extractor"
 	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
+	"sili-smart-hr/backend/internal/engine/questiongen"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/llm"
@@ -396,12 +398,82 @@ func NewBatchRunHandlerTyped(orch *pipeline.Orchestrator) BatchRunHandler {
 	return BatchRunHandler(task.NewBatchRunHandler(orch))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收四个命名类型 handler，转调 task.NewMux
+// NewMuxAdapter Wire 装配适配器：接收五个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
-	batchTick BatchTickHandler, batchRun BatchRunHandler) *asynq.ServeMux {
+	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
-		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun))
+		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate))
+}
+
+// QuestionGenLLMClient 用命名接口类型区分出题专用 client 与全局 llm.Client，
+// 规避 Wire 类型表 multiple bindings 冲突（与 EvaluatorLLMClient 同款）。
+type QuestionGenLLMClient llm.Client
+
+// NewQuestionGenLLMClient 构造出题专用 LLM 客户端：Timeout 120s 覆盖建连到
+// 流式 body 读毕全程，与全局及评估 client 各持独立并发 gate。TokenBudget 12000
+// 覆盖出题 prompt（模板 + 维度名 + 说明，输入侧预检）。任务级超时单点在
+// worker/task 的 questionGenerateTimeout（2h，30 题满额预算推导），调整本处
+// 参数须同步该处。
+func NewQuestionGenLLMClient(provider llm.EnabledModelProvider) QuestionGenLLMClient {
+	return llm.New(llm.Config{
+		Timeout:        120 * time.Second,
+		MaxRetries:     1,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     10 * time.Second,
+		MaxRetryAfter:  60 * time.Second,
+		TokenBudget:    12000,
+		TokenCounter:   llm.NewCharDiv3Counter(),
+	}, provider)
+}
+
+// QuestionDimensionSpecReader 出题维度口径适配器：把 DimensionRepository
+// 适配为 questiongen.DimensionSpecReader（按快照 ID 逐个 FindByID 取全字段，
+// 未命中跳过）。发起时刻校验过启用集合，软删竞态行按未命中跳过（全缺失由
+// Generator 判 INTERNAL 终态）。
+type QuestionDimensionSpecReader struct {
+	dimRepo repository.DimensionRepository
+}
+
+// NewQuestionDimensionSpecReader 构造出题维度口径读取适配器。
+func NewQuestionDimensionSpecReader(dimRepo repository.DimensionRepository) *QuestionDimensionSpecReader {
+	return &QuestionDimensionSpecReader{dimRepo: dimRepo}
+}
+
+// ListSpecsByIDs 按 ID 集合返回维度口径（顺序与 ids 一致，未命中跳过）。
+// 读取失败带上下文上抛（消费侧 questiongen 区分基础设施错误交任务重试）。
+func (r *QuestionDimensionSpecReader) ListSpecsByIDs(ctx context.Context, ids []int64) ([]questiongen.DimensionSpec, error) {
+	specs := make([]questiongen.DimensionSpec, 0, len(ids))
+	for _, id := range ids {
+		d, err := r.dimRepo.FindByID(ctx, id)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read dimension %d: %w", id, err)
+		}
+		specs = append(specs, questiongen.DimensionSpec{ID: d.ID, Name: d.Name, Description: d.Description})
+	}
+	return specs, nil
+}
+
+// 编译期断言：适配器满足 questiongen.DimensionSpecReader 窄接口。
+var _ questiongen.DimensionSpecReader = (*QuestionDimensionSpecReader)(nil)
+
+// NewQuestionGenProvider 装配出题生成器：专用 LLM client + generation 仓储 +
+// 批次仓储（契约保留参数）+ 维度口径窄接口适配。
+func NewQuestionGenProvider(llmClient QuestionGenLLMClient, genRepo repository.QuestionGenerationRepository,
+	batchRepo repository.QuestionBatchRepository, dims *QuestionDimensionSpecReader) *questiongen.Generator {
+	return questiongen.New(llmClient, genRepo, batchRepo, dims)
+}
+
+// QuestionGenerateHandler 是 questionbank:generate 任务 handler 命名类型
+//（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。
+type QuestionGenerateHandler func(context.Context, *asynq.Task) error
+
+// NewQuestionGenerateHandlerTyped 构造 questionbank:generate handler（命名类型透出）。
+func NewQuestionGenerateHandlerTyped(gen *questiongen.Generator) QuestionGenerateHandler {
+	return QuestionGenerateHandler(task.NewQuestionGenerateHandler(gen))
 }
 
 // NewOrchestratorProvider 装配批次编排器（十参，specs §5.2.2）：配置读取复用

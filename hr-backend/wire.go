@@ -95,6 +95,14 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewQuestionBatchRepository,
 		service.NewQuestionBatchService,
 		handler.NewQuestionBatchHandler,
+		// AI 生成出题域（04 T4）：generation 仓储 + 出题专用 LLM 客户端（120s Timeout，
+		// 独立 gate）+ DimensionRepository 出题口径适配 + Generator + questionbank:generate
+		// handler 经参数注入 NewMux。
+		repository.NewQuestionGenerationRepository,
+		NewQuestionGenLLMClient,
+		NewQuestionDimensionSpecReader,
+		NewQuestionGenProvider,
+		NewQuestionGenerateHandlerTyped,
 		// 量表引入域：scale 仓储 + service + handler（03 §3.11/§3.12 scales 两接口）。
 		repository.NewScaleRepository,
 		service.NewScaleService,

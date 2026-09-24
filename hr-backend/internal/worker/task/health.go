@@ -21,17 +21,19 @@ const (
 	QueueExtract = "extract"
 )
 
-// NewMux 构造 worker 任务路由：健康任务原地注册，抽取、评估与批次任务经参数
-// 注入（保持单一注册入口）。session-extract / person-evaluate / batch-tick /
-// batch-run 均以 context.WithTimeout 挂任务级超时（asynq v0.26.0 ServeMux 无
-// options 注册 API），预算声明见各自任务文件的 timeout 常量。
-func NewMux(sessionExtract, personEvaluate, batchTick, batchRun asynq.HandlerFunc) *asynq.ServeMux {
+// NewMux 构造 worker 任务路由：健康任务原地注册，抽取、评估、批次与生成任务经
+// 参数注入（保持单一注册入口）。session-extract / person-evaluate / batch-tick /
+// batch-run / questionbank:generate 均以 context.WithTimeout 挂任务级超时
+// （asynq v0.26.0 ServeMux 无 options 注册 API），预算声明见各自任务文件的
+// timeout 常量。
+func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerate asynq.HandlerFunc) *asynq.ServeMux {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeHealthCheck, HandleHealthCheck)
 	mux.Handle(TypeSessionExtract, withTimeout(sessionExtract, sessionExtractTimeout))
 	mux.Handle(TypePersonEvaluate, withTimeout(personEvaluate, personEvaluateTimeout))
 	mux.Handle(TypeBatchTick, withTimeout(batchTick, batchTickTimeout))
 	mux.Handle(TypeBatchRun, withTimeout(batchRun, batchRunTimeout))
+	mux.Handle(TypeQuestionGenerate, withTimeout(questionGenerate, questionGenerateTimeout))
 	return mux
 }
 

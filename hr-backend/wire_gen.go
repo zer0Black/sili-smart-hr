@@ -111,7 +111,12 @@ func InitializeApp(configPath string) (*App, error) {
 	personEvaluateHandler := NewPersonEvaluateHandlerTyped(evaluator)
 	batchTickHandler := NewBatchTickHandlerTyped(orchestrator)
 	batchRunHandler := NewBatchRunHandlerTyped(orchestrator)
-	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler)
+	questionGenLLMClient := NewQuestionGenLLMClient(enabledModelProvider)
+	questionGenerationRepository := repository.NewQuestionGenerationRepository(db)
+	questionDimensionSpecReader := NewQuestionDimensionSpecReader(dimensionRepository)
+	generator := NewQuestionGenProvider(questionGenLLMClient, questionGenerationRepository, questionBatchRepository, questionDimensionSpecReader)
+	questionGenerateHandler := NewQuestionGenerateHandlerTyped(generator)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,
