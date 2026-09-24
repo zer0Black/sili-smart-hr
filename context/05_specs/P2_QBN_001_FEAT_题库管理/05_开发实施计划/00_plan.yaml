@@ -19,7 +19,7 @@ sub_plans:
   - id: "04"
     name: "AI生成出题"
     file: "04_AI生成出题.md"
-    status: "pending"
+    status: "completed"
 
 execution_order:
   - "01"
