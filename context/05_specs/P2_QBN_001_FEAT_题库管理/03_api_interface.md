@@ -876,7 +876,7 @@ GET /api/question-generations/1785000000000003001
 | status | string | QUEUED / RUNNING / COMPLETED / FAILED / CANCELED |
 | generated_count | integer | 已生成题数（进度「已生成 n/N」，specs 4.3.5） |
 | count | integer | 目标题数 |
-| current_dimension_id / current_dimension_name | string | 当前正在构造的维度（进度提示，specs 4.3.5），未开始空 |
+| current_dimension_id / current_dimension_name | string | 当前正在构造的维度（进度提示，specs 4.3.5），未开始 current_dimension_id 为 "0"、current_dimension_name 为空串 |
 | batch_id / batch_no | string | 仅 COMPLETED 返回，完成态展示批次号、「前往审核」跳转目标（specs 4.3.3） |
 | error_code | string | 仅 FAILED/CANCELED 返回：LLM_FAILED / LLM_TIMEOUT / CANCELED / INTERNAL，前端映射固定失败文案（specs 4.3.4 规则 3），不透传底层错误串 |
 

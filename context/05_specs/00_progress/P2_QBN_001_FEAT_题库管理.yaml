@@ -21,13 +21,13 @@ stages:
     completed_at: "2026-09-23T00:00:00Z"
     check_owner: "lixuetao"   # 各阶段通过检查的人
   interface:
+    status: "completed"
+    started_at: "2026-09-23T00:00:00Z"
+    completed_at: "2026-09-23T00:00:00Z"
+    check_owner: "lixuetao"
+  dev_plan:
     status: "in_progress"
     started_at: "2026-09-23T00:00:00Z"
-    completed_at: null
-    check_owner: null
-  dev_plan:
-    status: "pending"
-    started_at: null
     completed_at: null
     check_owner: null
   dev_exec:
