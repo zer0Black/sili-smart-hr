@@ -15,7 +15,7 @@ sub_plans:
   - id: "03"
     name: "量表引入"
     file: "03_量表引入.md"
-    status: "pending"
+    status: "completed"
   - id: "04"
     name: "AI生成出题"
     file: "04_AI生成出题.md"
