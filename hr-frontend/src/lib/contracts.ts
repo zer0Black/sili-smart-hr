@@ -639,3 +639,29 @@ export interface ConfirmBatchResult {
   admitted_count: number;
   rejected_count: number;
 }
+
+// 题目生成域契约（与后端 question generation service DTO 同构，03_api_interface §3.13/§3.14）
+
+/** 生成会话状态（03 §3.14）。QUEUED/RUNNING 非终态，其余终态。 */
+export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+
+/** POST /api/question-generations/create 响应 data。generation_id 为雪花 ID JSON string 化。 */
+export interface CreateGenerationResult {
+  generation_id: string;
+  status: GenerationStatus;
+}
+
+/** GET /api/question-generations/:id 响应 data。batch_* 仅 COMPLETED、error_code 仅 FAILED/CANCELED 携带。 */
+export interface GenerationProgress {
+  generation_id: string;
+  status: GenerationStatus;
+  generated_count: number;
+  count: number;
+  /** 当前正在构造的维度，未开始为 "0"。 */
+  current_dimension_id: string;
+  current_dimension_name: string;
+  batch_id?: string;
+  batch_no?: string;
+  /** LLM_FAILED / LLM_TIMEOUT / CANCELED / INTERNAL（03 §3.14 枚举）。 */
+  error_code?: string;
+}

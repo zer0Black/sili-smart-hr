@@ -2,6 +2,7 @@
 // 查询条件（draft→filter 两段式）与分页在组件内部自治，切 tab 不互相清空。
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import type { JSX } from 'react';
 
@@ -74,6 +75,7 @@ function useTabDimensions(tab: QuestionTab) {
 
 export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, onImportScale }: QuestionTableProps): JSX.Element {
   const { t } = useTranslation('questionBank');
+  const navigate = useNavigate();
   const dimensions = useTabDimensions(tab);
 
   // draft→filter 两段式：改条件只动 draft，点「查询」才落 filter 触发请求（specs §4.1.5）
@@ -258,12 +260,12 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
           </Button>
         </div>
       ) : list.length === 0 ? (
-        // 空状态：引导文案 + 内嵌按钮（specs §4.1.5）：AI 生成入口 SP4 前禁用，量表引入入口接通
+        // 空状态：引导文案 + 内嵌按钮（specs §4.1.5）：AI 空态跳题目生成页，量表空态开引入弹窗
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-12 text-center">
           <p className="text-base font-medium">{t(`table.emptyTitle.${tab}`)}</p>
           <p className="text-muted-foreground text-sm">{t(`table.emptyDesc.${tab}`)}</p>
           {tab === 'AI' ? (
-            <Button disabled title={t('table.pendingHint')}>{t('table.generateAction')}</Button>
+            <Button onClick={() => void navigate({ to: '/question-bank/generate' })}>{t('table.generateAction')}</Button>
           ) : (
             <Button onClick={onImportScale}>{t('table.importAction')}</Button>
           )}

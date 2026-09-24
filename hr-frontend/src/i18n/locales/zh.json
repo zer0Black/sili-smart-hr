@@ -908,6 +908,46 @@
       "enterReview": "进入审核",
       "toastImported": "已引入量表，批次 {{no}}",
       "toastImportedError": "该量表已引入"
+    },
+    "generate": {
+      "back": "返回题库",
+      "pageTitle": "生成 AI 管理能力题",
+      "pageSubtitle": "本批题目由 LLM 动态生成，生成后形成独立审核批次",
+      "introTitle": "AI 管理能力题",
+      "introBody": "由 LLM 依据你选择的子能力维度动态生成，每题给出一个管理情境与作答要求。所有题目入库前需经过人工批量审核，未标记题默认通过。员工作答通过与 AI 对话完成，不预设标准答案。",
+      "dimensionLabel": "选择子能力维度",
+      "dimensionHint": "多选支持混合出题，LLM 按各维度分别构造情境场景",
+      "descPlaceholder": "（暂无维度说明）",
+      "emptyTitle": "暂无启用的 AI 管理子能力",
+      "emptyDesc": "请先在维度配置中启用 AI 管理子能力，再回来生成题目",
+      "goDimension": "前往维度配置",
+      "countLabel": "题数",
+      "countHint": "建议每批 10 到 20 题，便于一次审完",
+      "countInvalid": "题数须为 {{min}} 到 {{max}} 之间的整数",
+      "reset": "重置",
+      "start": "开始生成",
+      "submitting": "发起中…",
+      "runningTitle": "调用 LLM 出题中…",
+      "progressCount": "已生成 {{generated}} / {{total}} 题",
+      "currentDimension": "当前：{{name}}",
+      "runningHint": "同步等待，离开需二次确认并放弃本批",
+      "doneTitle": "生成完成",
+      "doneBody": "本批 {{count}} 题（批次号 {{no}}）已生成并进入审核队列。请在题库中逐题过目，未标记题默认通过入库。",
+      "regenerateBatch": "再生成一批",
+      "goReview": "前往审核",
+      "failedTitle": "生成失败",
+      "failedBody": "失败原因：{{reason}}。本批已作废，未形成审核批次。",
+      "retry": "重新生成",
+      "errorCode": {
+        "LLM_TIMEOUT": "LLM 调用超时",
+        "LLM_FAILED": "LLM 调用失败",
+        "CANCELED": "已取消，本批未生成",
+        "INTERNAL": "服务内部错误"
+      },
+      "cancelTitle": "放弃本批确认",
+      "cancelDesc": "离开将放弃本批生成，已生成部分随之作废。确认放弃并返回题库？",
+      "cancelConfirm": "放弃并返回",
+      "cancelSubmitting": "取消中…"
     }
   }
 }

@@ -29,6 +29,10 @@ vi.mock('@/features/question-bank/api', () => ({
 
 const toggleMock = vi.fn();
 const deleteMock = vi.fn();
+const navigateMock = vi.fn();
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigateMock,
+}));
 vi.mock('@/features/question-bank/hooks', async (importOriginal) => {
   const orig = await importOriginal<typeof import('@/features/question-bank/hooks')>();
   return {
@@ -78,6 +82,7 @@ async function openSelect(trigger: HTMLElement, optionText: string) {
 beforeEach(() => {
   fetchQuestionsMock.mockReset();
   fetchDetailMock.mockReset();
+  navigateMock.mockReset();
   fetchDetailMock.mockResolvedValue({
     id: '1780000000000000101',
     question_no: 'Q-AG-0001',
@@ -276,13 +281,15 @@ describe('QuestionTable 列表态（specs §4.1.3 / §4.1.5）', () => {
     invalidateSpy.mockRestore();
   });
 
-  it('TestEmptyState：AI tab 空数据渲染引导文案与禁用的「生成 AI 管理题」按钮（§4.1.5）', async () => {
+  it('TestEmptyState：AI tab 空数据渲染引导文案，「生成 AI 管理题」接通跳生成页（§4.1.5 / §4.3.1）', async () => {
     fetchQuestionsMock.mockResolvedValue(makePage([]));
 
     renderTable(<QuestionTable tab="AI" onEdit={vi.fn()} onView={vi.fn()} onResubmit={vi.fn()} />);
 
     const gen = await screen.findByRole('button', { name: '生成 AI 管理题' });
-    expect(gen).toBeDisabled();
+    expect(gen).toBeEnabled();
+    fireEvent.click(gen);
+    expect(navigateMock).toHaveBeenCalledWith({ to: '/question-bank/generate' });
     expect(screen.getByText(/题库为空/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '引入九型量表' })).not.toBeInTheDocument();
   });

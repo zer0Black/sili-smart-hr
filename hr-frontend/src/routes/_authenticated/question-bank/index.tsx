@@ -1,5 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { useCallback, useState } from 'react';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -16,11 +16,17 @@ import type { QuestionDetail, QuestionListItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/question-bank/')({
+  // search 参数 review：生成完成态「前往审核」携批次 ID 直切审核视图（specs §4.3.3）
+  validateSearch: (search: Record<string, unknown>): { review?: string } => ({
+    review: typeof search.review === 'string' && search.review !== '' ? search.review : undefined,
+  }),
   component: QuestionBankPage,
 });
 
 export function QuestionBankPage() {
   const { t } = useTranslation('questionBank');
+  const navigate = useNavigate();
+  const search = useSearch({ from: '/_authenticated/question-bank/' });
 
   // 页内视图切换：list=列表态，review=批量审核态（specs §4.2.1，非独立路由）
   const [viewMode, setViewMode] = useState<'list' | 'review'>('list');
@@ -41,6 +47,15 @@ export function QuestionBankPage() {
   const onTotalChange = useCallback((tab: QuestionTab, total: number) => {
     setTotals((prev) => (prev[tab] === total ? prev : { ...prev, [tab]: total }));
   }, []);
+
+  // 进入时读 search 参数 review 初始化审核视图（specs §4.3.3 前往审核），消费后清参防刷新重入
+  useEffect(() => {
+    if (search.review) {
+      setActiveBatchId(search.review);
+      setViewMode('review');
+      void navigate({ to: '/question-bank', search: {}, replace: true });
+    }
+  }, [search.review, navigate]);
 
   function openEdit(detail: QuestionDetail) {
     setFormMode('edit');
@@ -103,9 +118,9 @@ export function QuestionBankPage() {
         }}
       />
 
-      {/* 页面级工具栏（specs §4.1.1 / §4.1.3）：生成入口 SP4 前禁用占位，引入入口接通两步弹窗 */}
+      {/* 页面级工具栏（specs §4.1.1 / §4.1.3）：生成入口跳题目生成页（specs §4.3.1），引入入口接通两步弹窗 */}
       <div className="flex items-center justify-end gap-2">
-        <Button disabled title={t('toolbar.pendingHint')}>
+        <Button onClick={() => void navigate({ to: '/question-bank/generate' })}>
           {t('toolbar.generateAction')}
         </Button>
         <Button onClick={() => setScaleImportOpen(true)}>
