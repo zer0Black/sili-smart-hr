@@ -3,6 +3,7 @@ package repository
 
 import (
 	"context"
+	"strconv"
 
 	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/pkg/likeescape"
@@ -125,19 +126,28 @@ func (r *questionRepository) ListByIDs(ctx context.Context, ids []int64) ([]doma
 	return list, nil
 }
 
-// MaxQuestionSeq 取前缀下 question_no 序号部分的 SQL 最大值（CAST 后比较），
-// Unscoped 含软删行：编号只增不复用（spec §4.1.2 B），序号空间被软删行继续占用。
-// CAST(... AS INTEGER) 三库通用（SQLite/MySQL/PG），非数字残留（理论不存在）转 0 不参与最大值。
+// MaxQuestionSeq 取前缀下 question_no 序号部分的最大值：按编号长度降序+字典序降序
+// 取首行后在 Go 侧解析序号（等宽数字下长度优先+字典序与数值序一致，且正确处理
+// 超四位扩展如 9999 与 10000 共存）。Unscoped 含软删行：编号只增不复用（spec
+// §4.1.2 B），序号空间被软删行继续占用。LENGTH/ORDER BY/LIMIT 三库通用（SQLite/
+// MySQL/PG），不用 CAST：MySQL 目标类型仅 SIGNED/UNSIGNED，裸 INTEGER 是 1064 语法错误。
 func (r *questionRepository) MaxQuestionSeq(ctx context.Context, prefix string) (int64, error) {
-	var seq *int64
+	var top []string
 	if err := r.db.WithContext(ctx).Unscoped().Model(&domain.Question{}).
-		Select("MAX(CAST(SUBSTR(question_no, ?) AS INTEGER))", len(prefix)+1).
+		Select("question_no").
 		Where("question_no LIKE ? ESCAPE '\\'", likeescape.EscapeLike(prefix)+"%").
-		Scan(&seq).Error; err != nil {
+		Order("LENGTH(question_no) DESC, question_no DESC").
+		Limit(1).
+		Pluck("question_no", &top).Error; err != nil {
 		return 0, err
 	}
-	if seq == nil {
+	if len(top) == 0 {
 		return 0, nil
 	}
-	return *seq, nil
+	seq, err := strconv.ParseInt(top[0][len(prefix):], 10, 64)
+	if err != nil {
+		// 非数字残留（理论不存在）按 0 处理，不参与最大值。
+		return 0, nil
+	}
+	return seq, nil
 }

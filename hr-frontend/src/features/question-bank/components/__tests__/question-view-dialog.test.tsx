@@ -130,6 +130,18 @@ describe('QuestionViewDialog 查看弹窗（specs §4.1.2 D / §4A.4）', () => 
     expect(screen.queryByText('驳回原因')).not.toBeInTheDocument();
   });
 
+  it('TestCreatedAtFormatted：RFC3339 入库时间格式化为 yyyy-MM-dd HH:mm:ss（通用规范 9）', async () => {
+    fetchDetailMock.mockResolvedValue(makeDetail({ created_at: '2026-09-21T10:31:24+08:00' }));
+
+    renderDialog(<QuestionViewDialog open questionId="1780000000000000101" onOpenChange={vi.fn()} onEdit={vi.fn()} />);
+
+    await screen.findByText('Q-AG-0002');
+    const timeNode = screen.getByText(/入库时间/);
+    // 只校验格式（时区换算随运行机器变化），RFC3339 原始串不得透出。
+    expect(timeNode.textContent).toMatch(/入库时间 \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(timeNode.textContent).not.toContain('T');
+  });
+
   it('TestIdNullNoFetch：questionId 为 null 时不发详情请求', () => {
     renderDialog(<QuestionViewDialog open questionId={null} onOpenChange={vi.fn()} onEdit={vi.fn()} />);
 

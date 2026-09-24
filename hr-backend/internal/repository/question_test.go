@@ -531,3 +531,20 @@ func TestMaxQuestionSeq_PicksMax(t *testing.T) {
 		t.Fatalf("seq want 11 (max), got %d", seq)
 	}
 }
+
+// TestMaxQuestionSeq_FiveDigitOverflow 超四位扩展序号：Q-AG-9999 与 Q-AG-10000
+// 共存时长度优先+字典序取 10000 而非 9999（不依赖 CAST，MySQL 兼容）。
+func TestMaxQuestionSeq_FiveDigitOverflow(t *testing.T) {
+	db := newQuestionTestDB(t)
+	seedAI(t, db, "Q-AG-9999", domain.QuestionStatusActive, "情境九九九九", 101)
+	seedAI(t, db, "Q-AG-10000", domain.QuestionStatusActive, "情境一万", 101)
+
+	repo := repository.NewQuestionRepository(db)
+	seq, err := repo.MaxQuestionSeq(context.Background(), "Q-AG-")
+	if err != nil {
+		t.Fatalf("MaxQuestionSeq: %v", err)
+	}
+	if seq != 10000 {
+		t.Fatalf("seq want 10000 (five-digit max), got %d", seq)
+	}
+}

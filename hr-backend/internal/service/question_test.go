@@ -74,10 +74,13 @@ func (r *qFakeRepo) MaxQuestionSeq(_ context.Context, _ string) (int64, error) {
 }
 
 // qFakeDimRepo 是 question service 用的 DimensionRepository 假实现：
-// ListAll 返回可配置维度集（编辑校验过滤 AI_MGMT+enabled）。
+// ListAll 返回可配置维度集（编辑校验过滤 AI_MGMT+enabled），unscopedNames 模拟
+// 软删行存量名称二查回填。
 type qFakeDimRepo struct {
-	dims []domain.Dimension
-	err  error
+	dims          []domain.Dimension
+	err           error
+	unscopedNames map[int64]string
+	unscopedErr   error
 }
 
 func (r *qFakeDimRepo) ListAll(_ context.Context) ([]domain.Dimension, error) { return r.dims, r.err }
@@ -103,6 +106,9 @@ func (r *qFakeDimRepo) ListEnabledFullByDataSource(_ context.Context, _ string) 
 }
 func (r *qFakeDimRepo) CountEnabledByGroupCode(_ context.Context, _ string) (map[string]int, error) {
 	return nil, nil
+}
+func (r *qFakeDimRepo) ListNamesByIDsUnscoped(_ context.Context, _ []int64) (map[int64]string, error) {
+	return r.unscopedNames, r.unscopedErr
 }
 
 func newQuestionSvc(repo *qFakeRepo, dimRepo *qFakeDimRepo) service.QuestionService {
@@ -205,6 +211,21 @@ func TestListQuestionsDisabledDimensionName(t *testing.T) {
 	dimRepo := &qFakeDimRepo{dims: []domain.Dimension{
 		{ID: 201, Name: "授权与分工", ModuleCode: domain.ModuleAIMgmt, Enabled: false},
 	}}
+	svc := newQuestionSvc(repo, dimRepo)
+	res, err := svc.ListQuestions(context.Background(), service.QuestionListInput{Source: domain.QuestionSourceAI})
+	if err != nil {
+		t.Fatalf("ListQuestions: %v", err)
+	}
+	if res.List[0].DimensionName != "授权与分工" {
+		t.Fatalf("want存量名称, got %q", res.List[0].DimensionName)
+	}
+}
+
+// TestListQuestionsSoftDeletedDimensionName 题目挂已软删维度：活跃 map 未命中后
+// Unscoped 二查回填存量名称（specs §4.1.2 E 维度已软删时回传存量名称）。
+func TestListQuestionsSoftDeletedDimensionName(t *testing.T) {
+	repo := &qFakeRepo{list: []domain.Question{*aiQuestion()}, listTotal: 1}
+	dimRepo := &qFakeDimRepo{unscopedNames: map[int64]string{201: "授权与分工"}}
 	svc := newQuestionSvc(repo, dimRepo)
 	res, err := svc.ListQuestions(context.Background(), service.QuestionListInput{Source: domain.QuestionSourceAI})
 	if err != nil {

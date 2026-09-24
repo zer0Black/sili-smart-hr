@@ -154,9 +154,10 @@ func (s *questionService) resolveQuestion(ctx context.Context, id int64) (*domai
 	return q, nil
 }
 
-// listDimensionNames 批量取维度 ID→名称映射：ListAll 全量未删行回填（specs
-// §4.1.2 E 维度已停用回传存量名称）。
-func (s *questionService) listDimensionNames(ctx context.Context) (map[int64]string, error) {
+// listDimensionNames 双查取维度 ID→名称映射：ListAll 活跃行（含停用）优先，活跃
+// map 未命中的 ID 再 Unscoped 查软删行名称回填（specs §4.1.2 E 维度已停用/软删时
+// 回传存量名称）。仅补充真实需要的缺口，避免全量 Unscoped 拉长文本列。
+func (s *questionService) listDimensionNames(ctx context.Context, ids ...int64) (map[int64]string, error) {
 	dims, err := s.dimRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list dimensions: %w", err)
@@ -165,25 +166,45 @@ func (s *questionService) listDimensionNames(ctx context.Context) (map[int64]str
 	for i := range dims {
 		names[dims[i].ID] = dims[i].Name
 	}
+	var missing []int64
+	for _, id := range ids {
+		if _, ok := names[id]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) == 0 {
+		return names, nil
+	}
+	softDeleted, err := s.dimRepo.ListNamesByIDsUnscoped(ctx, missing)
+	if err != nil {
+		return nil, fmt.Errorf("list soft-deleted dimension names: %w", err)
+	}
+	for id, name := range softDeleted {
+		names[id] = name
+	}
 	return names, nil
 }
 
 // resolveDimensionName 单 ID 维度名解析，与 listDimensionNames 同口径（详情复用）。
 func (s *questionService) resolveDimensionName(ctx context.Context, dimensionID int64) (string, error) {
-	names, err := s.listDimensionNames(ctx)
+	names, err := s.listDimensionNames(ctx, dimensionID)
 	if err != nil {
 		return "", err
 	}
 	return names[dimensionID], nil
 }
 
-// ListQuestions 列表组装：repo 分页取行 → 维度名批量回填 → 派生字段（03 §3.1）。
+// ListQuestions 列表组装：repo 分页取行 → 维度名双查回填 → 派生字段（03 §3.1）。
 func (s *questionService) ListQuestions(ctx context.Context, in QuestionListInput) (*QuestionListResult, error) {
 	rows, total, err := s.repo.ListPage(ctx, in.Source, in.DimensionID, in.DimensionIDSet, in.Status, in.Keyword, in.Page, in.PageSize)
 	if err != nil {
 		return nil, fmt.Errorf("list questions: %w", err)
 	}
-	names, err := s.listDimensionNames(ctx)
+	dimIDs := make([]int64, len(rows))
+	for i := range rows {
+		dimIDs[i] = rows[i].DimensionID
+	}
+	names, err := s.listDimensionNames(ctx, dimIDs...)
 	if err != nil {
 		return nil, err
 	}

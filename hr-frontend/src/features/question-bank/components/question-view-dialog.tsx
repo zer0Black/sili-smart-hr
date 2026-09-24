@@ -2,6 +2,7 @@
 // 驳回题含驳回原因区块；底部「编辑」仅 source=AI 且状态启用/已停用显示（§4.1.4 规则5）。
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import dayjs from 'dayjs';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+// RFC3339 入库时间按 yyyy-MM-dd HH:mm:ss 本地格式化（通用规范 9），与 status 页
+// formatStartedAt 同款 dayjs 写法（保留非法输入兜底）。
+function formatTime(raw: string): string {
+  return dayjs(raw).isValid() ? dayjs(raw).format('YYYY-MM-DD HH:mm:ss') : raw;
+}
+
 export function QuestionViewDialog({ open, onOpenChange, questionId, onEdit }: QuestionViewDialogProps) {
   const { t } = useTranslation('questionBank');
   const detailQ = useQuestionDetail(open ? questionId : null);
@@ -66,7 +73,7 @@ export function QuestionViewDialog({ open, onOpenChange, questionId, onEdit }: Q
               <Badge variant={statusVariant(detail.status)}>{t(`view.status.${detail.status}`)}</Badge>
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
-              <span>{t('view.createdAt', { time: detail.created_at })}</span>
+              <span>{t('view.createdAt', { time: formatTime(detail.created_at) })}</span>
               <span>{t('view.referenceCount', { count: detail.reference_count })}</span>
             </div>
 
