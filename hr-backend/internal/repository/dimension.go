@@ -41,6 +41,9 @@ type DimensionRepository interface {
 	// CountEnabledByGroupCode 按分组码统计指定数据来源的启用未删维度数（计划卡轻量
 	// 计数，免拉 prompt/anchor 大字段），只投影 group_code 一列。
 	CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error)
+	// ListNamesByIDsUnscoped 按 ID 集合查维度名（Unscoped 含软删行），题目挂在已
+	// 软删维度时回传存量名称（spec §4.1.2 E）。空 ID 列表返回空 map。
+	ListNamesByIDsUnscoped(ctx context.Context, ids []int64) (map[int64]string, error)
 }
 
 type dimensionRepository struct {
@@ -194,6 +197,26 @@ func (r *dimensionRepository) ListEnabledFullByDataSource(ctx context.Context, d
 		return nil, err
 	}
 	return list, nil
+}
+
+// ListNamesByIDsUnscoped 按 ID 集合查 id→name 映射，Unscoped 含软删行：题目可挂
+// 在已软删维度上，列表/详情需回传存量名称（spec §4.1.2 E）。只投影 id/name 两列。
+func (r *dimensionRepository) ListNamesByIDsUnscoped(ctx context.Context, ids []int64) (map[int64]string, error) {
+	names := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return names, nil
+	}
+	var rows []domain.Dimension
+	if err := r.db.WithContext(ctx).Unscoped().
+		Select("id, name").
+		Where("id IN ?", ids).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		names[rows[i].ID] = rows[i].Name
+	}
+	return names, nil
 }
 
 // CountEnabledByGroupCode 只取 group_code 列在内存分组计数（启用维度量级个位到

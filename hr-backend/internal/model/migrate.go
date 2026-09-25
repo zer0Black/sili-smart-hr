@@ -25,6 +25,10 @@ func migrateDB(db *gorm.DB) error {
 	if err := migrateAggregateScoreFloatToDouble(db); err != nil {
 		return err
 	}
+	// question_generations.staging 满额批次超 MySQL TEXT 上限，AutoMigrate 之前升 MEDIUMTEXT。
+	if err := migrateQuestionGenerationStaging(db); err != nil {
+		return err
+	}
 	// 存量软删维度行 code 改写占位码：须在 AutoMigrate 之前，否则 uk_dimension_code
 	// 建索引时旧语义的「软删行与活跃行同 code」存量数据会让建索引直接失败。
 	if err := migrateDimensionDeletedCode(db); err != nil {
@@ -207,6 +211,39 @@ func migrateAggregateScoreFloatToDouble(db *gorm.DB) error {
 	return nil
 }
 
+// migrateQuestionGenerationStaging 把 question_generations.staging 从 TEXT 升为
+// MEDIUMTEXT：满额批次（30 题 × 单题文本上限）可达数百 KB，超 MySQL TEXT 64KB 上限。
+// 仅 MySQL；PG/SQLite 的 TEXT 无上限跳过；已是 MEDIUMTEXT 跳过。幂等，须在
+// AutoMigrate 之前（GORM 不改列类型，先例 migrateAggregateScoreFloatToDouble）。
+func migrateQuestionGenerationStaging(db *gorm.DB) error {
+	if !Using(DBMySQL) {
+		return nil // PG/SQLite TEXT 无上限
+	}
+	m := db.Migrator()
+	if !m.HasTable(&domain.QuestionGeneration{}) {
+		return nil // 首启建表仍走 AutoMigrate（tag 保持通用 text，建表后再收敛靠下次启动钩子）
+	}
+	if !m.HasColumn(&domain.QuestionGeneration{}, "staging") {
+		return nil
+	}
+	t, err := columnDataType(db, &domain.QuestionGeneration{}, "staging")
+	if err != nil {
+		return fmt.Errorf("probe question_generations.staging data type: %w", err)
+	}
+	switch strings.ToLower(t) {
+	case "tinytext", "text": // 需升级的过渡形态
+	case "mediumtext": // 已是目标形态
+		return nil
+	default: // 其余类型不触碰
+		return nil
+	}
+	q := fmt.Sprintf("ALTER TABLE question_generations MODIFY COLUMN %s MEDIUMTEXT NULL", QuoteIdent("staging"))
+	if err := db.Exec(q).Error; err != nil {
+		return fmt.Errorf("migrate question_generations.staging to mediumtext: %w", err)
+	}
+	return nil
+}
+
 // columnDataType 经 Migrator.ColumnTypes 查列当前数据类型（Migrator 自带
 // 库/schema 限定，替代裸查 information_schema 的同名表误命中面），失败返回 error。
 func columnDataType(db *gorm.DB, model any, col string) (string, error) {
@@ -309,5 +346,8 @@ func allModels() []any {
 		&domain.AssessmentBatch{},
 		&domain.AssessmentBatchPerson{},
 		&domain.AssessmentAlert{},
+		&domain.Question{},
+		&domain.QuestionBatch{},
+		&domain.QuestionGeneration{},
 	}
 }

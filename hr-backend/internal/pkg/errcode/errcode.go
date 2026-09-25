@@ -2,8 +2,10 @@
 package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
-// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，assessment batch 1601-1603。
-// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch。dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
+// 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，
+// assessment batch 1601-1603，题库管理 1701-1709+1713。
+// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank。
+// dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
 	InvalidCredentials               = 1001 // 账号不存在或密码错误
@@ -39,6 +41,17 @@ const (
 	BatchNotFound      = 1601 // 批次不存在
 	BatchPeriodInvalid = 1602 // 评估时段非法
 	BatchTargetInvalid = 1603 // 评估对象非法
+	// 题库管理 17xx 段（03 §4.1 全量）：1710-1712 段内预留。
+	QuestionNotFound        = 1701 // 题目不存在（含已软删除）
+	QuestionBatchNotFound   = 1702 // 批次不存在
+	GenerationNotFound      = 1703 // 生成会话不存在
+	ScaleAlreadyImported    = 1704 // 量表已引入（specs 规则 8）
+	QuestionReferenced      = 1705 // 题目已被测试引用，只可停用
+	QuestionBatchClosed     = 1706 // 批次已关闭或已作废
+	QuestionNotEditable     = 1707 // 题目不可编辑（量表题或状态不符）
+	QuestionStatusInvalid   = 1708 // 题目状态转换前置校验失败
+	LLMNotConfigured        = 1709 // 大模型未配置（无排他启用模型）
+	QuestionVersionConflict = 1713 // 题目乐观锁版本冲突（并发变更）
 )
 
 var messages = map[int]string{
@@ -75,6 +88,16 @@ var messages = map[int]string{
 	BatchNotFound:                    "batch not found",
 	BatchPeriodInvalid:               "batch period invalid",
 	BatchTargetInvalid:               "batch target invalid",
+	QuestionNotFound:                 "question not found",
+	QuestionBatchNotFound:            "question batch not found",
+	GenerationNotFound:               "generation not found",
+	ScaleAlreadyImported:             "scale already imported",
+	QuestionReferenced:               "question referenced",
+	QuestionBatchClosed:              "question batch closed",
+	QuestionNotEditable:              "question not editable",
+	QuestionStatusInvalid:            "question status invalid",
+	LLMNotConfigured:                 "llm not configured",
+	QuestionVersionConflict:          "question version conflict",
 }
 
 // Message 返回错误码对应文案，未注册返回 "error"。

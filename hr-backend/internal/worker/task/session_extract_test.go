@@ -239,7 +239,7 @@ func TestNewMuxSessionExtractTimeout(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(inner, nil, nil, nil)
+	mux := NewMux(inner, nil, nil, nil, nil)
 	h, pattern := mux.Handler(asynq.NewTask(TypeSessionExtract, []byte(`{}`)))
 	if pattern != TypeSessionExtract {
 		t.Fatalf("pattern = %q, want %q", pattern, TypeSessionExtract)
@@ -268,7 +268,7 @@ func TestNewMuxSessionExtractTimeoutRespectsParent(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(inner, nil, nil, nil)
+	mux := NewMux(inner, nil, nil, nil, nil)
 	h, _ := mux.Handler(asynq.NewTask(TypeSessionExtract, []byte(`{}`)))
 
 	parent, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -306,7 +306,7 @@ func TestWithTimeoutCancelsOnExpiry(t *testing.T) {
 // 经一条真实 asynq.Task 验证路由命中。
 func TestNewMuxRegisters(t *testing.T) {
 	repo := &stubRepo{}
-	mux := NewMux(NewSessionExtractHandler(mkExtractor(&stubFetcher{detail: okDetail("s-mux")}, repo, &okLLM{})), nil, nil, nil)
+	mux := NewMux(NewSessionExtractHandler(mkExtractor(&stubFetcher{detail: okDetail("s-mux")}, repo, &okLLM{})), nil, nil, nil, nil)
 
 	err := mux.ProcessTask(context.Background(),
 		asynq.NewTask(TypeSessionExtract, []byte(`{"session_key":"s-mux","token_name":"赵六"}`)))

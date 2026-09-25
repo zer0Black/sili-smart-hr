@@ -86,6 +86,11 @@ func (r *dimFakeRepo) CountEnabledByGroupCode(_ context.Context, _ string) (map[
 	return nil, nil
 }
 
+func (r *dimFakeRepo) ListNamesByIDsUnscoped(_ context.Context, ids []int64) (map[int64]string, error) {
+	names := make(map[int64]string, len(ids))
+	return names, nil
+}
+
 func (r *dimFakeRepo) FindByID(_ context.Context, _ int64) (*domain.Dimension, error) {
 	r.findByIDCalls++
 	return r.findByIDDim, r.findByIDErr

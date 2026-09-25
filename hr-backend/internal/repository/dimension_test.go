@@ -128,6 +128,33 @@ func TestListAll_ExcludesSoftDeleted(t *testing.T) {
 	}
 }
 
+// TestListNamesByIDsUnscoped 按 ID 集合查名含软删行：软删维度的存量名称可回传
+//（spec §4.1.2 E），未知 ID 不进 map，空列表返回空 map。
+func TestListNamesByIDsUnscoped(t *testing.T) {
+	db := newDimensionTestDB(t)
+	a := seedDimension(t, db, "A", "甲", domain.ModuleActivity, true)
+	b := seedDimension(t, db, "B", "乙", domain.ModuleActivity, true)
+	if err := db.Delete(&b).Error; err != nil {
+		t.Fatalf("seed delete: %v", err)
+	}
+
+	repo := repository.NewDimensionRepository(db)
+	names, err := repo.ListNamesByIDsUnscoped(context.Background(), []int64{a.ID, b.ID, 999999})
+	if err != nil {
+		t.Fatalf("ListNamesByIDsUnscoped: %v", err)
+	}
+	if len(names) != 2 || names[a.ID] != "甲" || names[b.ID] != "乙" {
+		t.Fatalf("want both names incl. soft-deleted, got %v", names)
+	}
+	empty, err := repo.ListNamesByIDsUnscoped(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListNamesByIDsUnscoped nil: %v", err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("nil ids want empty map, got %v", empty)
+	}
+}
+
 // TestFindByID verifies FindByID returns the dimension by primary key.
 func TestFindByID(t *testing.T) {
 	db := newDimensionTestDB(t)

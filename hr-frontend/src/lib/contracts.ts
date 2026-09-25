@@ -50,6 +50,16 @@ export const ErrCode = {
   BatchNotFound: 1601,
   BatchPeriodInvalid: 1602,
   BatchTargetInvalid: 1603,
+  QuestionNotFound: 1701,
+  QuestionBatchNotFound: 1702,
+  GenerationNotFound: 1703,
+  ScaleAlreadyImported: 1704,
+  QuestionReferenced: 1705,
+  QuestionBatchClosed: 1706,
+  QuestionNotEditable: 1707,
+  QuestionStatusInvalid: 1708,
+  LLMNotConfigured: 1709,
+  QuestionVersionConflict: 1713,
 } as const;
 
 /** 脱敏账号。id 为雪花 ID，后端以 JSON string 传输规避前端 JS 精度坑。 */
@@ -484,4 +494,174 @@ export interface CreateBatchResult {
   batch_no: string;
   status: 'running' | 'success' | 'partial_failed' | 'failed';
   total_count: number;
+}
+
+// 题库域契约（与后端 question service DTO 同构，03_api_interface §3.1-§3.6）
+
+/** 列表项。id/dimension_id 为雪花 ID JSON string 化；summary 为服务端截取的摘要，悬浮全文走详情接口。 */
+export interface QuestionListItem {
+  id: string;
+  question_no: string;
+  source: 'AI' | 'SCALE';
+  dimension_id: string;
+  /** 维度名存量回传（维度停用/软删后仍展示原名称）。 */
+  dimension_name: string;
+  /** 作答方式由 source 派生：AI→CHAT，SCALE→LIKERT5。 */
+  answer_mode: 'CHAT' | 'LIKERT5';
+  status: 'ACTIVE' | 'DISABLED' | 'REJECTED';
+  summary: string;
+  updated_at: string;
+}
+
+export type QuestionListPage = Page<QuestionListItem>;
+
+/** 详情（03 §3.2 字段全集）。status 含 PENDING（批次审核视图复用）。 */
+export interface QuestionDetail {
+  id: string;
+  question_no: string;
+  source: 'AI' | 'SCALE';
+  dimension_id: string;
+  dimension_name: string;
+  answer_mode: 'CHAT' | 'LIKERT5';
+  status: 'ACTIVE' | 'DISABLED' | 'REJECTED' | 'PENDING';
+  scenario: string;
+  requirement: string;
+  focus_point: string;
+  /** 驳回原因，仅 REJECTED 非空。 */
+  reject_reason: string;
+  batch_id: string;
+  batch_no: string;
+  reference_count: number;
+  /** 乐观锁版本号，编辑/启停/删除提交时回传。 */
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** POST /api/questions/update 请求体。question_no/source/status 等不可变字段不入请求。 */
+export interface UpdateQuestionPayload {
+  id: string;
+  dimension_id: string;
+  scenario: string;
+  requirement: string;
+  focus_point: string;
+  version: number;
+}
+
+/** POST /api/questions/resubmit 请求体（03 §3.5，同 update 五字段）。 */
+export type ResubmitQuestionPayload = UpdateQuestionPayload;
+
+/** POST /api/questions/resubmit 响应 data（03 §3.5）。 */
+export interface ResubmitQuestionResult {
+  id: string;
+  status: 'PENDING';
+  batch_id: string;
+  batch_no: string;
+  version: number;
+}
+
+/** POST /api/questions/toggle-status 请求体。target_status 限 ACTIVE/DISABLED 互切。 */
+export interface ToggleQuestionStatusPayload {
+  id: string;
+  target_status: 'ACTIVE' | 'DISABLED';
+  version: number;
+}
+
+/** POST /api/questions/delete 请求体。 */
+export interface DeleteQuestionPayload {
+  id: string;
+  version: number;
+}
+
+/** 编辑/启停共用响应（03 §3.3/§3.4）。status 仅启停返回，编辑响应无此字段。 */
+export interface QuestionMutationResult {
+  id: string;
+  status?: 'ACTIVE' | 'DISABLED';
+  version: number;
+  updated_at: string;
+}
+
+// 量表引入域契约（与后端 scale service DTO 同构，03_api_interface §3.11/§3.12）
+
+/** 量表候选卡（03 §3.11）。imported 为实时标记，前端据此置灰并标注「已引入」。 */
+export interface ScaleCandidate {
+  scale_key: string;
+  name: string;
+  question_count: number;
+  estimated_minutes: number;
+  description: string;
+  imported: boolean;
+}
+
+/** POST /api/scales/import 响应 data（03 §3.12）。batch_id 为雪花 ID JSON string 化。 */
+export interface ImportScaleResult {
+  batch_id: string;
+  batch_no: string;
+  question_count: number;
+}
+
+// 题库批次域契约（与后端 question_batch service DTO 同构，03_api_interface §3.7-§3.10）
+
+/** 待审核批次卡（03 §3.7）。id 为雪花 ID JSON string 化；created_at 为 RFC3339。 */
+export interface QuestionBatchCard {
+  id: string;
+  batch_no: string;
+  title: string;
+  source: 'AI' | 'SCALE';
+  batch_type: 'GENERATE' | 'IMPORT' | 'RESUBMIT';
+  question_count: number;
+  created_at: string;
+}
+
+/** 审核视图逐题全文（03 §3.8）。reject_reason 恒空串，标记在前端进行。 */
+export interface ReviewQuestionItem {
+  id: string;
+  question_no: string;
+  dimension_id: string;
+  dimension_name: string;
+  answer_mode: 'CHAT' | 'LIKERT5';
+  scenario: string;
+  requirement: string;
+  focus_point: string;
+  reject_reason: string;
+}
+
+/** GET /api/question-batches/:id/questions 响应 data（03 §3.8）。全量不分页，question_no 升序。 */
+export interface BatchQuestionsResult {
+  batch: QuestionBatchCard;
+  questions: ReviewQuestionItem[];
+}
+
+/** POST /api/question-batches/:id/confirm 响应 data（03 §3.9，后端 ConfirmResult 直译）。 */
+export interface ConfirmBatchResult {
+  batch_id: string;
+  batch_status: string;
+  admitted_count: number;
+  rejected_count: number;
+}
+
+// 题目生成域契约（与后端 question generation service DTO 同构，03_api_interface §3.13/§3.14）
+
+/** 生成会话状态（03 §3.14）。QUEUED/RUNNING 非终态，其余终态。 */
+export type GenerationStatus = 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELED';
+
+/** POST /api/question-generations/create 响应 data。generation_id 为雪花 ID JSON string 化。 */
+export interface CreateGenerationResult {
+  generation_id: string;
+  status: GenerationStatus;
+}
+
+/** GET /api/question-generations/:id 响应 data。batch_* 仅 COMPLETED、error_code 仅 FAILED/CANCELED 携带。 */
+export interface GenerationProgress {
+  generation_id: string;
+  status: GenerationStatus;
+  generated_count: number;
+  count: number;
+  /** 当前正在构造的维度，未开始为 "0"。 */
+  current_dimension_id: string;
+  current_dimension_name: string;
+  batch_id?: string;
+  batch_no?: string;
+  /** LLM_FAILED / LLM_TIMEOUT / CANCELED / INTERNAL（03 §3.14 枚举）。 */
+  error_code?: string;
 }

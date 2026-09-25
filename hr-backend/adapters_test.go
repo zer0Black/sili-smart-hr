@@ -67,6 +67,9 @@ func (f *fakeDimensionRepo) UpdateActivitySetting(ctx context.Context, activeThr
 func (f *fakeDimensionRepo) CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error) {
 	panic("not used")
 }
+func (f *fakeDimensionRepo) ListNamesByIDsUnscoped(ctx context.Context, ids []int64) (map[int64]string, error) {
+	panic("not used")
+}
 
 var _ repository.DimensionRepository = (*fakeDimensionRepo)(nil)
 

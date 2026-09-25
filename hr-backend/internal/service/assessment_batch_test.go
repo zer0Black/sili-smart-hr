@@ -143,6 +143,9 @@ func (f *fakeDimRepo) CountEnabledByGroupCode(_ context.Context, dataSource stri
 	}
 	return counts, nil
 }
+func (f *fakeDimRepo) ListNamesByIDsUnscoped(_ context.Context, _ []int64) (map[int64]string, error) {
+	return nil, nil
+}
 
 var _ repository.DimensionRepository = (*fakeDimRepo)(nil)
 

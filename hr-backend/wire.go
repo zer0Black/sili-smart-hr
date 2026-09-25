@@ -87,6 +87,31 @@ func InitializeApp(configPath string) (*App, error) {
 		// 投递适配器 + Orchestrator + 批次 handler 经参数注入 NewMux。
 		repository.NewAssessmentBatchRepository,
 		repository.NewAssessmentAlertRepository,
+		// 题库域：question 仓储 + service + handler（03 §3.1-§3.4/§3.6 questions 五接口）。
+		repository.NewQuestionRepository,
+		service.NewQuestionService,
+		handler.NewQuestionHandler,
+		// 题库批次域：batch 仓储 + service + handler（03 §3.5/§3.7-§3.10 批次四接口与重新提交）。
+		repository.NewQuestionBatchRepository,
+		service.NewQuestionBatchService,
+		handler.NewQuestionBatchHandler,
+		// AI 生成出题域（04 T4）：generation 仓储 + 出题专用 LLM 客户端（120s Timeout，
+		// 独立 gate）+ DimensionRepository 出题口径适配 + Generator + questionbank:generate
+		// handler 经参数注入 NewMux。
+		repository.NewQuestionGenerationRepository,
+		NewQuestionGenLLMClient,
+		NewQuestionDimensionSpecReader,
+		NewQuestionGenProvider,
+		NewQuestionGenerateHandlerTyped,
+		// 生成会话域（04 T5）：Asynq 投递适配器（service.GenerationEnqueuer）+
+		// service + handler（03 §3.13/§3.14 生成三接口）。
+		NewAsynqGenerationEnqueuer,
+		service.NewQuestionGenerationService,
+		handler.NewQuestionGenerationHandler,
+		// 量表引入域：scale 仓储 + service + handler（03 §3.11/§3.12 scales 两接口）。
+		repository.NewScaleRepository,
+		service.NewScaleService,
+		handler.NewScaleHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
@@ -116,6 +141,8 @@ func InitializeApp(configPath string) (*App, error) {
 		NewRSAManager,
 		wire.Bind(new(service.PasswordDecryptor), new(*rsakey.Manager)),
 		wire.Bind(new(service.ConversationlogPinger), new(*conversationlog.Client)),
+		// 生成任务投递：*AsynqGenerationEnqueuer 绑定 service.GenerationEnqueuer 窄接口。
+		wire.Bind(new(service.GenerationEnqueuer), new(*AsynqGenerationEnqueuer)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil
