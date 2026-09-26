@@ -60,6 +60,9 @@ func questionQueryPaging(c *gin.Context) (page, pageSize int) {
 	return page, pageSize
 }
 
+// validVersion 乐观锁 version 须为正整数（03 §3.3-§3.6），负数/零在入口即拒 1400。
+func validVersion(v int) bool { return v > 0 }
+
 // List 处理 GET /api/questions。source 必填限 AI/SCALE；dimension_id 传值即置 Set；
 // page/page_size 缺省或非法兜底 1/20；业务错误统一 HTTP 200 带 code。
 func (h *QuestionHandler) List(c *gin.Context) {
@@ -108,7 +111,7 @@ func (h *QuestionHandler) Detail(c *gin.Context) {
 // Update 处理 POST /api/questions/update。
 func (h *QuestionHandler) Update(c *gin.Context) {
 	var req updateQuestionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || !validVersion(req.Version) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
@@ -141,7 +144,7 @@ func (h *QuestionHandler) Update(c *gin.Context) {
 // ToggleStatus 处理 POST /api/questions/toggle-status。
 func (h *QuestionHandler) ToggleStatus(c *gin.Context) {
 	var req toggleQuestionStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || !validVersion(req.Version) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
@@ -161,7 +164,7 @@ func (h *QuestionHandler) ToggleStatus(c *gin.Context) {
 // Resubmit 处理 POST /api/questions/resubmit：请求体同编辑（03 §3.5），委托 batchSvc 归批。
 func (h *QuestionHandler) Resubmit(c *gin.Context) {
 	var req updateQuestionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || !validVersion(req.Version) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
@@ -194,7 +197,7 @@ func (h *QuestionHandler) Resubmit(c *gin.Context) {
 // Delete 处理 POST /api/questions/delete。
 func (h *QuestionHandler) Delete(c *gin.Context) {
 	var req deleteQuestionRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || !validVersion(req.Version) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}

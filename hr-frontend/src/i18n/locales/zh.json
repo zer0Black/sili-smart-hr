@@ -839,6 +839,7 @@
       "dimension": "所属维度",
       "dimensionRequired": "请选择所属维度",
       "dimensionDisabled": "已停用",
+      "dimensionDisabledSubmit": "原所属维度已停用，请改选启用中的维度",
       "scenario": "情境描述",
       "scenarioRequired": "请输入情境描述",
       "scenarioMaxLength": "情境描述不超过 1000 字符",

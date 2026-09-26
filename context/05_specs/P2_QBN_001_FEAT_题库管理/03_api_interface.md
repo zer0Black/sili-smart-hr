@@ -94,7 +94,7 @@
 | status | string | 否 | 空 | 状态筛选：ACTIVE / DISABLED / REJECTED，空为全部状态 |
 | keyword | string | 否 | 空 | 按题目编号与情境描述/题项陈述全文模糊搜索 |
 | page | integer | 否 | 1 | 页码 |
-| page_size | integer | 否 | 20 | 每页数量 |
+| page_size | integer | 否 | 20 | 每页数量，服务端钳制上限 100 |
 
 **请求示例：**
 
@@ -158,7 +158,7 @@ GET /api/questions?source=AI&status=ACTIVE&keyword=授权&page=1&page_size=10
 
 - 恒排除 PENDING 态：待审核题目仅在批次审核视图可见（specs 4.3.4 规则 2）。
 - 排序固定 `updated_at DESC, id DESC`，不提供排序参数（specs 4.1.5）。
-- keyword 经 model.EscapeLike 转义后对 question_no 与 scenario 做 `LIKE ? ESCAPE '\'` OR 匹配（规则文件 §1.11）。
+- keyword 经 likeescape.EscapeLike（internal/pkg/likeescape）转义后对 question_no 与 scenario 做 `LIKE ? ESCAPE '\'` OR 匹配（规则文件 §1.11）。
 - dimension_id / status 取值与 source tab 的域一致性由前端保证（AI tab 只出 AI_MGMT 维度、SCALE tab 只出 ENNEAGRAM 型别），服务端不强制校验跨 tab 组合。
 
 ---
@@ -847,6 +847,8 @@ GET /api/question-generations/1785000000000003001
     "status": "COMPLETED",
     "generated_count": 12,
     "count": 12,
+    "current_dimension_id": "1780000000000000100",
+    "current_dimension_name": "",
     "batch_id": "1785000000000000001",
     "batch_no": "#G0921"
   }
@@ -876,7 +878,7 @@ GET /api/question-generations/1785000000000003001
 | status | string | QUEUED / RUNNING / COMPLETED / FAILED / CANCELED |
 | generated_count | integer | 已生成题数（进度「已生成 n/N」，specs 4.3.5） |
 | count | integer | 目标题数 |
-| current_dimension_id / current_dimension_name | string | 当前正在构造的维度（进度提示，specs 4.3.5），未开始 current_dimension_id 为 "0"、current_dimension_name 为空串 |
+| current_dimension_id / current_dimension_name | string | 各状态恒返回（无 omitempty）。RUNNING 为当前正在构造的维度（进度提示，specs 4.3.5）；终态保留末次维度 ID、name 恒空串（维度名仅 RUNNING 态回填）；未开始 current_dimension_id 为 "0"、current_dimension_name 为空串 |
 | batch_id / batch_no | string | 仅 COMPLETED 返回，完成态展示批次号、「前往审核」跳转目标（specs 4.3.3） |
 | error_code | string | 仅 FAILED/CANCELED 返回：LLM_FAILED / LLM_TIMEOUT / CANCELED / INTERNAL，前端映射固定失败文案（specs 4.3.4 规则 3），不透传底层错误串 |
 
@@ -947,10 +949,12 @@ GET /api/question-generations/1785000000000003001
 ```json
 {
   "code": 1705,
-  "message": "该题已被测试引用，只可停用",
+  "message": "question referenced",
   "data": null
 }
 ```
+
+message 取 errcode 注册的英文默认文案，可见文案由前端按 code 经 i18n 渲染（§4.4），不消费后端 message。
 
 **HTTP 状态码映射：**
 
@@ -984,7 +988,7 @@ GET /api/question-generations/1785000000000003001
 
 - 类型与长度校验：handler 层对 scenario（1~1000）、requirement（1~2000）、focus_point（1~500）、驳回原因（1~500）、count（5~30）逐项校验，超长或越界返 1400。
 - 状态前置校验：编辑/启停/重新提交/删除/确认入库/作废均校验前置状态，非法转换返 1707/1708/1706，防止 API 直调绕过前端按钮约束（specs 6.3）。
-- SQL 注入防护：全程 GORM 链式 API 加占位符绑定；keyword 经 model.EscapeLike 转义加 `ESCAPE '\'` 子句（规则文件 §1.11）。
+- SQL 注入防护：全程 GORM 链式 API 加占位符绑定；keyword 经 likeescape.EscapeLike 转义加 `ESCAPE '\'` 子句（规则文件 §1.11）。
 
 ### 5.3 传输安全
 

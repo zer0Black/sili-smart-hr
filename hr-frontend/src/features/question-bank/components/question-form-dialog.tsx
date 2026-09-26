@@ -81,6 +81,7 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode
     handleSubmit,
     control,
     reset,
+    setError,
     formState: { errors },
   } = useForm<QuestionFormValues>({
     resolver: zodResolver(schema),
@@ -104,6 +105,11 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode
 
   const onSubmit = (values: QuestionFormValues) => {
     if (!question) return;
+    // 原维度已停用且未改选时前置拦截，内联报错替代后端 1400 兜底（§4.1.2 E / §4.4）
+    if (!dimensions.some((d) => d.id === values.dimension_id)) {
+      setError('dimension_id', { message: t('form.dimensionDisabledSubmit') });
+      return;
+    }
     mut.mutate(
       {
         id: question.id,

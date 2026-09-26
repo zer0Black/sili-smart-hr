@@ -63,14 +63,15 @@ function statusVariant(status: QuestionListItem['status']): 'default' | 'seconda
   return 'default';
 }
 
-/** tab 维度下拉数据源：AI 取启用 AI_MGMT 子能力，SCALE 型别维度 SP3 前为空（仅「全部维度」）。 */
+/** tab 维度下拉数据源：AI 取启用 AI_MGMT 子能力；SCALE 取 ENNEAGRAM 型别维度（specs §4.1.2 A）。 */
 function useTabDimensions(tab: QuestionTab) {
   const treeQ = useDimensionTree();
-  if (tab !== 'AI') return [];
-  const mod = treeQ.data?.modules.find((m) => m.module_code === 'AI_MGMT');
+  const mod = treeQ.data?.modules.find((m) => m.module_code === (tab === 'AI' ? 'AI_MGMT' : 'ENNEAGRAM'));
   if (!mod) return [];
   const leaves = mod.groups ? mod.groups.flatMap((g) => g.dimensions) : (mod.dimensions ?? []);
-  return leaves.filter((d) => d.enabled).map((d) => ({ id: d.id, name: d.name }));
+  // AI 侧限当前启用集合；量表侧 specs 未限定启用，型别维度全量列出
+  const visible = tab === 'AI' ? leaves.filter((d) => d.enabled) : leaves;
+  return visible.map((d) => ({ id: d.id, name: d.name }));
 }
 
 export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, onImportScale }: QuestionTableProps): JSX.Element {
@@ -232,7 +233,8 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
             <SelectItem value={ALL}>{t('table.filterStatusAll')}</SelectItem>
             <SelectItem value="ACTIVE">{t('table.status.ACTIVE')}</SelectItem>
             <SelectItem value="DISABLED">{t('table.status.DISABLED')}</SelectItem>
-            {tab === 'AI' && <SelectItem value="REJECTED">{t('table.status.REJECTED')}</SelectItem>}
+            {/* 状态枚举两 tab 同构（specs §4.1.2 A），量表驳回题靠它定位后删除（规则 5） */}
+            <SelectItem value="REJECTED">{t('table.status.REJECTED')}</SelectItem>
           </SelectContent>
         </Select>
         <input

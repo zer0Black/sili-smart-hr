@@ -44,8 +44,8 @@ type QuestionListItem struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
-// QuestionDetail 详情 DTO（03 §3.2 响应字段全集）。
-// batch_no 本子计划无 question_batches 表，用空串占位（batch_id 有值透传），SP2 接管回填。
+// QuestionDetail 详情 DTO（03 §3.2 响应字段全集）。batch_no 经 batchRepo 回填，
+// 批次已被物理清理等查不到时降级空串（batch_id 有值透传不受影响）。
 type QuestionDetail struct {
 	ID             string    `json:"id"`
 	QuestionNo     string    `json:"question_no"`
@@ -114,13 +114,14 @@ type QuestionService interface {
 }
 
 type questionService struct {
-	repo    repository.QuestionRepository
-	dimRepo repository.DimensionRepository
+	repo      repository.QuestionRepository
+	dimRepo   repository.DimensionRepository
+	batchRepo repository.QuestionBatchRepository
 }
 
-// NewQuestionService 构造题库域 service。
-func NewQuestionService(repo repository.QuestionRepository, dimRepo repository.DimensionRepository) QuestionService {
-	return &questionService{repo: repo, dimRepo: dimRepo}
+// NewQuestionService 构造题库域 service。batchRepo 供详情回填 batch_no（03 §3.2）。
+func NewQuestionService(repo repository.QuestionRepository, dimRepo repository.DimensionRepository, batchRepo repository.QuestionBatchRepository) QuestionService {
+	return &questionService{repo: repo, dimRepo: dimRepo, batchRepo: batchRepo}
 }
 
 // answerModeOf 作答方式按 source 派生（03 §3.1）。
@@ -246,6 +247,17 @@ func (s *questionService) GetQuestion(ctx context.Context, id int64) (*QuestionD
 	if err != nil {
 		return nil, err
 	}
+	batchNo := ""
+	if q.BatchID != 0 {
+		batch, err := s.batchRepo.FindByID(ctx, q.BatchID)
+		if err != nil {
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("find question batch by id: %w", err)
+			}
+		} else {
+			batchNo = batch.BatchNo
+		}
+	}
 	return &QuestionDetail{
 		ID:             int64ToString(q.ID),
 		QuestionNo:     q.QuestionNo,
@@ -259,7 +271,7 @@ func (s *questionService) GetQuestion(ctx context.Context, id int64) (*QuestionD
 		FocusPoint:     q.FocusPoint,
 		RejectReason:   q.RejectReason,
 		BatchID:        int64ToString(q.BatchID),
-		BatchNo:        "", // 本子计划无 question_batches 表，SP2 接管回填
+		BatchNo:        batchNo,
 		ReferenceCount: q.ReferenceCount,
 		Version:        q.Version,
 		CreatedAt:      q.CreatedAt,

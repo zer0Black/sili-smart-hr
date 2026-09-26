@@ -112,7 +112,7 @@ func (r *qFakeDimRepo) ListNamesByIDsUnscoped(_ context.Context, _ []int64) (map
 }
 
 func newQuestionSvc(repo *qFakeRepo, dimRepo *qFakeDimRepo) service.QuestionService {
-	return service.NewQuestionService(repo, dimRepo)
+	return service.NewQuestionService(repo, dimRepo, &qBatchFakeRepo{})
 }
 
 // aiQuestion 构造一枚可编辑态 AI 题默认形状。
@@ -283,14 +283,15 @@ func TestListQuestionsScaleTab(t *testing.T) {
 
 // ---------- GetQuestion ----------
 
-// TestGetQuestionFound 详情字段全集（03 §3.2 json tag 权威）。
+// TestGetQuestionFound 详情字段全集（03 §3.2 json tag 权威），batch_no 经批次仓储回填。
 func TestGetQuestionFound(t *testing.T) {
 	q := aiQuestion()
 	q.RejectReason = "存在偏见"
 	q.ReferenceCount = 3
 	q.CreatedAt = time.Date(2026, 9, 21, 10, 0, 0, 0, time.UTC)
 	q.UpdatedAt = time.Date(2026, 9, 23, 9, 0, 0, 0, time.UTC)
-	svc := newQuestionSvc(&qFakeRepo{findByID: q}, &qFakeDimRepo{dims: aiMgmtDims()})
+	batch := pendingBatch(301, 1)
+	svc := service.NewQuestionService(&qFakeRepo{findByID: q}, &qFakeDimRepo{dims: aiMgmtDims()}, &qBatchFakeRepo{batchByID: map[int64]*domain.QuestionBatch{301: batch}})
 
 	d, err := svc.GetQuestion(context.Background(), 101)
 	if err != nil {
@@ -308,8 +309,21 @@ func TestGetQuestionFound(t *testing.T) {
 	if d.RejectReason != "存在偏见" || d.ReferenceCount != 3 || d.Version != 2 {
 		t.Fatalf("misc mismatch: %+v", d)
 	}
-	if d.BatchID != "301" || d.BatchNo != "" {
+	if d.BatchID != "301" || d.BatchNo != "#G0925" {
 		t.Fatalf("batch mismatch: %+v", d)
+	}
+}
+
+// TestGetQuestionBatchNoMissing 批次查不到（已物理清理）降级空串，batch_id 照常透传。
+func TestGetQuestionBatchNoMissing(t *testing.T) {
+	q := aiQuestion()
+	svc := newQuestionSvc(&qFakeRepo{findByID: q}, &qFakeDimRepo{})
+	d, err := svc.GetQuestion(context.Background(), 101)
+	if err != nil {
+		t.Fatalf("GetQuestion: %v", err)
+	}
+	if d.BatchID != "301" || d.BatchNo != "" {
+		t.Fatalf("want batch_id 301 with empty batch_no, got %+v", d)
 	}
 }
 

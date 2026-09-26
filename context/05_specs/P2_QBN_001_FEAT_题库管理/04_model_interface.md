@@ -191,8 +191,8 @@ CREATE INDEX "idx_questions_deleted_at" ON "questions"("deleted_at");
 | reference_count | INT | INTEGER | INTEGER | 是 | 0 | 被主动测试指派的累计次数（specs 术语表）。由主动测试评估运营功能（F7）写入，本域只读；大于 0 时删除被拒绝（specs 规则 4） |
 | version | INT | INTEGER | INTEGER | 是 | 1 | 乐观锁版本号，新建置 1，更新自增。编辑/启停/删除提交时校验一致性，题目已被他人删除或变更时返 1713（specs 规则 9 并发冲突） |
 | deleted_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 否 | NULL | 软删除标记，GORM DeletedAt 自动维护。承载已删除终态（行级删除、生成/量表批次作废随批删），查询自动过滤 |
-| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoCreateTime | 创建时间，题目生成/引入落库时刻，查看弹窗「入库时间」以此为准 |
-| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoUpdateTime | 更新时间，列表默认按此倒序（specs 4.1.5） |
+| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoCreateTime | 创建时间，题目生成/引入落库时刻，查看弹窗「入库时间」以此为准。列可空（DDL 无 NOT NULL），应用层 autoCreateTime 恒填值 |
+| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoUpdateTime | 更新时间，列表默认按此倒序（specs 4.1.5）。列可空（DDL 无 NOT NULL），应用层 autoUpdateTime 恒填值 |
 
 **索引说明：**
 
@@ -213,7 +213,7 @@ CREATE INDEX "idx_questions_deleted_at" ON "questions"("deleted_at");
 - 软删除（规则文件 §1.3）：行级删除、生成/量表批次作废随批删均置 deleted_at。软删行的编号与量表占位保留，「已引入」判定与编号分配的 Unscoped 查询可见。
 - 量表题保护（specs 规则 5）：source=SCALE 的行，scenario/requirement/focus_point/dimension_id 生成后任何路径不更新，仅 status（启停）与 deleted_at 可变。
 - 乐观锁：编辑/启停/删除 WHERE 附带 version，影响行数 0 即并发冲突返 1713。
-- 关键词搜索（specs 4.1.2 A）：question_no 与 scenario 的 LIKE OR 匹配，输入经 model.EscapeLike 转义并显式 `ESCAPE '\'`（规则文件 §1.11）。
+- 关键词搜索（specs 4.1.2 A）：question_no 与 scenario 的 LIKE OR 匹配，输入经 likeescape.EscapeLike（internal/pkg/likeescape）转义并显式 `ESCAPE '\'`（规则文件 §1.11）。
 
 ---
 
@@ -310,10 +310,10 @@ CREATE INDEX "idx_question_batches_status" ON "question_batches"("status", "crea
 | dimension_ids | TEXT | TEXT | TEXT | 否 | NULL | 生成批次的维度 ID 集合快照，JSON 数组字符串存 TEXT 列（规则文件 §1.5 半结构化约定）。追溯用，json 不下发 |
 | closed_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 否 | NULL | 确认入库成功时刻，仅 CLOSED 态非空 |
 | voided_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 否 | NULL | 作废完成时刻，仅 VOIDED 态非空 |
-| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoCreateTime | 建批时间，批次卡「生成时间」展示 |
-| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoUpdateTime | 更新时间 |
+| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoCreateTime | 建批时间，批次卡「生成时间」展示。列可空（DDL 无 NOT NULL），应用层恒填值 |
+| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoUpdateTime | 更新时间。列可空（DDL 无 NOT NULL），应用层恒填值 |
 
-**索引说明：**
+**索引说明（question_batches）：**
 
 | 索引名 | 类型 | 字段 | 用途 |
 |--------|------|------|------|
@@ -416,8 +416,8 @@ CREATE TABLE "question_generations" (
 | staging | TEXT | TEXT | TEXT | 否 | NULL | 已生成题目暂存，JSON 数组字符串（题号未分配前的题目全文）。满额批次（30 题 × 单题文本上限）可达数百 KB，超出 MySQL TEXT 64KB 上限：tag 保持通用 `text`（规则文件 §1.5），MySQL 经 migrateDB 幂等方言钩子探测列类型后 ALTER 为 MEDIUMTEXT（16MB，仿 aggregate_scores float→double 先例），PostgreSQL/SQLite 的 TEXT 无上限不动。终态（COMPLETED 落库后 / FAILED / CANCELED）清空。json 不下发 |
 | batch_id | BIGINT | BIGINT | INTEGER | 是 | 0 | 生成完成时建批并回填批次 ID，未完成为 0。COMPLETED 态响应据此返回批次号 |
 | error_code | VARCHAR(32) | VARCHAR(32) | TEXT | 否 | 空串 | 失败归类枚举：LLM_FAILED（调用失败）/ LLM_TIMEOUT（超时）/ CANCELED（取消即终因）/ INTERNAL。前端映射固定失败文案（specs 4.3.4 规则 3 失败原因展示），不透传底层错误串 |
-| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoCreateTime | 发起时刻 |
-| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 是 | autoUpdateTime | 进度更新时刻 |
+| created_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoCreateTime | 发起时刻。列可空（DDL 无 NOT NULL），应用层恒填值 |
+| updated_at | DATETIME | TIMESTAMP WITH TIME ZONE | TEXT | 业务必填 | autoUpdateTime | 进度更新时刻。列可空（DDL 无 NOT NULL），应用层恒填值 |
 
 **索引说明：**
 
@@ -515,7 +515,7 @@ questions、question_batches、question_generations 三表首启均空，无 mig
 ### 7.2 安全
 
 - 无密码、无敏感个人数据，RSA 通道不适用（规则文件 §2.5）。
-- SQL 注入防护：全程 GORM 链式 API 加占位符绑定；关键词搜索经 model.EscapeLike 转义加 `ESCAPE '\'` 子句（规则文件 §1.11）。
+- SQL 注入防护：全程 GORM 链式 API 加占位符绑定；关键词搜索经 likeescape.EscapeLike（internal/pkg/likeescape）转义加 `ESCAPE '\'` 子句（规则文件 §1.11）。
 - 题库为系统级共享数据，所有平台账号可见可操作，无行级隔离（specs 2.1）。
 - 员工侧无题库浏览入口，作答页经一次性令牌仅见被指派题目（specs 2.1，接口归 F8）。
 

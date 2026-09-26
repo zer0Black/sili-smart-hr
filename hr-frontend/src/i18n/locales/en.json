@@ -839,6 +839,7 @@
       "dimension": "Dimension",
       "dimensionRequired": "Please select a dimension",
       "dimensionDisabled": "Disabled",
+      "dimensionDisabledSubmit": "The original dimension is disabled. Choose an enabled one",
       "scenario": "Scenario",
       "scenarioRequired": "Please enter the scenario",
       "scenarioMaxLength": "Scenario must be at most 1000 characters",
