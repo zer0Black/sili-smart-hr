@@ -67,7 +67,7 @@ var _ service.QuestionBatchService = (*fakeQuestionBatchService)(nil)
 // questionSvc 传 nil：QuestionHandler 的题目五接口不在本测试触达范围。
 func newQuestionBatchRouter(batchSvc *fakeQuestionBatchService) *gin.Engine {
 	h := handler.NewQuestionBatchHandler(batchSvc)
-	qh := handler.NewQuestionHandler(nil, nil, batchSvc)
+	qh := handler.NewQuestionHandler(nil, batchSvc)
 	r := gin.New()
 	r.GET("/api/question-batches", h.ListBatches)
 	r.GET("/api/question-batches/:id/questions", h.BatchQuestions)

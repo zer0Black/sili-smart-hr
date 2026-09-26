@@ -10,18 +10,19 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/engine/extractor"
 )
 
 // ErrSchemaInvalid 出题输出未通过 schema 校验：重试一次，仍失败判业务失败。
 var ErrSchemaInvalid = errors.New("questiongen: question schema invalid")
 
-// 三段文本长度上限（specs 4.1.2 E）：模板文本内写同值字面量，此处校验引用，
-// 单一来源防漂移。maxBatchTitleRunes 对齐 question_batches.title varchar(255)。
+// 三段文本长度上限（specs 4.1.2 E）：常量归 domain（与 service 校验共用），
+// 模板文本内写同值字面量。maxBatchTitleRunes 对齐 question_batches.title varchar(255)。
 const (
-	maxScenarioRunes    = 1000
-	maxRequirementRunes = 2000
-	maxFocusPointRunes  = 500
+	maxScenarioRunes    = domain.QuestionScenarioMax
+	maxRequirementRunes = domain.QuestionRequirementMax
+	maxFocusPointRunes  = domain.QuestionFocusMax
 	maxBatchTitleRunes  = 255
 )
 

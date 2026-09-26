@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/repository"
 	"sili-smart-hr/backend/internal/service"
 )
 
@@ -37,6 +38,9 @@ type qFakeRepo struct {
 	deleteID   int64
 	deleteCall bool
 }
+
+var _ repository.QuestionRepository = (*qFakeRepo)(nil)
+var _ repository.DimensionRepository = (*qFakeDimRepo)(nil)
 
 func (r *qFakeRepo) ListPage(_ context.Context, _ string, _ int64, _ bool, _, _ string, _, _ int) ([]domain.Question, int64, error) {
 	return r.list, r.listTotal, r.listErr

@@ -195,7 +195,7 @@ func newFixture(t *testing.T) *genFixture {
 		llm:     &fakeLLM{},
 		dims:    &fakeDimReader{dims: map[int64]DimensionSpec{dimA.ID: dimA, dimB.ID: dimB}},
 	}
-	f.gen = New(f.llm, f.genRepo, nil, f.dims)
+	f.gen = New(f.llm, f.genRepo, f.dims)
 	return f
 }
 

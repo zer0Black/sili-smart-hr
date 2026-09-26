@@ -31,6 +31,8 @@ type qGenFakeRepo struct {
 	cancelErr    error
 }
 
+var _ repository.QuestionGenerationRepository = (*qGenFakeRepo)(nil)
+
 func (r *qGenFakeRepo) Create(_ context.Context, g *domain.QuestionGeneration) error {
 	if g.ID == 0 {
 		g.ID = 3001 // 模拟 GORM 雪花回调赋主键

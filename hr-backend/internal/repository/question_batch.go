@@ -196,7 +196,7 @@ func (r *questionBatchRepository) NextBatchNo(ctx context.Context, prefix string
 
 // ConfirmBatch 确认入库（specs 4.2.3/4.1.4 规则 2、规则 7）：PENDING 前置由
 // 批次行 UPDATE 的 WHERE 守卫承载，RowsAffected 0 即非 PENDING（或不存在）。
-// 先整批置 ACTIVE 再把 REJECTED 子集二次覆盖并落驳回原因（specs 4.1.4 规则 3：
+// REJECTED 子集与整批 ACTIVE 各自 UPDATE，每行恰一次 version+1（specs 4.1.4 规则 3：
 // 驳回原因仅 REJECTED 非空；ACTIVE 行 reject_reason 清空）。
 func (r *questionBatchRepository) ConfirmBatch(ctx context.Context, batchID int64, rejected map[int64]string) (admitted, rejectedCount int64, err error) {
 	now := time.Now()

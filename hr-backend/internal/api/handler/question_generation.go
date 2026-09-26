@@ -14,14 +14,12 @@ import (
 )
 
 // QuestionGenerationHandler 承载生成域三接口：发起、进度轮询、取消。
-// dimSvc 为构造契约预留形参（后续生成页选项直读需要时启用），本任务未消费。
 type QuestionGenerationHandler struct {
-	svc    service.QuestionGenerationService
-	dimSvc service.DimensionService
+	svc service.QuestionGenerationService
 }
 
-func NewQuestionGenerationHandler(svc service.QuestionGenerationService, dimSvc service.DimensionService) *QuestionGenerationHandler {
-	return &QuestionGenerationHandler{svc: svc, dimSvc: dimSvc}
+func NewQuestionGenerationHandler(svc service.QuestionGenerationService) *QuestionGenerationHandler {
+	return &QuestionGenerationHandler{svc: svc}
 }
 
 // createGenerationRequest 对齐 03 §3.13：dimension_ids 雪花 string 数组（JS 精度

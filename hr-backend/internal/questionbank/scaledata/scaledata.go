@@ -21,7 +21,7 @@ type ScaleTemplate struct {
 	ScaleKey         string           // RISO_HUDSON / ESSENCE
 	Name             string           // 量表名（批次标题）
 	QuestionCount    int              // 题目数量（与 len(Items) 一致，数据完整性测试守护）
-	EstimatedMinutes int              // 预估作答时长（分钟，按全集口径）
+	EstimatedMinutes int              // 预估作答时长（分钟，样本期按题数等比折算，全集口径见各模板注释）
 	Description      string           // 弹窗卡片描述
 	Dimensions       []ScaleDimension // 九型 9 型别维度定义
 	Items            []ScaleItem      // 题目全文

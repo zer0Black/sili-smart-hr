@@ -726,8 +726,7 @@
     },
     "toolbar": {
       "generateAction": "生成 AI 管理题",
-      "importAction": "引入九型量表",
-      "pendingHint": "功能建设中，敬请期待"
+      "importAction": "引入九型量表"
     },
     "table": {
       "filterDimension": "维度",
@@ -770,7 +769,6 @@
       },
       "generateAction": "生成 AI 管理题",
       "importAction": "引入九型量表",
-      "pendingHint": "功能建设中，敬请期待",
       "loadError": "数据加载失败，请重试",
       "retry": "重试",
       "total": "共 {{total}} 条",

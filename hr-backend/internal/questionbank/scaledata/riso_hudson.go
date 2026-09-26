@@ -1,7 +1,10 @@
 package scaledata
 
+import "sili-smart-hr/backend/internal/domain"
+
 // risoHudsonTemplate Riso-Hudson 标准量表（全集 144 题约 25 分钟，specs 4.1.2 F）。
 // 样本期收录 18 题（9 型各 2 题），长短语陈述句为该量表经典风格。
+// EstimatedMinutes 按题数等比折算（25×18/144≈3），全集替换时改回全集口径。
 func risoHudsonTemplate() ScaleTemplate {
 	items := []ScaleItem{
 		{Statement: "我对自己有很高的标准，事情没做对会让我很难安心", DimensionCode: "ENNE_TYPE_1_REFORMER",
@@ -45,10 +48,10 @@ func risoHudsonTemplate() ScaleTemplate {
 		items[i].Requirement = likertRequirement
 	}
 	return ScaleTemplate{
-		ScaleKey:         "RISO_HUDSON",
+		ScaleKey:         domain.ScaleKeyRisoHudson,
 		Name:             "Riso-Hudson 标准量表",
 		QuestionCount:    len(items),
-		EstimatedMinutes: 25,
+		EstimatedMinutes: 3,
 		Description:      "经典九型人格标准量表，题项覆盖全面，测型结果稳定，适合追求细致区分的场景。",
 		Dimensions:       enneDimensions,
 		Items:            items,

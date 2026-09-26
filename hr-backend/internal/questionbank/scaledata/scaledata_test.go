@@ -140,13 +140,13 @@ func TestTemplateMetadata(t *testing.T) {
 		}
 	}
 
-	// BR1：预估时长按 specs 全集口径 25/18 分钟
+	// BR1：预估时长样本期按题数等比折算（全集口径 25/18 分钟，替换全集时改回）
 	rh, _ := FindByKey("RISO_HUDSON")
-	if rh.EstimatedMinutes != 25 {
-		t.Errorf("RISO_HUDSON EstimatedMinutes=%d，应为 25", rh.EstimatedMinutes)
+	if rh.EstimatedMinutes != 3 {
+		t.Errorf("RISO_HUDSON EstimatedMinutes=%d，应为 3", rh.EstimatedMinutes)
 	}
 	es, _ := FindByKey("ESSENCE")
-	if es.EstimatedMinutes != 18 {
-		t.Errorf("ESSENCE EstimatedMinutes=%d，应为 18", es.EstimatedMinutes)
+	if es.EstimatedMinutes != 2 {
+		t.Errorf("ESSENCE EstimatedMinutes=%d，应为 2", es.EstimatedMinutes)
 	}
 }

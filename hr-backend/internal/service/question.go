@@ -17,11 +17,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// 文本字段长度边界（specs §4.1.2 E）。
+// 文本字段长度边界（specs §4.1.2 E）：常量归 domain，service 与 questiongen 共用。
 const (
-	questionScenarioMax    = 1000
-	questionRequirementMax = 2000
-	questionFocusMax       = 500
+	questionScenarioMax    = domain.QuestionScenarioMax
+	questionRequirementMax = domain.QuestionRequirementMax
+	questionFocusMax       = domain.QuestionFocusMax
 	questionSummaryRunes   = 50
 )
 
@@ -224,16 +224,7 @@ func (s *questionService) ListQuestions(ctx context.Context, in QuestionListInpu
 			UpdatedAt:     q.UpdatedAt,
 		})
 	}
-	page, pageSize := in.Page, in.PageSize
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	page, pageSize := repository.ClampPage(in.Page, in.PageSize)
 	return &QuestionListResult{List: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 

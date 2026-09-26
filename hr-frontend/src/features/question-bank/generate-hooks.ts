@@ -1,28 +1,15 @@
 // 题目生成域 hooks：发起/轮询/取消的数据通道（03 §3.13/§3.14）。
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationResult, UseQueryResult } from '@tanstack/react-query';
 
 import type { CreateGenerationResult, GenerationProgress } from '@/lib/contracts';
 import { useAuthStore } from '@/stores/auth';
+import { usePageVisible } from '@/lib/use-page-visible';
 
 import { cancelGeneration, createGeneration, fetchGenerationProgress } from './generate-api';
 
 /** 生成轮询间隔（03 §3.14：建议 2s）。 */
 const GENERATION_POLL_MS = 2_000;
-
-// visibilitychange 监听（assessment hooks 同款模式）：页面隐藏暂停轮询，恢复续轮。
-function usePageVisible(): boolean {
-  const [visible, setVisible] = useState(
-    () => typeof document === 'undefined' || document.visibilityState === 'visible',
-  );
-  useEffect(() => {
-    const onChange = () => setVisible(document.visibilityState === 'visible');
-    document.addEventListener('visibilitychange', onChange);
-    return () => document.removeEventListener('visibilitychange', onChange);
-  }, []);
-  return visible;
-}
 
 /**
  * useGenerationProgress：进度轮询，非终态（QUEUED/RUNNING）且页面可见时 2s 续轮，
@@ -58,7 +45,12 @@ export function useCreateGeneration(): UseMutationResult<
 
 /** useCancelGeneration：进行态离开放弃本批（specs §4.3.4 规则 1），终态幂等成功。 */
 export function useCancelGeneration(): UseMutationResult<void, Error, string> {
+  const qc = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: cancelGeneration,
+    onSuccess: () => {
+      // 取消即批次状态变化，与族内其他 mutation 一致主动废弃缓存
+      void qc.invalidateQueries({ queryKey: ['question-bank'] });
+    },
   });
 }

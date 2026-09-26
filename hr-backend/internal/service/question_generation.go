@@ -58,19 +58,20 @@ type QuestionGenerationService interface {
 
 type questionGenerationService struct {
 	repo      repository.QuestionGenerationRepository
-	dimRepo   repository.DimensionRepository
+	qs        *questionService
 	batchRepo repository.QuestionBatchRepository
 	enqueuer  GenerationEnqueuer
 	provider  llm.EnabledModelProvider
 }
 
 // NewQuestionGenerationService 构造生成会话 service：provider 探测启用模型
-// （发起前置），enqueuer 投递 questionbank:generate 任务。
+// （发起前置），enqueuer 投递 questionbank:generate 任务。qs 复用 questionService
+// 的私有校验与名称回填（同包直调，与批次 service 同款形态）。
 func NewQuestionGenerationService(repo repository.QuestionGenerationRepository,
 	dimRepo repository.DimensionRepository, batchRepo repository.QuestionBatchRepository,
 	enqueuer GenerationEnqueuer, provider llm.EnabledModelProvider) QuestionGenerationService {
 	return &questionGenerationService{
-		repo: repo, dimRepo: dimRepo, batchRepo: batchRepo,
+		repo: repo, qs: &questionService{dimRepo: dimRepo}, batchRepo: batchRepo,
 		enqueuer: enqueuer, provider: provider,
 	}
 }
@@ -124,7 +125,7 @@ func (s *questionGenerationService) validateDimensions(ctx context.Context, dime
 	if len(dimensionIDs) == 0 {
 		return nil, NewError(errcode.BadRequest)
 	}
-	enabled, err := (&questionService{dimRepo: s.dimRepo}).enabledAIMgmtDimensionIDs(ctx)
+	enabled, err := s.qs.enabledAIMgmtDimensionIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +163,7 @@ func (s *questionGenerationService) GetProgress(ctx context.Context, id int64) (
 	if g.CurrentDimensionID != 0 {
 		dto.CurrentDimensionID = int64ToString(g.CurrentDimensionID)
 		if g.Status == domain.QuestionGenStatusRunning {
-			name, nerr := (&questionService{dimRepo: s.dimRepo}).resolveDimensionName(ctx, g.CurrentDimensionID)
+			name, nerr := s.qs.resolveDimensionName(ctx, g.CurrentDimensionID)
 			if nerr != nil {
 				return nil, nerr
 			}

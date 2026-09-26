@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { BatchListPage, BatchPlan, BatchStats, CreateBatchResult } from '@/lib/contracts';
+import { usePageVisible, subscribeVisibility } from '@/lib/use-page-visible';
 import { useAuthStore } from '@/stores/auth';
 
 import {
@@ -12,38 +13,6 @@ import {
   fetchBatches,
 } from './api';
 import type { BatchFailures, BatchFilter, CreateBatchPayload } from './types';
-
-// visibilitychange 模块级单例订阅：usePageVisible（轮询开关）与
-// useRefetchOnVisible（恢复即拉）共享同一监听器，避免每个消费点各挂一份。
-const visibilityListeners = new Set<() => void>();
-let visibilityListenerInstalled = false;
-
-function ensureVisibilityListener() {
-  if (visibilityListenerInstalled || typeof document === 'undefined') return;
-  visibilityListenerInstalled = true;
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      for (const fn of visibilityListeners) fn();
-    }
-  });
-}
-
-/** 页面可见性状态：specs §4.1.3 隐藏暂停轮询、恢复即拉。
- * 监听器复用模块级单例（与 useRefetchOnVisible 共享一份订阅）。 */
-function usePageVisible(): boolean {
-  const [visible, setVisible] = useState(
-    () => typeof document === 'undefined' || document.visibilityState === 'visible',
-  );
-  useEffect(() => {
-    const onChange = () => setVisible(document.visibilityState === 'visible');
-    visibilityListeners.add(onChange);
-    ensureVisibilityListener();
-    return () => {
-      visibilityListeners.delete(onChange);
-    };
-  }, []);
-  return visible;
-}
 
 const POLLING_INTERVAL_MS = 10_000;
 
@@ -100,11 +69,8 @@ export function useRefetchOnVisible(
     for (const q of queries) void q.refetch();
   };
   useEffect(() => {
-    ensureVisibilityListener();
-    visibilityListeners.add(refetchAll);
-    return () => {
-      visibilityListeners.delete(refetchAll);
-    };
+    const unsubscribe = subscribeVisibility(refetchAll);
+    return unsubscribe;
     // refetch 引用稳定，refetchAll 只需挂一次
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

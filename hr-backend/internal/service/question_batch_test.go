@@ -44,6 +44,8 @@ type qBatchFakeRepo struct {
 	resubmitErr    error
 }
 
+var _ repository.QuestionBatchRepository = (*qBatchFakeRepo)(nil)
+
 func (r *qBatchFakeRepo) ListPending(_ context.Context) ([]domain.QuestionBatch, error) {
 	return r.pendingList, r.pendingErr
 }

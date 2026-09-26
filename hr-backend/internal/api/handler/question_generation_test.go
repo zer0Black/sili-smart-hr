@@ -45,9 +45,9 @@ func (f *fakeQuestionGenerationService) CancelGeneration(_ context.Context, id i
 
 var _ service.QuestionGenerationService = (*fakeQuestionGenerationService)(nil)
 
-// newQuestionGenerationRouter 构造生成三路由测试引擎。dimSvc 传 nil（构造预留形参，不触达）。
+// newQuestionGenerationRouter 构造生成三路由测试引擎。
 func newQuestionGenerationRouter(svc *fakeQuestionGenerationService) *gin.Engine {
-	h := handler.NewQuestionGenerationHandler(svc, nil)
+	h := handler.NewQuestionGenerationHandler(svc)
 	r := gin.New()
 	r.POST("/api/question-generations/create", h.Create)
 	r.GET("/api/question-generations/:id", h.Progress)

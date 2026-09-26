@@ -726,8 +726,7 @@
     },
     "toolbar": {
       "generateAction": "Generate AI Questions",
-      "importAction": "Import Enneagram Scale",
-      "pendingHint": "Under construction"
+      "importAction": "Import Enneagram Scale"
     },
     "table": {
       "filterDimension": "Dimension",
@@ -770,7 +769,6 @@
       },
       "generateAction": "Generate AI Questions",
       "importAction": "Import Enneagram Scale",
-      "pendingHint": "Under construction",
       "loadError": "Failed to load data, please retry",
       "retry": "Retry",
       "total": "{{total}} items",

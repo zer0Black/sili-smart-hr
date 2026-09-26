@@ -52,6 +52,13 @@ const candidates: ScaleCandidate[] = [
   },
 ];
 
+// 样本期后端按题数等比折算时长，mock 用同构小值覆盖折算口径
+const sampleCandidates: ScaleCandidate[] = candidates.map((c) => ({
+  ...c,
+  question_count: c.scale_key === 'RISO_HUDSON' ? 18 : 9,
+  estimated_minutes: c.scale_key === 'RISO_HUDSON' ? 3 : 2,
+}));
+
 const importResult: ImportScaleResult = {
   batch_id: '1785000000000000002',
   batch_no: '#S0923',
@@ -99,11 +106,12 @@ describe('ScaleImportDialog 量表引入两步弹窗（specs §4.1.2 F / §4A.4�
     expect(screen.getByRole('button', { name: '下一步' })).toBeDisabled();
   });
 
-  it('TestStep2Summary：第二步展示题数与时长（来自 mock 数据）及计分方式/审核批次说明/批次号预览', async () => {
+  it('TestStep2Summary：第二步展示题数与时长（来自 mock 数据，样本期等比折算口径）及计分方式/审核批次说明/批次号预览', async () => {
+    scalesQ.data = { list: sampleCandidates };
     await renderAtStep2();
 
-    expect(screen.getByText('108 题')).toBeInTheDocument();
-    expect(screen.getByText('约 18 分钟')).toBeInTheDocument();
+    expect(screen.getByText('9 题')).toBeInTheDocument();
+    expect(screen.getByText('约 2 分钟')).toBeInTheDocument();
     expect(screen.getByText('Likert 5 级，9 型倾向聚合')).toBeInTheDocument();
     expect(screen.getByText('独立成批，不与 AI 管理题混审')).toBeInTheDocument();
     // 批次号预览 #S+当日 MMdd（specs §4.1.2 F），嵌在整句中用部分匹配

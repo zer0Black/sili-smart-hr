@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useDimensionTree } from '@/features/dimension/hooks';
+import { useModuleDimensions } from '@/features/question-bank/dimension-options';
 import { useResubmitQuestion, useUpdateQuestion } from '@/features/question-bank/hooks';
 import type { QuestionDetail } from '@/lib/contracts';
 import { ErrCode } from '@/lib/contracts';
@@ -50,11 +50,8 @@ interface QuestionFormValues {
 
 /** AI_MGMT 模块下当前启用的子能力（specs §4.1.2 E：改选限当前启用集合）。 */
 function useEnabledAiMgmtDimensions() {
-  const treeQ = useDimensionTree();
-  const mod = treeQ.data?.modules.find((m) => m.module_code === 'AI_MGMT');
-  if (!mod) return [] as { id: string; name: string }[];
-  const leaves = mod.groups ? mod.groups.flatMap((g) => g.dimensions) : (mod.dimensions ?? []);
-  return leaves.filter((d) => d.enabled).map((d) => ({ id: d.id, name: d.name }));
+  const dims = useModuleDimensions('AI_MGMT', true);
+  return dims.map((d) => ({ id: d.id, name: d.name }));
 }
 
 export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode = 'edit' }: QuestionFormDialogProps) {

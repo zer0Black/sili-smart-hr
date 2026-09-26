@@ -25,6 +25,8 @@ const cancelMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigateMock,
+  // useBlocker 路由级离开拦截：测试内不触发路由跳转，恒 idle
+  useBlocker: () => ({ status: 'idle', proceed: undefined, reset: undefined }),
 }));
 vi.mock('@/features/dimension/hooks', () => ({
   useDimensionTree: () => treeQ,

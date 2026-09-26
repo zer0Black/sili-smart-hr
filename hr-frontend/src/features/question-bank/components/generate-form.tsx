@@ -3,14 +3,15 @@
 // 完成态：批次号引导前往审核（search 参数携批次 ID）；失败态：error_code 固定文案。
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useBlocker } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import type { JSX } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/confirm-dialog';
-import { useDimensionDetail, useDimensionTree } from '@/features/dimension/hooks';
+import { useDimensionDetail } from '@/features/dimension/hooks';
+import { useModuleDimensions } from '@/features/question-bank/dimension-options';
 import {
   useCancelGeneration,
   useCreateGeneration,
@@ -29,11 +30,7 @@ type Phase = 'form' | 'running' | 'done' | 'failed';
 
 /** AI_MGMT 模块启用叶子维度（specs §4.3.2：当前启用的 AI 管理子能力）。 */
 function useEnabledAiMgmtDimensions(): DimensionBrief[] {
-  const treeQ = useDimensionTree();
-  const mod = treeQ.data?.modules.find((m) => m.module_code === 'AI_MGMT');
-  if (!mod) return [];
-  const leaves = mod.groups ? mod.groups.flatMap((g) => g.dimensions) : (mod.dimensions ?? []);
-  return leaves.filter((d) => d.enabled);
+  return useModuleDimensions('AI_MGMT', true);
 }
 
 /** 维度一句话说明：树轻量项无 description，逐卡取详情补全（卡片级懒取）。 */
@@ -130,15 +127,43 @@ export function GenerateForm(): JSX.Element {
     else void navigate({ to: '/question-bank' });
   }
 
+  // 路由级离开拦截（specs §4.3.4 规则 1「离开即放弃」）：顶栏导航等任意跳转
+  // 在 running 态同样弹二次确认，确认取消后放行，取消则留在本页。
+  const blocker = useBlocker({
+    shouldBlockFn: () => phase === 'running',
+    withResolver: true,
+  });
+  const blockedLeave = blocker.status === 'blocked' ? blocker : null;
+  useEffect(() => {
+    if (!blockedLeave) return;
+    setBackConfirmOpen(true);
+  }, [blockedLeave]);
+
   function onConfirmBack() {
-    if (!generationId) return;
-    cancelMut.mutate(generationId, {
-      onSuccess: () => {
+    const proceedLeave = () => {
+      setBackConfirmOpen(false);
+      if (blockedLeave) blockedLeave.proceed();
+      else void navigate({ to: '/question-bank' });
+    };
+    const id = generationId;
+    if (!id) {
+      proceedLeave();
+      return;
+    }
+    cancelMut.mutate(id, {
+      onSuccess: proceedLeave,
+      onError: () => {
+        // 取消失败留在本页：关确认框并解除拦截，生成继续走终态推进
         setBackConfirmOpen(false);
-        void navigate({ to: '/question-bank' });
+        if (blockedLeave) blockedLeave.reset();
+        toast.error(t('toastGeneric'));
       },
-      onError: () => toast.error(t('toastGeneric')),
     });
+  }
+
+  function onDismissBack() {
+    if (blockedLeave) blockedLeave.reset();
+    setBackConfirmOpen(false);
   }
 
   function onRegenerate() {
@@ -179,6 +204,14 @@ export function GenerateForm(): JSX.Element {
             <p className="text-muted-foreground text-xs">{t('generate.dimensionHint')}</p>
             {dimensions.length === 0 ? (
               <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-10 text-center">
+                {/* 空态插画：与题库列表空态同款几何色块（specs §4.1.5 / DESIGN.md 粉彩点缀） */}
+                <div aria-hidden className="flex items-end gap-1.5">
+                  <span className="bg-block-cream h-6 w-4 rounded-sm" />
+                  <span className="bg-block-lilac h-10 w-4 rounded-sm" />
+                  <span className="bg-block-cream h-8 w-4 rounded-sm" />
+                  <span className="bg-block-lilac h-14 w-4 rounded-sm" />
+                  <span className="bg-block-cream h-5 w-4 rounded-sm" />
+                </div>
                 <p className="text-base font-medium">{t('generate.emptyTitle')}</p>
                 <p className="text-muted-foreground text-sm">{t('generate.emptyDesc')}</p>
                 <Button variant="outline" onClick={() => void navigate({ to: '/system/dimension' })}>
@@ -303,11 +336,11 @@ export function GenerateForm(): JSX.Element {
         </div>
       )}
 
-      {/* 进行态离开二次确认（specs §4.3.4 规则 1）：确认后取消并返回 */}
+      {/* 进行态离开二次确认（specs §4.3.4 规则 1）：覆盖页内返回与路由级离开 */}
       <ConfirmDialog
         open={backConfirmOpen}
         onOpenChange={(v) => {
-          if (!v && !cancelMut.isPending) setBackConfirmOpen(false);
+          if (!v && !cancelMut.isPending) onDismissBack();
         }}
         title={t('generate.cancelTitle')}
         desc={t('generate.cancelDesc')}

@@ -28,6 +28,14 @@ const (
 	ScaleKeyEssence    = "ESSENCE"     // Essence 精简量表
 )
 
+// 题目三段文本长度上限（specs §4.1.2 E）：service 校验与 questiongen prompt 约束
+// 共用，单一来源防漂移。
+const (
+	QuestionScenarioMax    = 1000
+	QuestionRequirementMax = 2000
+	QuestionFocusMax       = 500
+)
+
 // Question 题库题目，AI 管理题与量表题统一承载。
 // 三段文本按 source 语义换名：AI 题为情境描述/作答要求/考察点，量表题为题项陈述/作答方式说明/计分键。
 type Question struct {

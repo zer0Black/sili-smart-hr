@@ -14,16 +14,14 @@ import (
 )
 
 // QuestionHandler 承载题库域题目行级接口：列表、详情、编辑、启停、删除、重新提交。
-// dimSvc 为构造契约预留形参（后续批次子计划扩展用），本子计划未消费。
 // batchSvc 承载重新提交归批（03 §3.5），行级维护与归批分属两个 service。
 type QuestionHandler struct {
 	svc      service.QuestionService
-	dimSvc   service.DimensionService
 	batchSvc service.QuestionBatchService
 }
 
-func NewQuestionHandler(svc service.QuestionService, dimSvc service.DimensionService, batchSvc service.QuestionBatchService) *QuestionHandler {
-	return &QuestionHandler{svc: svc, dimSvc: dimSvc, batchSvc: batchSvc}
+func NewQuestionHandler(svc service.QuestionService, batchSvc service.QuestionBatchService) *QuestionHandler {
+	return &QuestionHandler{svc: svc, batchSvc: batchSvc}
 }
 
 // updateQuestionRequest 对齐 03 §3.3：ID 类字段 string 经 parseID，version 乐观锁。

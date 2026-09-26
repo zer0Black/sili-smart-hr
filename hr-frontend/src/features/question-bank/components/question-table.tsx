@@ -24,10 +24,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { useDimensionTree } from '@/features/dimension/hooks';
 import { fetchQuestionDetail } from '@/features/question-bank/api';
+import { useModuleDimensions } from '@/features/question-bank/dimension-options';
 import {
   useDeleteQuestion,
+  useQuestionDetail,
   useQuestions,
   useToggleQuestionStatus,
 } from '@/features/question-bank/hooks';
@@ -65,13 +66,42 @@ function statusVariant(status: QuestionListItem['status']): 'default' | 'seconda
 
 /** tab 维度下拉数据源：AI 取启用 AI_MGMT 子能力；SCALE 取 ENNEAGRAM 型别维度（specs §4.1.2 A）。 */
 function useTabDimensions(tab: QuestionTab) {
-  const treeQ = useDimensionTree();
-  const mod = treeQ.data?.modules.find((m) => m.module_code === (tab === 'AI' ? 'AI_MGMT' : 'ENNEAGRAM'));
-  if (!mod) return [];
-  const leaves = mod.groups ? mod.groups.flatMap((g) => g.dimensions) : (mod.dimensions ?? []);
   // AI 侧限当前启用集合；量表侧 specs 未限定启用，型别维度全量列出
-  const visible = tab === 'AI' ? leaves.filter((d) => d.enabled) : leaves;
-  return visible.map((d) => ({ id: d.id, name: d.name }));
+  const dims = useModuleDimensions(tab === 'AI' ? 'AI_MGMT' : 'ENNEAGRAM', tab === 'AI');
+  return dims.map((d) => ({ id: d.id, name: d.name }));
+}
+
+/** 空态插画（specs §4.1.5）：几何色块组合，DESIGN.md 空状态可用一个 block-* 粉彩点缀。 */
+function EmptyStateArt({ tab }: { tab: QuestionTab }): JSX.Element {
+  // AI tab 偏紫（生成/智能），量表 tab 偏薄荷（量表/校准），色块高度错落喻题库累积
+  const accent = tab === 'AI' ? 'bg-block-lilac' : 'bg-block-mint';
+  const others = tab === 'AI' ? 'bg-block-cream' : 'bg-block-cream';
+  return (
+    <div aria-hidden className="flex items-end gap-1.5">
+      <span className={`${others} h-6 w-4 rounded-sm`} />
+      <span className={`${accent} h-10 w-4 rounded-sm`} />
+      <span className={`${others} h-8 w-4 rounded-sm`} />
+      <span className={`${accent} h-14 w-4 rounded-sm`} />
+      <span className={`${others} h-5 w-4 rounded-sm`} />
+    </div>
+  );
+}
+
+/** 摘要单元格：悬浮展示题干全文（03 §3.1：悬浮全文走详情接口，hover 懒取）。 */
+function SummaryCell({ item, display }: { item: QuestionListItem; display: string }): JSX.Element {
+  const [hover, setHover] = useState<string | null>(null);
+  const detailQ = useQuestionDetail(hover);
+  const fullText = detailQ.data?.scenario;
+  return (
+    <span
+      title={fullText ?? item.summary}
+      onMouseEnter={() => setHover(item.id)}
+      onMouseLeave={() => setHover(null)}
+      className="block truncate"
+    >
+      {display}
+    </span>
+  );
 }
 
 export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, onImportScale }: QuestionTableProps): JSX.Element {
@@ -262,8 +292,9 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
           </Button>
         </div>
       ) : list.length === 0 ? (
-        // 空状态：引导文案 + 内嵌按钮（specs §4.1.5）：AI 空态跳题目生成页，量表空态开引入弹窗
+        // 空状态：插画 + 引导文案 + 内嵌按钮（specs §4.1.5）：AI 空态跳题目生成页，量表空态开引入弹窗
         <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-12 text-center">
+          <EmptyStateArt tab={tab} />
           <p className="text-base font-medium">{t(`table.emptyTitle.${tab}`)}</p>
           <p className="text-muted-foreground text-sm">{t(`table.emptyDesc.${tab}`)}</p>
           {tab === 'AI' ? (
@@ -291,9 +322,7 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
                 <TableRow key={item.id}>
                   <TableCell className="font-mono">{item.question_no}</TableCell>
                   <TableCell className="max-w-[320px]">
-                    <span title={item.summary} className="block truncate">
-                      {summaryText(item.summary)}
-                    </span>
+                    <SummaryCell item={item} display={summaryText(item.summary)} />
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline">{item.dimension_name}</Badge>
@@ -390,7 +419,7 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
         title={t('table.deleteTitle')}
         desc={t('table.deleteDesc', { no: deleteTarget?.question_no ?? '' })}
         confirmText={t('table.actionDelete')}
-        cancelText={t('table.cancel', { ns: 'common' })}
+        cancelText={t('cancel', { ns: 'common' })}
         submittingText={t('table.deleteSubmitting')}
         submitting={deleteMut.isPending}
         destructive

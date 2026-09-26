@@ -47,18 +47,15 @@ type DimensionSpecReader interface {
 type Generator struct {
 	llm     llm.Client
 	genRepo repository.QuestionGenerationRepository
-	// batchRepo 按契约保留：完成建批已收口在 genRepo.FinishCompleted
-	// 单事务（控制器裁定），当前路径未消费，供后续批次域直读需要时启用。
-	batchRepo repository.QuestionBatchRepository
-	dims      DimensionSpecReader
+	dims    DimensionSpecReader
 }
 
 // New 构造 Generator：llmClient 注入出题专用 LLM client（T4 的
-// QuestionGenLLMClient）。batchRepo 为契约保留参数（见字段注释）；
-// dims 是维度读通道扩展（控制器预授权，替代 app 层经 batchRepo.db 取数）。
+// QuestionGenLLMClient）；dims 是维度读通道（按 dimension_ids 快照查维度名
+//与说明，含软删行）。
 func New(llmClient llm.Client, genRepo repository.QuestionGenerationRepository,
-	batchRepo repository.QuestionBatchRepository, dims DimensionSpecReader) *Generator {
-	return &Generator{llm: llmClient, genRepo: genRepo, batchRepo: batchRepo, dims: dims}
+	dims DimensionSpecReader) *Generator {
+	return &Generator{llm: llmClient, genRepo: genRepo, dims: dims}
 }
 
 // Run 执行一次生成会话（specs 4.3.4 规则 1/2/3，04 §3.3）：

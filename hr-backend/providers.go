@@ -462,10 +462,10 @@ func (r *QuestionDimensionSpecReader) ListSpecsByIDs(ctx context.Context, ids []
 var _ questiongen.DimensionSpecReader = (*QuestionDimensionSpecReader)(nil)
 
 // NewQuestionGenProvider 装配出题生成器：专用 LLM client + generation 仓储 +
-// 批次仓储（契约保留参数）+ 维度口径窄接口适配。
+// 维度口径窄接口适配。
 func NewQuestionGenProvider(llmClient QuestionGenLLMClient, genRepo repository.QuestionGenerationRepository,
-	batchRepo repository.QuestionBatchRepository, dims *QuestionDimensionSpecReader) *questiongen.Generator {
-	return questiongen.New(llmClient, genRepo, batchRepo, dims)
+	dims *QuestionDimensionSpecReader) *questiongen.Generator {
+	return questiongen.New(llmClient, genRepo, dims)
 }
 
 // QuestionGenerateHandler 是 questionbank:generate 任务 handler 命名类型

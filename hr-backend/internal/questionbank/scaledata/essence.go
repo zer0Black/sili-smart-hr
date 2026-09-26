@@ -1,7 +1,10 @@
 package scaledata
 
+import "sili-smart-hr/backend/internal/domain"
+
 // essenceTemplate Essence 精简量表（全集 108 题约 18 分钟，specs 4.1.2 F）。
 // 样本期收录 9 题（9 型各 1 题），简短直接陈述为该量表经典风格。
+// EstimatedMinutes 按题数等比折算（18×9/108≈2），全集替换时改回全集口径。
 func essenceTemplate() ScaleTemplate {
 	items := []ScaleItem{
 		{Statement: "我力求把每件事都做对", DimensionCode: "ENNE_TYPE_1_REFORMER",
@@ -27,10 +30,10 @@ func essenceTemplate() ScaleTemplate {
 		items[i].Requirement = likertRequirement
 	}
 	return ScaleTemplate{
-		ScaleKey:         "ESSENCE",
+		ScaleKey:         domain.ScaleKeyEssence,
 		Name:             "Essence 精简量表",
 		QuestionCount:    len(items),
-		EstimatedMinutes: 18,
+		EstimatedMinutes: 2,
 		Description:      "精简版九型人格量表，作答负担更轻，适合快速摸底与大面积铺开的场景。",
 		Dimensions:       enneDimensions,
 		Items:            items,

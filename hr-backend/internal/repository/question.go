@@ -60,15 +60,7 @@ func (r *questionRepository) ListPage(ctx context.Context, source string, dimens
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	if page < 1 {
-		page = 1
-	}
-	if pageSize < 1 {
-		pageSize = 20
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	page, pageSize = ClampPage(page, pageSize)
 	var list []domain.Question
 	if err := query.
 		Order("updated_at DESC, id DESC").

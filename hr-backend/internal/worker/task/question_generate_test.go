@@ -143,7 +143,7 @@ func newQGFixture(t *testing.T) *qgFixture {
 	t.Helper()
 	db := newQGTestDB(t)
 	f := &qgFixture{db: db, llm: &fakeQGLLM{}, dims: &fakeQGDims{}}
-	f.gen = questiongen.New(f.llm, repository.NewQuestionGenerationRepository(db), nil, f.dims)
+	f.gen = questiongen.New(f.llm, repository.NewQuestionGenerationRepository(db), f.dims)
 	return f
 }
 
