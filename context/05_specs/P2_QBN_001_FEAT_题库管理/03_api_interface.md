@@ -45,7 +45,7 @@
 
 **specs 方法收敛。** specs 2.3 鉴权矩阵中的 PUT/DELETE 按规则文件 §2.1 收敛为 POST（技术实现层面规则文件优先），编辑、启停、删除均 POST 以路径区分动作，与 account、dimension 域先例一致。
 
-**生成异步化的边界。** specs 4.3.3 写「同步 LLM 生成请求」，但 LLM 生成 5~30 题经底座并发限制（在飞上限 4）排队后耗时可达分钟级，而 HTTP server 的 WriteTimeout 硬编码 30s（架构文档 4.2，hr-backend CLAUDE.md）会掐断任何长连接。specs 4.3.4 规则 3 明确「进度回传机制（流式或轮询）由接口数据设计阶段确定」，据此落地为 Asynq 异步任务 + 前端轮询：交互语义不变（页面停留等待、离开放弃本批、失败整批作废），仅进度经 `GET /api/question-generations/{id}` 回传。
+**生成异步化的边界。** specs 4.3.3 写「同步 LLM 生成请求」，但 LLM 生成 5~30 题经出题专用 client 并发 gate（在飞上限 4、FIFO 排队）排队后耗时可达分钟级，而 HTTP server 的 WriteTimeout 硬编码 30s（架构文档 4.2，hr-backend CLAUDE.md）会掐断任何长连接。specs 4.3.4 规则 3 明确「进度回传机制（流式或轮询）由接口数据设计阶段确定」，据此落地为 Asynq 异步任务 + 前端轮询：交互语义不变（页面停留等待、离开放弃本批、失败整批作废），仅进度经 `GET /api/question-generations/{id}` 回传。
 
 ---
 
@@ -796,7 +796,7 @@ GET /api/scales
 - 校验通过即建 generation 行（QUEUED）并投递 Asynq 任务（default 队列），接口即时返回 QUEUED，worker 领取置 RUNNING 后逐题生成（specs 4.3.4 规则 3 授权的进度轮询机制），轮询首拍即可见 QUEUED→RUNNING 迁移。
 - 维度集合含非启用/非 AI_MGMT 维度返回 1400。
 - 大模型未配置（当前无排他启用模型）返回 1709 LLMNotConfigured（specs 7.1 依赖大模型配置页已排他启用一个模型）。
-- LLM 生成经调用底座全局并发限制（在飞上限 4，FIFO 排队），多运营并发发起不放大上游压力。
+- LLM 生成走出题专用 LLM client 的并发 gate（在飞上限 4，FIFO 排队；与全局、评估 client 各持独立 gate，按域隔离防互相挤占），同一出题通道内多运营并发发起不放大上游压力。
 - 接口即时返回，生成结果经 3.14 轮询获取；HTTP 侧维持长连接不可行（WriteTimeout 30s 硬编码），见 §二。
 
 ---

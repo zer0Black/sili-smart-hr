@@ -69,7 +69,7 @@ func (r *qBatchFakeRepo) FindPendingResubmitBatch(_ context.Context) (*domain.Qu
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (r *qBatchFakeRepo) CreateBatchWithQuestions(_ context.Context, _ *gorm.DB, _ *domain.QuestionBatch, _ *[]domain.Question) error {
+func (r *qBatchFakeRepo) CreateBatchWithQuestions(_ context.Context, _ *gorm.DB, _ *domain.QuestionBatch, _ []domain.Question) error {
 	return nil
 }
 

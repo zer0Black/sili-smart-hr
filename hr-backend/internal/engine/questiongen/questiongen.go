@@ -37,7 +37,7 @@ type StagedQuestion struct {
 }
 
 // DimensionSpecReader 出题维度口径读取窄接口，DimensionRepository 经装配层
-// 适配满足（按 dimension_ids 快照查维度名与说明，含软删行）。
+// 适配满足（按 dimension_ids 快照查维度名与说明，软删行按未命中跳过）。
 type DimensionSpecReader interface {
 	// ListSpecsByIDs 按 ID 集合返回维度口径（顺序与 ids 一致，未命中跳过）。
 	ListSpecsByIDs(ctx context.Context, ids []int64) ([]DimensionSpec, error)
@@ -52,7 +52,7 @@ type Generator struct {
 
 // New 构造 Generator：llmClient 注入出题专用 LLM client（T4 的
 // QuestionGenLLMClient）；dims 是维度读通道（按 dimension_ids 快照查维度名
-//与说明，含软删行）。
+// 与说明，软删行按未命中跳过）。
 func New(llmClient llm.Client, genRepo repository.QuestionGenerationRepository,
 	dims DimensionSpecReader) *Generator {
 	return &Generator{llm: llmClient, genRepo: genRepo, dims: dims}
@@ -215,7 +215,7 @@ func (g *Generator) finishCompleted(ctx context.Context, gen *domain.QuestionGen
 			Version:     1,
 		}
 	}
-	if err := g.genRepo.FinishCompleted(ctx, gen.ID, &batch, &questions); err != nil {
+	if err := g.genRepo.FinishCompleted(ctx, gen.ID, &batch, questions); err != nil {
 		if errors.Is(err, repository.ErrNotRunning) {
 			return nil // 完成前被取消：终态由取消方承载
 		}

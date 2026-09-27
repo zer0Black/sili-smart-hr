@@ -15,8 +15,9 @@ import (
 type QuestionRepository interface {
 	// ListPage 分页查询列表 tab 主路径：source 必选；status 空=全部；恒排除 PENDING；
 	// keyword 对 question_no 与 scenario 做 EscapeLike 转义后的 LIKE OR 匹配（ESCAPE '\'）；
-	// 排序 updated_at DESC, id DESC。返回行集（长文本截断在 service）与 total。
-	ListPage(ctx context.Context, source string, dimensionID int64, dimensionIDSet bool, status, keyword string, page, pageSize int) ([]domain.Question, int64, error)
+	// 排序 updated_at DESC, id DESC。dimensionID 非 nil 才进 WHERE（nil=全部维度）。
+	// 返回行集（长文本截断在 service）与 total。
+	ListPage(ctx context.Context, source string, dimensionID *int64, status, keyword string, page, pageSize int) ([]domain.Question, int64, error)
 	// FindByID 主键查，软删自动过滤。
 	FindByID(ctx context.Context, id int64) (*domain.Question, error)
 	// UpdateWithVersion 乐观锁更新：WHERE id=? AND version=? AND deleted_at IS NULL，version 自增。
@@ -39,15 +40,14 @@ func NewQuestionRepository(db *gorm.DB) QuestionRepository {
 	return &questionRepository{db: db}
 }
 
-// ListPage 列表 tab 主路径（spec §4.1.2 A/B）。dimensionIDSet 区分「未传维度」与
-// 「传空」（查询参数空串=全部维度）：false 时 dimensionID 不进 WHERE。分页钳制
-// page<1 归 1、pageSize 1~100。
-func (r *questionRepository) ListPage(ctx context.Context, source string, dimensionID int64, dimensionIDSet bool, status, keyword string, page, pageSize int) ([]domain.Question, int64, error) {
+// ListPage 列表 tab 主路径（spec §4.1.2 A/B）。dimensionID nil=全部维度（查询参数
+// 空串），非 nil 才进 WHERE。分页钳制 page<1 归 1、pageSize 1~100。
+func (r *questionRepository) ListPage(ctx context.Context, source string, dimensionID *int64, status, keyword string, page, pageSize int) ([]domain.Question, int64, error) {
 	// BR2 §4.3.4 规则 2：待审核题目不在列表 tab 出现，恒排除 PENDING。
 	query := r.db.WithContext(ctx).Model(&domain.Question{}).
 		Where("source = ? AND status <> ?", source, domain.QuestionStatusPending)
-	if dimensionIDSet {
-		query = query.Where("dimension_id = ?", dimensionID)
+	if dimensionID != nil {
+		query = query.Where("dimension_id = ?", *dimensionID)
 	}
 	if status != "" {
 		query = query.Where("status = ?", status)
@@ -118,11 +118,10 @@ func (r *questionRepository) ListByIDs(ctx context.Context, ids []int64) ([]doma
 	return list, nil
 }
 
-// MaxQuestionSeq 取前缀下 question_no 序号部分的最大值：按编号长度降序+字典序降序
-// 取首行后在 Go 侧解析序号（等宽数字下长度优先+字典序与数值序一致，且正确处理
-// 超四位扩展如 9999 与 10000 共存）。Unscoped 含软删行：编号只增不复用（spec
-// §4.1.2 B），序号空间被软删行继续占用。LENGTH/ORDER BY/LIMIT 三库通用（SQLite/
-// MySQL/PG），不用 CAST：MySQL 目标类型仅 SIGNED/UNSIGNED，裸 INTEGER 是 1064 语法错误。
+// MaxQuestionSeq 取前缀下 question_no 序号最大值：长度降序+字典序降序取首行后 Go 侧
+// 解析（等宽数字下与数值序一致，兼容 9999 与 10000 共存）。Unscoped 含软删行：编号
+// 只增不复用（spec §4.1.2 B）。不用 CAST：MySQL 目标类型仅 SIGNED/UNSIGNED，裸
+// INTEGER 是 1064 语法错误。
 func (r *questionRepository) MaxQuestionSeq(ctx context.Context, prefix string) (int64, error) {
 	var top []string
 	if err := r.db.WithContext(ctx).Unscoped().Model(&domain.Question{}).

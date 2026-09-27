@@ -163,8 +163,8 @@ func TestQuestionHandlerListSuccess(t *testing.T) {
 		svc.listLast.Page != 2 || svc.listLast.PageSize != 10 {
 		t.Fatalf("svc.ListQuestions args mismatch: %+v", svc.listLast)
 	}
-	if !svc.listLast.DimensionIDSet || svc.listLast.DimensionID != 1780000000000000100 {
-		t.Fatalf("dimension_id mismatch: set=%v id=%d", svc.listLast.DimensionIDSet, svc.listLast.DimensionID)
+	if svc.listLast.DimensionID == nil || *svc.listLast.DimensionID != 1780000000000000100 {
+		t.Fatalf("dimension_id mismatch: %v", svc.listLast.DimensionID)
 	}
 	// 响应结构。
 	data, _ := resp["data"].(map[string]any)
@@ -197,8 +197,8 @@ func TestQuestionHandlerListDefaultPagingAndNoDimension(t *testing.T) {
 	if svc.listLast.Page != 1 || svc.listLast.PageSize != 20 {
 		t.Fatalf("page/page_size 兜底失败: %d/%d", svc.listLast.Page, svc.listLast.PageSize)
 	}
-	if svc.listLast.DimensionIDSet || svc.listLast.DimensionID != 0 {
-		t.Fatalf("空 dimension_id 应不置 Set: %+v", svc.listLast)
+	if svc.listLast.DimensionID != nil {
+		t.Fatalf("空 dimension_id 应为 nil: %+v", svc.listLast)
 	}
 }
 

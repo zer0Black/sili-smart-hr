@@ -52,7 +52,7 @@ type QuestionBatchRepository interface {
 	// CreateBatchWithQuestions 建批事务（SP3 量表引入/SP4 生成完成复用）：批量插 questions
 	// （编号连续分配收在本方法内）+ 建 question_batches 行 + 批内题目 status 置 PENDING +
 	// batch_id 回填。tx 传 nil 自开事务，非 nil 复用调用方外层事务（SP3 行锁事务通道）。
-	CreateBatchWithQuestions(ctx context.Context, tx *gorm.DB, batch *domain.QuestionBatch, questions *[]domain.Question) error
+	CreateBatchWithQuestions(ctx context.Context, tx *gorm.DB, batch *domain.QuestionBatch, questions []domain.Question) error
 	// NextBatchNo 生成批次号：前缀（G/S/R）+ MMdd（time.Local），查同日同前缀最大批次号
 	// 推导序号，首批无后缀、同日第 2 批起 -2/-3 递增。UNIQUE 索引兜底并发。
 	NextBatchNo(ctx context.Context, prefix string, now time.Time) (string, error)
@@ -127,17 +127,17 @@ func (r *questionBatchRepository) FindPendingResubmitBatch(ctx context.Context) 
 // MaxQuestionSeq（Unscoped 含软删行，编号只增不复用）取段递增，调用方不预填
 // question_no。status 强制 PENDING、batch_id 回填批次行雪花 ID（Create 回调
 // 先建批次行拿到 ID，再批量插题目）。
-func (r *questionBatchRepository) CreateBatchWithQuestions(ctx context.Context, tx *gorm.DB, batch *domain.QuestionBatch, questions *[]domain.Question) error {
+func (r *questionBatchRepository) CreateBatchWithQuestions(ctx context.Context, tx *gorm.DB, batch *domain.QuestionBatch, questions []domain.Question) error {
 	run := func(tx *gorm.DB) error {
 		if err := tx.WithContext(ctx).Create(batch).Error; err != nil {
 			return fmt.Errorf("create batch: %w", err)
 		}
-		if questions == nil || len(*questions) == 0 {
+		if len(questions) == 0 {
 			return nil
 		}
 		seqs := map[string]int64{}
-		for i := range *questions {
-			q := &(*questions)[i]
+		for i := range questions {
+			q := &questions[i]
 			prefix := questionNoOf(q.Source)
 			seq, ok := seqs[prefix]
 			if !ok {

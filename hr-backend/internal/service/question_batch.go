@@ -95,16 +95,16 @@ type QuestionBatchService interface {
 
 type questionBatchService struct {
 	repo    repository.QuestionBatchRepository
-	qs      *questionService
+	qRepo   repository.QuestionRepository
 	dimRepo repository.DimensionRepository
 }
 
-// NewQuestionBatchService 构造批次域 service。复用 questionService 的私有校验与
-// 名称回填（同包直调，题目行读取走 qRepo 同一实例）。
+// NewQuestionBatchService 构造批次域 service。复用同包题目存在性收敛、文本校验
+// 与维度名双查回填（题目行读取走 qRepo 同一实例）。
 func NewQuestionBatchService(repo repository.QuestionBatchRepository, qRepo repository.QuestionRepository, dimRepo repository.DimensionRepository) QuestionBatchService {
 	return &questionBatchService{
 		repo:    repo,
-		qs:      &questionService{repo: qRepo, dimRepo: dimRepo},
+		qRepo:   qRepo,
 		dimRepo: dimRepo,
 	}
 }
@@ -165,7 +165,7 @@ func (s *questionBatchService) GetBatchQuestions(ctx context.Context, batchID in
 	for i := range rows {
 		dimIDs[i] = rows[i].DimensionID
 	}
-	names, err := s.qs.listDimensionNames(ctx, dimIDs...)
+	names, err := listDimensionNames(ctx, s.dimRepo, dimIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +255,7 @@ func (s *questionBatchService) VoidBatch(ctx context.Context, batchID int64) err
 // 仅 AI 题 REJECTED 前置；文本与维度校验复用 SP1 编辑同一私有函数；updates 列集
 // 不含 reject_reason（repo 层保留原值）；成功后经 FindByID 回读组装响应。
 func (s *questionBatchService) ResubmitQuestion(ctx context.Context, in ResubmitInput) (*ResubmitResult, error) {
-	cur, err := s.qs.resolveQuestion(ctx, in.ID)
+	cur, err := resolveQuestion(ctx, s.qRepo, in.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +265,7 @@ func (s *questionBatchService) ResubmitQuestion(ctx context.Context, in Resubmit
 	if err := validateQuestionText(in.Scenario, in.Requirement, in.FocusPoint); err != nil {
 		return nil, err
 	}
-	enabled, err := s.qs.enabledAIMgmtDimensionIDs(ctx)
+	enabled, err := enabledAIMgmtDimensionIDs(ctx, s.dimRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -287,12 +287,9 @@ func (s *questionBatchService) ResubmitQuestion(ctx context.Context, in Resubmit
 		return nil, fmt.Errorf("resubmit question: %w", err)
 	}
 	// 回读最新行取新版本与状态；刚成功即被并发删除的极端情况按冲突提示刷新。
-	q, err := s.qs.repo.FindByID(ctx, in.ID)
+	q, err := reloadQuestion(ctx, s.qRepo, in.ID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, NewError(errcode.QuestionVersionConflict)
-		}
-		return nil, fmt.Errorf("reload question: %w", err)
+		return nil, err
 	}
 	return &ResubmitResult{
 		ID:      int64ToString(q.ID),

@@ -185,7 +185,7 @@ func TestQuestionGenerationFinishCompletedSingleTx(t *testing.T) {
 		QuestionCount: 2, DimensionIDs: "[101,102]",
 	}
 	questions := genQuestions(2)
-	if err := repo.FinishCompleted(context.Background(), g.ID, &batch, &questions); err != nil {
+	if err := repo.FinishCompleted(context.Background(), g.ID, &batch, questions); err != nil {
 		t.Fatalf("FinishCompleted: %v", err)
 	}
 
@@ -248,7 +248,7 @@ func TestQuestionGenerationFinishCompletedNotRunning(t *testing.T) {
 		batch := domain.QuestionBatch{Title: "t", Source: domain.QuestionSourceAI,
 			BatchType: domain.QuestionBatchTypeGenerate, Status: domain.QuestionBatchStatusPending, QuestionCount: 1}
 		questions := genQuestions(1)
-		if err := repo.FinishCompleted(context.Background(), id, &batch, &questions); !errors.Is(err, repository.ErrNotRunning) {
+		if err := repo.FinishCompleted(context.Background(), id, &batch, questions); !errors.Is(err, repository.ErrNotRunning) {
 			t.Fatalf("generation %d want ErrNotRunning, got %v", id, err)
 		}
 	}
@@ -284,7 +284,7 @@ func TestQuestionGenerationFinishCompletedRollback(t *testing.T) {
 		QuestionCount: 2,
 	}
 	questions := genQuestions(2)
-	if err := repo.FinishCompleted(context.Background(), g.ID, &batch, &questions); err == nil {
+	if err := repo.FinishCompleted(context.Background(), g.ID, &batch, questions); err == nil {
 		t.Fatal("batch_no collision want error propagated")
 	}
 	row := loadGeneration(t, db, g.ID)

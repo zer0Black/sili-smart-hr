@@ -80,7 +80,7 @@ func (h *QuestionHandler) List(c *gin.Context) {
 			response.Fail(c, http.StatusOK, errcode.BadRequest)
 			return
 		}
-		in.DimensionID, in.DimensionIDSet = id, true
+		in.DimensionID = &id
 	}
 	in.Page, in.PageSize = questionQueryPaging(c)
 	res, err := h.svc.ListQuestions(c.Request.Context(), in)

@@ -26,10 +26,9 @@ type QuestionGeneratePayload struct {
 }
 
 // NewQuestionGenerateHandler 构造生成任务 handler（mux 注册由 NewMux 统一，投递归
-// service 层）。坏格式/非正数 generation_id 属构造侧确定性错误，丢弃任务记 ERROR
-// （batch_run 同款）；gen.Run 业务侧已终态化（FAILED/CANCELED）一律返回 nil 任务
-// 不重试，仅 Run 上抛的基础设施错误透传交 Asynq 重试（MaxRetry(3) 的适用面是
-// 进程崩溃等基础设施级失败，重投后 MarkRunning 见 ErrNotQueued 直接返回 nil）。
+// service 层）。坏格式/非正数 generation_id 属构造侧确定性错误，丢弃记 ERROR；
+// gen.Run 业务侧已终态化（FAILED/CANCELED）返回 nil 不重试，仅其上抛的基础设施
+// 错误交 Asynq 重试（重投后 MarkRunning 见 ErrNotQueued 直接返回 nil）。
 func NewQuestionGenerateHandler(gen *questiongen.Generator) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var p QuestionGeneratePayload

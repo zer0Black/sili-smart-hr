@@ -52,7 +52,7 @@
 
 **批次号同日序号规则。** 前缀字母由批次类型决定（生成 G / 量表引入 S / 重新送审 R）+ MMdd，同日同前缀从第 2 批起追加 `-序号`（specs 4.1.2 C）。按服务器本地日（time.Local，与 scheduler 先例一致）判定同日。
 
-**量表模板内置代码不建表。** 标准量表（Riso-Hudson 144 题、Essence 108 题）是固定文本，任何界面不提供编辑（specs 规则 5），随代码版本管理比入库更合适，且与 seed_dimensions 内置 seed 先例一致。引入操作从内置模板幂等展开成 questions 行。「已引入」判定查 questions 表（specs 规则 8：存在该量表未逻辑删除的题目即已引入），模板不承载引入状态。
+**量表模板内置代码不建表。** 标准量表（Riso-Hudson 全集 144 题、Essence 全集 108 题，样本期收录 18/9 题代表性样本，全集替换只动 scaledata 数据文件）是固定文本，任何界面不提供编辑（specs 规则 5），随代码版本管理比入库更合适，且与 seed_dimensions 内置 seed 先例一致。引入操作从内置模板幂等展开成 questions 行。「已引入」判定查 questions 表（specs 规则 8：存在该量表未逻辑删除的题目即已引入），模板不承载引入状态。
 
 **量表引入事务内补 seed 九型型别维度。** 量表题的维度归属是九型 9 个型别倾向维度（dimensions 表 ENNEAGRAM 模块）。P2_DIM_001 的 seed 刻意不写入九型维度（归量表引入落地），本 Feature 在引入事务内 ensure：型别维度不存在则按内置定义创建（ENNEAGRAM 模块、TEST 数据来源、启用态），已存在（含停用）则复用。
 
@@ -328,7 +328,7 @@ CREATE INDEX "idx_question_batches_status" ON "question_batches"("status", "crea
 - 作废事务（specs 4.1.3 作废批次）：批次置 VOIDED；GENERATE/IMPORT 批次批内题目批量软删（不进入题库）；RESUBMIT 批次批内题目回退 REJECTED 并保留原驳回原因（题库既有题目不作废）。
 - RESUBMIT 并批（specs 规则 6）：重新提交时存在 source=AI 且 batch_type=RESUBMIT 且 status=PENDING 的批次则并入（question_count+1，题目 batch_id 改挂），否则新建。并批判定与建批在同一事务，批次号唯一索引兜底并发。
 - 批次号生成：按 batch_type 前缀 + 服务器本地日 MMdd，查同日同前缀最大批次号推导序号，首批无后缀、后续 -2/-3 递增。
-- 批内题目数上限：IMPORT 批次随模板（144/108），GENERATE 批次 5~30（specs 4.3.2），RESUBMIT 并批自然增长无上限；确认入库单请求整批提交（specs 4.2.4 规则 1）。
+- 批内题目数上限：IMPORT 批次随模板（样本期 18/9，全集 144/108），GENERATE 批次 5~30（specs 4.3.2），RESUBMIT 并批自然增长无上限；确认入库单请求整批提交（specs 4.2.4 规则 1）。
 - 无软删除：批次是审核凭证，作废是业务状态而非删除，终态行永久保留。
 
 ---
@@ -441,14 +441,14 @@ CREATE TABLE "question_generations" (
 
 ### 4.1 内置量表模板（代码常量，不建表）
 
-两套候选量表的题目全文与型别归属以 Go 侧内置数据承载（建议 `internal/questionbank/scaledata` 包，144 + 108 题静态数组，随代码版本管理），结构：
+两套候选量表的题目全文与型别归属以 Go 侧内置数据承载（`internal/questionbank/scaledata` 包静态数组，样本期 18 + 9 题、全集 144 + 108，随代码版本管理），结构：
 
 ```go
 type ScaleTemplate struct {
     ScaleKey         string           // RISO_HUDSON / ESSENCE
     Name             string           // 量表名（批次标题）
-    QuestionCount    int              // 144 / 108
-    EstimatedMinutes int              // 25 / 18
+    QuestionCount    int              // 样本期 18 / 9，全集 144 / 108
+    EstimatedMinutes int              // 样本期 3 / 2，全集 25 / 18
     Description      string           // 弹窗卡片描述
     Dimensions       []ScaleDimension // 九型 9 型别维度定义（名、编码），引入时 ensure 到 dimensions
     Items            []ScaleItem      // 题目全文：陈述、作答方式说明、计分键、型别归属
@@ -507,9 +507,9 @@ questions、question_batches、question_generations 三表首启均空，无 mig
 
 ### 7.1 性能
 
-- 量表引入单事务批量插 144/108 行，SQLite 库级写锁下也在秒级完成；生成完成落库同批量级。
+- 量表引入单事务批量插模板全集行（样本期 18/9，全集 144/108），SQLite 库级写锁下也在秒级完成；生成完成落库同批量级。
 - 确认入库批量更新走 `idx_questions_batch` 定位，单事务整批提交，无逐题往返。
-- LLM 生成经调用底座全局并发限制（在飞上限 4、FIFO 排队），多运营同时生成不放大上游压力（架构文档 3.1.2）。
+- LLM 生成走出题专用 LLM client 的并发 gate（在飞上限 4、FIFO 排队；与全局、评估 client 各持独立 gate，按域隔离防互相挤占，架构文档 3.1.2），同一出题通道内多运营同时生成不放大上游压力。
 - 无 Redis 缓存需求：题库读写均为运营低频操作，无跑批热读场景（主动测试取题的缓存策略归 F7）。
 
 ### 7.2 安全

@@ -205,7 +205,7 @@ func TestCreateBatchWithQuestions(t *testing.T) {
 	}
 
 	repo := repository.NewQuestionBatchRepository(db)
-	if err := repo.CreateBatchWithQuestions(context.Background(), nil, &batch, &questions); err != nil {
+	if err := repo.CreateBatchWithQuestions(context.Background(), nil, &batch, questions); err != nil {
 		t.Fatalf("CreateBatchWithQuestions: %v", err)
 	}
 	if batch.ID == 0 {
@@ -273,7 +273,7 @@ func TestCreateBatchWithQuestions_SoftDeletedSeq(t *testing.T) {
 	}
 
 	repo := repository.NewQuestionBatchRepository(db)
-	if err := repo.CreateBatchWithQuestions(context.Background(), nil, &batch, &questions); err != nil {
+	if err := repo.CreateBatchWithQuestions(context.Background(), nil, &batch, questions); err != nil {
 		t.Fatalf("CreateBatchWithQuestions: %v", err)
 	}
 	if questions[0].QuestionNo != "Q-AG-0008" || questions[1].QuestionNo != "Q-AG-0009" {
@@ -298,7 +298,7 @@ func TestCreateBatchWithQuestions_ExternalTxRollback(t *testing.T) {
 
 	repo := repository.NewQuestionBatchRepository(db)
 	err := db.Transaction(func(tx *gorm.DB) error {
-		if err := repo.CreateBatchWithQuestions(context.Background(), tx, &batch, &questions); err != nil {
+		if err := repo.CreateBatchWithQuestions(context.Background(), tx, &batch, questions); err != nil {
 			return err
 		}
 		return errors.New("force rollback")
@@ -327,7 +327,7 @@ func TestCreateBatchWithQuestions_ExternalTxCommit(t *testing.T) {
 
 	repo := repository.NewQuestionBatchRepository(db)
 	if err := db.Transaction(func(tx *gorm.DB) error {
-		return repo.CreateBatchWithQuestions(context.Background(), tx, &batch, &questions)
+		return repo.CreateBatchWithQuestions(context.Background(), tx, &batch, questions)
 	}); err != nil {
 		t.Fatalf("outer transaction: %v", err)
 	}

@@ -36,7 +36,7 @@ type QuestionGenerationRepository interface {
 	// staging 展开插 questions（编号连续分配收在事务内，Generator 不预填
 	// question_no、status=PENDING、batch_id 回填）+ generation 置 COMPLETED +
 	// batch_id 回填 + staging 清空。失败整体回滚上抛，engine 决定是否 FinishTerminal。
-	FinishCompleted(ctx context.Context, id int64, batch *domain.QuestionBatch, questions *[]domain.Question) error
+	FinishCompleted(ctx context.Context, id int64, batch *domain.QuestionBatch, questions []domain.Question) error
 	// FinishTerminal 失败/取消终态：置 status（FAILED/CANCELED）+ error_code +
 	// staging 清空。仅 RUNNING/QUEUED 可置，已终态返回 ErrAlreadyTerminal。
 	FinishTerminal(ctx context.Context, id int64, status, errorCode string) error
@@ -101,12 +101,11 @@ func (r *questionGenerationRepository) SaveProgress(ctx context.Context, id int6
 		}).Error
 }
 
-// FinishCompleted 单事务收口（specs 04 §3.3 完成事务）：NextBatchNo("G") 建批
-// （BatchNo 空 时由本方法生成）→ CreateBatchWithQuestions(外层 tx) 展开 staging
-// 落 questions（Q-AG 编号连续分配、PENDING、挂批）→ generation 置 COMPLETED +
-// batch_id 回填 + staging 清空。WHERE 恒带 status=RUNNING，RowsAffected=0 返回
-// ErrNotRunning 整体回滚（questions 零残留）。
-func (r *questionGenerationRepository) FinishCompleted(ctx context.Context, id int64, batch *domain.QuestionBatch, questions *[]domain.Question) error {
+// FinishCompleted 单事务收口（specs 04 §3.3 完成事务）：NextBatchNo("G") 建批 →
+// CreateBatchWithQuestions(外层 tx) 展开 staging 落 questions（Q-AG 编号连续分配、
+// PENDING、挂批）→ generation 置 COMPLETED + batch_id 回填 + staging 清空。WHERE
+// 恒带 status=RUNNING，RowsAffected=0 返回 ErrNotRunning 整体回滚（questions 零残留）。
+func (r *questionGenerationRepository) FinishCompleted(ctx context.Context, id int64, batch *domain.QuestionBatch, questions []domain.Question) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		batchRepo := NewQuestionBatchRepository(tx)
 		if batch.BatchNo == "" {

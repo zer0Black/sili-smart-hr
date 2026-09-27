@@ -10,3 +10,8 @@ export function useModuleDimensions(moduleCode: string, enabledOnly: boolean): D
   const leaves = mod.groups ? mod.groups.flatMap((g) => g.dimensions) : (mod.dimensions ?? []);
   return enabledOnly ? leaves.filter((d) => d.enabled) : leaves;
 }
+
+/** AI_MGMT 模块当前启用的子能力：编辑/重新提交改选集合与 AI 生成页维度多选共用（specs §4.1.2 E / §4.3.2）。 */
+export function useEnabledAiMgmtDimensions(): DimensionBrief[] {
+  return useModuleDimensions('AI_MGMT', true);
+}

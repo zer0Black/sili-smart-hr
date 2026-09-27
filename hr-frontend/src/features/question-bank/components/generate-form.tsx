@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { useDimensionDetail } from '@/features/dimension/hooks';
-import { useModuleDimensions } from '@/features/question-bank/dimension-options';
+import { EmptyStateArt } from '@/features/question-bank/components/empty-state-art';
+import { useEnabledAiMgmtDimensions } from '@/features/question-bank/dimension-options';
 import {
   useCancelGeneration,
   useCreateGeneration,
@@ -27,11 +28,6 @@ const COUNT_MAX = 30;
 
 /** 页面四态（specs §4A.3）：form=表单，running=生成中，done=完成，failed=失败。 */
 type Phase = 'form' | 'running' | 'done' | 'failed';
-
-/** AI_MGMT 模块启用叶子维度（specs §4.3.2：当前启用的 AI 管理子能力）。 */
-function useEnabledAiMgmtDimensions(): DimensionBrief[] {
-  return useModuleDimensions('AI_MGMT', true);
-}
 
 /** 维度一句话说明：树轻量项无 description，逐卡取详情补全（卡片级懒取）。 */
 function useDimensionDesc(dim: DimensionBrief): string | undefined {
@@ -204,14 +200,7 @@ export function GenerateForm(): JSX.Element {
             <p className="text-muted-foreground text-xs">{t('generate.dimensionHint')}</p>
             {dimensions.length === 0 ? (
               <div className="flex flex-col items-center gap-3 rounded-md border border-dashed py-10 text-center">
-                {/* 空态插画：与题库列表空态同款几何色块（specs §4.1.5 / DESIGN.md 粉彩点缀） */}
-                <div aria-hidden className="flex items-end gap-1.5">
-                  <span className="bg-block-cream h-6 w-4 rounded-sm" />
-                  <span className="bg-block-lilac h-10 w-4 rounded-sm" />
-                  <span className="bg-block-cream h-8 w-4 rounded-sm" />
-                  <span className="bg-block-lilac h-14 w-4 rounded-sm" />
-                  <span className="bg-block-cream h-5 w-4 rounded-sm" />
-                </div>
+                <EmptyStateArt tab="AI" />
                 <p className="text-base font-medium">{t('generate.emptyTitle')}</p>
                 <p className="text-muted-foreground text-sm">{t('generate.emptyDesc')}</p>
                 <Button variant="outline" onClick={() => void navigate({ to: '/system/dimension' })}>

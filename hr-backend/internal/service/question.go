@@ -66,15 +66,14 @@ type QuestionDetail struct {
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
-// QuestionListInput 列表查询入参。DimensionIDSet 区分「未传维度」与「传空」。
+// QuestionListInput 列表查询入参。DimensionID 非 nil 才按维度过滤（nil=全部维度）。
 type QuestionListInput struct {
-	Source         string
-	DimensionID    int64
-	DimensionIDSet bool
-	Status         string
-	Keyword        string
-	Page           int
-	PageSize       int
+	Source      string
+	DimensionID *int64
+	Status      string
+	Keyword     string
+	Page        int
+	PageSize    int
 }
 
 // QuestionListResult 分页结果，作 data 透传（{list,total,page,page_size} 同构）。
@@ -144,8 +143,9 @@ func summarize(scenario string) string {
 func int64ToString(v int64) string { return strconv.FormatInt(v, 10) }
 
 // resolveQuestion 存在性查询收敛：NotFound 映射 1701，DB 错误 wrap 上报。
-func (s *questionService) resolveQuestion(ctx context.Context, id int64) (*domain.Question, error) {
-	q, err := s.repo.FindByID(ctx, id)
+// 包级函数供同包批次/生成 service 复用。
+func resolveQuestion(ctx context.Context, qRepo repository.QuestionRepository, id int64) (*domain.Question, error) {
+	q, err := qRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewError(errcode.QuestionNotFound)
@@ -158,8 +158,9 @@ func (s *questionService) resolveQuestion(ctx context.Context, id int64) (*domai
 // listDimensionNames 双查取维度 ID→名称映射：ListAll 活跃行（含停用）优先，活跃
 // map 未命中的 ID 再 Unscoped 查软删行名称回填（specs §4.1.2 E 维度已停用/软删时
 // 回传存量名称）。仅补充真实需要的缺口，避免全量 Unscoped 拉长文本列。
-func (s *questionService) listDimensionNames(ctx context.Context, ids ...int64) (map[int64]string, error) {
-	dims, err := s.dimRepo.ListAll(ctx)
+// 包级函数供同包批次/生成 service 复用。
+func listDimensionNames(ctx context.Context, dimRepo repository.DimensionRepository, ids ...int64) (map[int64]string, error) {
+	dims, err := dimRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list dimensions: %w", err)
 	}
@@ -176,7 +177,7 @@ func (s *questionService) listDimensionNames(ctx context.Context, ids ...int64) 
 	if len(missing) == 0 {
 		return names, nil
 	}
-	softDeleted, err := s.dimRepo.ListNamesByIDsUnscoped(ctx, missing)
+	softDeleted, err := dimRepo.ListNamesByIDsUnscoped(ctx, missing)
 	if err != nil {
 		return nil, fmt.Errorf("list soft-deleted dimension names: %w", err)
 	}
@@ -187,8 +188,8 @@ func (s *questionService) listDimensionNames(ctx context.Context, ids ...int64) 
 }
 
 // resolveDimensionName 单 ID 维度名解析，与 listDimensionNames 同口径（详情复用）。
-func (s *questionService) resolveDimensionName(ctx context.Context, dimensionID int64) (string, error) {
-	names, err := s.listDimensionNames(ctx, dimensionID)
+func resolveDimensionName(ctx context.Context, dimRepo repository.DimensionRepository, dimensionID int64) (string, error) {
+	names, err := listDimensionNames(ctx, dimRepo, dimensionID)
 	if err != nil {
 		return "", err
 	}
@@ -197,7 +198,7 @@ func (s *questionService) resolveDimensionName(ctx context.Context, dimensionID 
 
 // ListQuestions 列表组装：repo 分页取行 → 维度名双查回填 → 派生字段（03 §3.1）。
 func (s *questionService) ListQuestions(ctx context.Context, in QuestionListInput) (*QuestionListResult, error) {
-	rows, total, err := s.repo.ListPage(ctx, in.Source, in.DimensionID, in.DimensionIDSet, in.Status, in.Keyword, in.Page, in.PageSize)
+	rows, total, err := s.repo.ListPage(ctx, in.Source, in.DimensionID, in.Status, in.Keyword, in.Page, in.PageSize)
 	if err != nil {
 		return nil, fmt.Errorf("list questions: %w", err)
 	}
@@ -205,7 +206,7 @@ func (s *questionService) ListQuestions(ctx context.Context, in QuestionListInpu
 	for i := range rows {
 		dimIDs[i] = rows[i].DimensionID
 	}
-	names, err := s.listDimensionNames(ctx, dimIDs...)
+	names, err := listDimensionNames(ctx, s.dimRepo, dimIDs...)
 	if err != nil {
 		return nil, err
 	}
@@ -230,11 +231,11 @@ func (s *questionService) ListQuestions(ctx context.Context, in QuestionListInpu
 
 // GetQuestion 详情组装（03 §3.2），PENDING 态可查（批次审核视图复用）。
 func (s *questionService) GetQuestion(ctx context.Context, id int64) (*QuestionDetail, error) {
-	q, err := s.resolveQuestion(ctx, id)
+	q, err := resolveQuestion(ctx, s.repo, id)
 	if err != nil {
 		return nil, err
 	}
-	name, err := s.resolveDimensionName(ctx, q.DimensionID)
+	name, err := resolveDimensionName(ctx, s.dimRepo, q.DimensionID)
 	if err != nil {
 		return nil, err
 	}
@@ -289,8 +290,9 @@ func validateQuestionText(scenario, requirement, focusPoint string) error {
 
 // enabledAIMgmtDimensionIDs 当前启用的 AI_MGMT 维度集合（specs §4.1.2 E 改选限
 // 当前启用集合）：ListAll 后过滤 module_code=AI_MGMT 且 enabled。
-func (s *questionService) enabledAIMgmtDimensionIDs(ctx context.Context) (map[int64]bool, error) {
-	dims, err := s.dimRepo.ListAll(ctx)
+// 包级函数供同包批次/生成 service 复用。
+func enabledAIMgmtDimensionIDs(ctx context.Context, dimRepo repository.DimensionRepository) (map[int64]bool, error) {
+	dims, err := dimRepo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list dimensions: %w", err)
 	}
@@ -315,15 +317,24 @@ func (s *questionService) conflictOrMissing(ctx context.Context, id int64) error
 	return NewError(errcode.QuestionVersionConflict)
 }
 
-// mutationResult 写路径成功后的响应组装（回读最新行携带新 version 与 updated_at）。
-func (s *questionService) mutationResult(ctx context.Context, id int64, status string) (*QuestionMutationResult, error) {
-	q, err := s.repo.FindByID(ctx, id)
+// reloadQuestion 写路径成功后的回读收敛：NotFound（刚写成功即被并发删除的极端
+// 情况）按版本冲突提示刷新，DB 错误 wrap 上报。包级函数供批次 service 复用。
+func reloadQuestion(ctx context.Context, qRepo repository.QuestionRepository, id int64) (*domain.Question, error) {
+	q, err := qRepo.FindByID(ctx, id)
 	if err != nil {
-		// 刚写成功即被并发删除的极端情况，按版本冲突提示刷新；DB 错误上报 1500。
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewError(errcode.QuestionVersionConflict)
 		}
 		return nil, fmt.Errorf("reload question: %w", err)
+	}
+	return q, nil
+}
+
+// mutationResult 写路径成功后的响应组装（回读最新行携带新 version 与 updated_at）。
+func (s *questionService) mutationResult(ctx context.Context, id int64, status string) (*QuestionMutationResult, error) {
+	q, err := reloadQuestion(ctx, s.repo, id)
+	if err != nil {
+		return nil, err
 	}
 	return &QuestionMutationResult{
 		ID:        int64ToString(q.ID),
@@ -337,7 +348,7 @@ func (s *questionService) mutationResult(ctx context.Context, id int64, status s
 // AI_MGMT 集合，文本长度校验后乐观锁更新。question_no/source/status/batch_id/
 // reference_count 等不可变字段不进 updates。
 func (s *questionService) UpdateQuestion(ctx context.Context, in UpdateQuestionInput) (*QuestionMutationResult, error) {
-	cur, err := s.resolveQuestion(ctx, in.ID)
+	cur, err := resolveQuestion(ctx, s.repo, in.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +360,7 @@ func (s *questionService) UpdateQuestion(ctx context.Context, in UpdateQuestionI
 	if err := validateQuestionText(in.Scenario, in.Requirement, in.FocusPoint); err != nil {
 		return nil, err
 	}
-	enabled, err := s.enabledAIMgmtDimensionIDs(ctx)
+	enabled, err := enabledAIMgmtDimensionIDs(ctx, s.dimRepo)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +390,7 @@ func (s *questionService) ToggleQuestionStatus(ctx context.Context, id int64, ta
 	if targetStatus != domain.QuestionStatusActive && targetStatus != domain.QuestionStatusDisabled {
 		return nil, NewError(errcode.BadRequest)
 	}
-	cur, err := s.resolveQuestion(ctx, id)
+	cur, err := resolveQuestion(ctx, s.repo, id)
 	if err != nil {
 		return nil, err
 	}
@@ -404,7 +415,7 @@ func (s *questionService) ToggleQuestionStatus(ctx context.Context, id int64, ta
 // DeleteQuestion 删除（03 §3.6）：PENDING 在批次中管理返 1708，被引用题返
 // 1705（specs 规则 4），量表题删除无额外限制，乐观锁软删。
 func (s *questionService) DeleteQuestion(ctx context.Context, id int64, version int) error {
-	cur, err := s.resolveQuestion(ctx, id)
+	cur, err := resolveQuestion(ctx, s.repo, id)
 	if err != nil {
 		return err
 	}

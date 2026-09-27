@@ -1,6 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import dayjs from 'dayjs';
 import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -8,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useHealthCheck, useSystemSummary } from '@/features/system/hooks';
 import type { ComponentStatus } from '@/lib/contracts';
+import { formatDateTime } from '@/lib/format-time';
 
 export const Route = createFileRoute('/_authenticated/system/status')({
   component: SystemStatusPage,
@@ -23,10 +23,6 @@ function SystemStatusPage() {
   const healthMut = useHealthCheck();
   // useMutation data 语义等价于手动 setHealth：未触发为 null，成功为最近一次结果。
   const health = healthMut.data ?? null;
-
-  // ISO 字符串按 YYYY-MM-DD HH:mm:ss 本地格式化，与 users 页统一走 dayjs（保留非法输入兜底）。
-  const formatStartedAt = (raw: string): string =>
-    dayjs(raw).isValid() ? dayjs(raw).format('YYYY-MM-DD HH:mm:ss') : raw;
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,7 +59,7 @@ function SystemStatusPage() {
             <div className="flex flex-col gap-1">
               <dt className="text-muted-foreground">{t('startedAt')}</dt>
               <dd>
-                {summaryQ.data?.started_at ? formatStartedAt(summaryQ.data.started_at) : '-'}
+                {summaryQ.data?.started_at ? formatDateTime(summaryQ.data.started_at) : '-'}
               </dd>
             </div>
           </dl>

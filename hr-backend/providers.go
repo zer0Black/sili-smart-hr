@@ -411,11 +411,9 @@ func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEv
 // 规避 Wire 类型表 multiple bindings 冲突（与 EvaluatorLLMClient 同款）。
 type QuestionGenLLMClient llm.Client
 
-// NewQuestionGenLLMClient 构造出题专用 LLM 客户端：Timeout 120s 覆盖建连到
-// 流式 body 读毕全程，与全局及评估 client 各持独立并发 gate。TokenBudget 12000
-// 覆盖出题 prompt（模板 + 维度名 + 说明，输入侧预检）。任务级超时单点在
-// worker/task 的 questionGenerateTimeout（2h，30 题满额预算推导），调整本处
-// 参数须同步该处。
+// NewQuestionGenLLMClient 构造出题专用 LLM 客户端：Timeout 120s，与全局及评估
+// client 各持独立并发 gate；TokenBudget 12000 覆盖出题 prompt 输入侧预检。任务级
+// 超时单点在 worker/task 的 questionGenerateTimeout，调整须同步该处。
 func NewQuestionGenLLMClient(provider llm.EnabledModelProvider) QuestionGenLLMClient {
 	return llm.New(llm.Config{
 		Timeout:        120 * time.Second,

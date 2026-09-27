@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import dayjs from 'dayjs';
 import type { JSX } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -13,17 +12,12 @@ import { ConfirmDialog } from '@/components/confirm-dialog';
 import { usePendingBatches, useVoidBatch } from '@/features/question-bank/batch-hooks';
 import { ErrCode } from '@/lib/contracts';
 import type { QuestionBatchCard } from '@/lib/contracts';
+import { formatDateTime } from '@/lib/format-time';
 import { ApiError } from '@/lib/http-client';
 import { queryClient } from '@/lib/query-client';
 
 export interface BatchCardStripProps {
   onStartReview: (batchId: string) => void;
-}
-
-// RFC3339 生成时间按 yyyy-MM-dd HH:mm:ss 本地格式化，非法输入兜底透传原值
-// （question-view-dialog formatTime 同款）。
-function formatTime(raw: string): string {
-  return dayjs(raw).isValid() ? dayjs(raw).format('YYYY-MM-DD HH:mm:ss') : raw;
 }
 
 export function BatchCardStrip({ onStartReview }: BatchCardStripProps): JSX.Element | null {
@@ -74,7 +68,7 @@ export function BatchCardStrip({ onStartReview }: BatchCardStripProps): JSX.Elem
               <span className="text-sm font-medium break-words">{batch.title}</span>
               <div className="text-muted-foreground flex items-center gap-3 text-sm">
                 <span>{t('batchStrip.questionCount', { count: batch.question_count })}</span>
-                <span>{formatTime(batch.created_at)}</span>
+                <span>{formatDateTime(batch.created_at)}</span>
               </div>
             </CardContent>
             <CardFooter className="justify-end gap-2">

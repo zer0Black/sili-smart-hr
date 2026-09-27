@@ -227,7 +227,7 @@ func (r *scaleRepository) ImportScale(ctx context.Context, tpl *scaledata.ScaleT
 			QuestionCount: len(tpl.Items),
 			ScaleKey:      tpl.ScaleKey,
 		}
-		return r.batchRepo.CreateBatchWithQuestions(ctx, tx, batch, &questions)
+		return r.batchRepo.CreateBatchWithQuestions(ctx, tx, batch, questions)
 	})
 	if err != nil {
 		return nil, err

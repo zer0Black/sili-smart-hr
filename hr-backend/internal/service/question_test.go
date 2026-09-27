@@ -42,7 +42,7 @@ type qFakeRepo struct {
 var _ repository.QuestionRepository = (*qFakeRepo)(nil)
 var _ repository.DimensionRepository = (*qFakeDimRepo)(nil)
 
-func (r *qFakeRepo) ListPage(_ context.Context, _ string, _ int64, _ bool, _, _ string, _, _ int) ([]domain.Question, int64, error) {
+func (r *qFakeRepo) ListPage(_ context.Context, _ string, _ *int64, _, _ string, _, _ int) ([]domain.Question, int64, error) {
 	return r.list, r.listTotal, r.listErr
 }
 

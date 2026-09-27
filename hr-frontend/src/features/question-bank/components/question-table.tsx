@@ -8,6 +8,7 @@ import type { JSX } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import {
   Select,
@@ -25,6 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { fetchQuestionDetail } from '@/features/question-bank/api';
+import { EmptyStateArt } from '@/features/question-bank/components/empty-state-art';
 import { useModuleDimensions } from '@/features/question-bank/dimension-options';
 import {
   useDeleteQuestion,
@@ -53,7 +55,8 @@ export interface QuestionTableProps {
 }
 
 const DEFAULT_PAGE_SIZE = 10;
-const PAGE_SIZE_OPTIONS = [10, 20, 50];
+// 通用规范 1：每页条数可选 10/20/30
+const PAGE_SIZE_OPTIONS = [10, 20, 30];
 const ALL = '__all__';
 /** 摘要展示截断长度（specs §4.1.2 B：过长截断悬浮展示全文）。 */
 const SUMMARY_MAX = 30;
@@ -69,22 +72,6 @@ function useTabDimensions(tab: QuestionTab) {
   // AI 侧限当前启用集合；量表侧 specs 未限定启用，型别维度全量列出
   const dims = useModuleDimensions(tab === 'AI' ? 'AI_MGMT' : 'ENNEAGRAM', tab === 'AI');
   return dims.map((d) => ({ id: d.id, name: d.name }));
-}
-
-/** 空态插画（specs §4.1.5）：几何色块组合，DESIGN.md 空状态可用一个 block-* 粉彩点缀。 */
-function EmptyStateArt({ tab }: { tab: QuestionTab }): JSX.Element {
-  // AI tab 偏紫（生成/智能），量表 tab 偏薄荷（量表/校准），色块高度错落喻题库累积
-  const accent = tab === 'AI' ? 'bg-block-lilac' : 'bg-block-mint';
-  const others = tab === 'AI' ? 'bg-block-cream' : 'bg-block-cream';
-  return (
-    <div aria-hidden className="flex items-end gap-1.5">
-      <span className={`${others} h-6 w-4 rounded-sm`} />
-      <span className={`${accent} h-10 w-4 rounded-sm`} />
-      <span className={`${others} h-8 w-4 rounded-sm`} />
-      <span className={`${accent} h-14 w-4 rounded-sm`} />
-      <span className={`${others} h-5 w-4 rounded-sm`} />
-    </div>
-  );
 }
 
 /** 摘要单元格：悬浮展示题干全文（03 §3.1：悬浮全文走详情接口，hover 懒取）。 */
@@ -119,6 +106,8 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
   });
   // 删除二次确认（specs §4.1.3 删除题目 / 通用规范 14）：null 为关、非 null 为待删行
   const [deleteTarget, setDeleteTarget] = useState<QuestionListItem | null>(null);
+  // 跳至页输入草稿（通用规范 1）：提交时钳位 1~totalPages，非法输入忽略
+  const [jumpDraft, setJumpDraft] = useState('');
 
   const query = useQuestions({
     source: tab,
@@ -164,6 +153,15 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
     setDraftStatus(ALL);
     setDraftKeyword('');
     setFilter({ page: 1, page_size: filter.page_size });
+  }
+
+  /** 跳至指定页（通用规范 1）：解析失败或越界钳到 [1, totalPages]，同页忽略。 */
+  function onJump() {
+    const n = Number.parseInt(jumpDraft, 10);
+    if (Number.isNaN(n)) return;
+    const page = Math.min(Math.max(n, 1), totalPages);
+    if (page !== filter.page) setFilter((f) => ({ ...f, page }));
+    setJumpDraft('');
   }
 
   /** 写操作异常统一处理：1713 冲突刷新列表，其余通用失败（specs §4.1.4 规则9）。 */
@@ -405,6 +403,24 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
               >
                 {t('table.nextPage')}
               </Button>
+              {/* 跳至页（通用规范 1）：输入页码回车或点「跳」直达，越界钳位 */}
+              <span className="flex items-center gap-1">
+                <Input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpDraft}
+                  onChange={(e) => setJumpDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') onJump();
+                  }}
+                  aria-label={t('table.jumpTo')}
+                  className="h-8 w-16 text-sm"
+                />
+                <Button variant="outline" size="sm" onClick={onJump}>
+                  {t('table.jumpGo')}
+                </Button>
+              </span>
             </div>
           </div>
         </>

@@ -54,7 +54,7 @@ func (r *qGenFakeRepo) SaveProgress(_ context.Context, _ int64, _ int, _ int64, 
 	return nil
 }
 
-func (r *qGenFakeRepo) FinishCompleted(_ context.Context, _ int64, _ *domain.QuestionBatch, _ *[]domain.Question) error {
+func (r *qGenFakeRepo) FinishCompleted(_ context.Context, _ int64, _ *domain.QuestionBatch, _ []domain.Question) error {
 	return nil
 }
 

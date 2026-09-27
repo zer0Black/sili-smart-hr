@@ -79,7 +79,7 @@ func TestListPageExcludesPending(t *testing.T) {
 	pending := seedAI(t, db, "Q-AG-0004", domain.QuestionStatusPending, "情境四", 101)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestListPage_SourceAndStatus(t *testing.T) {
 	seedQuestion(t, db, "Q-Scale-0002", domain.QuestionSourceScale, domain.QuestionStatusDisabled, "陈述二", 202)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceScale, 0, false, "", "", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceScale, nil, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestListPage_SourceAndStatus(t *testing.T) {
 		t.Fatalf("scale tab want total=2, got total=%d len=%d", total, len(list))
 	}
 
-	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceScale, 0, false, domain.QuestionStatusActive, "", 1, 20)
+	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceScale, nil, domain.QuestionStatusActive, "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -127,14 +127,15 @@ func TestListPage_SourceAndStatus(t *testing.T) {
 }
 
 // TestListPage_DimensionFilter 维度筛选：dimensionIDSet=true 且 dimensionID 匹配时只返回
-// 该维度行；dimensionIDSet=false 时忽略维度条件（全部维度）。
+// 该维度行；dimensionID=nil 时忽略维度条件（全部维度）。
 func TestListPage_DimensionFilter(t *testing.T) {
 	db := newQuestionTestDB(t)
 	seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
 	d2 := seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 202)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 202, true, "", "", 1, 20)
+	dimID := int64(202)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, &dimID, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -143,7 +144,7 @@ func TestListPage_DimensionFilter(t *testing.T) {
 	}
 
 	// 未传维度（dimensionIDSet=false）：dimensionID 的 0 值不进 WHERE。
-	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 20)
+	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage no dimension: %v", err)
 	}
@@ -160,7 +161,7 @@ func TestListPage_StatusFilter(t *testing.T) {
 	seedAI(t, db, "Q-AG-0003", domain.QuestionStatusDisabled, "情境三", 101)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, domain.QuestionStatusRejected, "", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, domain.QuestionStatusRejected, "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -178,7 +179,7 @@ func TestListPageKeywordEscapes(t *testing.T) {
 	seedAI(t, db, "Q-AG-0003", domain.QuestionStatusActive, "完成度 100x 的项目复盘", 101)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "100%", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "100%", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestListPage_KeywordMatchesQuestionNo(t *testing.T) {
 	seedAI(t, db, "Q-AG-0008", domain.QuestionStatusActive, "无关情境二", 101)
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "0007", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "0007", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestListPage_OrderBy(t *testing.T) {
 		Update("updated_at", b.UpdatedAt.Add(3600e9))
 
 	repo := repository.NewQuestionRepository(db)
-	list, _, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 20)
+	list, _, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}
@@ -233,7 +234,7 @@ func TestListPage_Pagination(t *testing.T) {
 
 	repo := repository.NewQuestionRepository(db)
 	// page=0 钳到 1：仍返回第一页数据。
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 0, 2)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 0, 2)
 	if err != nil {
 		t.Fatalf("ListPage page=0: %v", err)
 	}
@@ -241,7 +242,7 @@ func TestListPage_Pagination(t *testing.T) {
 		t.Fatalf("page=0 clamped to 1 want total=5 len=2, got total=%d len=%d", total, len(list))
 	}
 	// pageSize=0 钳到 20：全量返回。
-	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 0)
+	list, total, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 0)
 	if err != nil {
 		t.Fatalf("ListPage pageSize=0: %v", err)
 	}
@@ -249,7 +250,7 @@ func TestListPage_Pagination(t *testing.T) {
 		t.Fatalf("pageSize=0 clamped to 20 want total=5 len=5, got total=%d len=%d", total, len(list))
 	}
 	// pageSize=200 钳到 100 上限：不报错，全量返回。
-	list, _, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 200)
+	list, _, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 200)
 	if err != nil {
 		t.Fatalf("ListPage pageSize=200: %v", err)
 	}
@@ -257,7 +258,7 @@ func TestListPage_Pagination(t *testing.T) {
 		t.Fatalf("pageSize=200 clamped want len=5, got %d", len(list))
 	}
 	// 第二页：只剩 1 行。
-	list, _, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 3, 2)
+	list, _, err = repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 3, 2)
 	if err != nil {
 		t.Fatalf("ListPage page=3: %v", err)
 	}
@@ -276,7 +277,7 @@ func TestListPage_ExcludesSoftDeleted(t *testing.T) {
 	}
 
 	repo := repository.NewQuestionRepository(db)
-	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, 0, false, "", "", 1, 20)
+	list, total, err := repo.ListPage(context.Background(), domain.QuestionSourceAI, nil, "", "", 1, 20)
 	if err != nil {
 		t.Fatalf("ListPage: %v", err)
 	}

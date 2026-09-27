@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { useModuleDimensions } from '@/features/question-bank/dimension-options';
+import { useEnabledAiMgmtDimensions } from '@/features/question-bank/dimension-options';
 import { useResubmitQuestion, useUpdateQuestion } from '@/features/question-bank/hooks';
 import type { QuestionDetail } from '@/lib/contracts';
 import { ErrCode } from '@/lib/contracts';
@@ -46,12 +46,6 @@ interface QuestionFormValues {
   scenario: string;
   requirement: string;
   focus_point: string;
-}
-
-/** AI_MGMT 模块下当前启用的子能力（specs §4.1.2 E：改选限当前启用集合）。 */
-function useEnabledAiMgmtDimensions() {
-  const dims = useModuleDimensions('AI_MGMT', true);
-  return dims.map((d) => ({ id: d.id, name: d.name }));
 }
 
 export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode = 'edit' }: QuestionFormDialogProps) {
@@ -198,7 +192,7 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={mut.isPending}>
-              {t('form.cancel', { ns: 'common' })}
+              {t('cancel', { ns: 'common' })}
             </Button>
             <Button type="submit" disabled={mut.isPending}>
               {mut.isPending ? submitting : mode === 'resubmit' ? t('form.resubmitSubmit') : t('form.submit')}
