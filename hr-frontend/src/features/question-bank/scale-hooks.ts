@@ -8,11 +8,9 @@ import { useAuthStore } from '@/stores/auth';
 import { fetchScales, importScale } from './scale-api';
 
 /** useScales：量表候选列表，弹窗打开（open）且有 token 时才查。 */
-export function useScales(
-  open: boolean,
-): UseQueryResult<{ list: ScaleCandidate[]; total: number }> {
+export function useScales(open: boolean): UseQueryResult<{ list: ScaleCandidate[] }> {
   const token = useAuthStore((s) => s.token);
-  return useQuery<{ list: ScaleCandidate[]; total: number }>({
+  return useQuery<{ list: ScaleCandidate[] }>({
     queryKey: ['question-bank', 'scales'],
     queryFn: fetchScales,
     enabled: open && !!token,

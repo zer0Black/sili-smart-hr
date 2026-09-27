@@ -65,15 +65,8 @@ type ConfirmResult struct {
 	RejectedCount int64  `json:"rejected_count"`
 }
 
-// ResubmitInput 重新提交入参（03 §3.5，字段同编辑接口）。
-type ResubmitInput struct {
-	ID           int64
-	DimensionID  int64
-	Scenario     string
-	Requirement  string
-	FocusPoint   string
-	Version      int
-}
+// ResubmitInput 重新提交入参：字段与编辑接口完全一致（03 §3.5 请求体同编辑），别名复用。
+type ResubmitInput = UpdateQuestionInput
 
 // ResubmitResult 重新提交响应（03 §3.5）：归入的重新送审批次与新版本号。
 type ResubmitResult struct {

@@ -27,10 +27,9 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { useEnabledAiMgmtDimensions } from '@/features/question-bank/dimension-options';
 import { useResubmitQuestion, useUpdateQuestion } from '@/features/question-bank/hooks';
+import { handleWriteError } from '@/features/question-bank/write-error';
 import type { QuestionDetail } from '@/lib/contracts';
 import { ErrCode } from '@/lib/contracts';
-import { ApiError } from '@/lib/http-client';
-import { queryClient } from '@/lib/query-client';
 
 export interface QuestionFormDialogProps {
   open: boolean;
@@ -48,6 +47,9 @@ interface QuestionFormValues {
   focus_point: string;
 }
 
+/** 字符长度按 Unicode 码点计数（与后端 rune 口径一致，增补平面字符不双计）。 */
+const codePoints = (s: string): number => [...s].length;
+
 export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode = 'edit' }: QuestionFormDialogProps) {
   const { t } = useTranslation('questionBank');
   const updateMut = useUpdateQuestion();
@@ -56,14 +58,29 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode
   const submitting = mode === 'resubmit' ? t('form.resubmitting') : t('form.submitting');
   const dimensions = useEnabledAiMgmtDimensions();
 
+  // 长度上限按 Unicode 码点判定（specs 字符口径：zod 默认 UTF-16 code unit 会让
+  // 增补平面字符双计，与后端 rune 口径不一致），min 仍走 zod 内建。
   const schema = useMemo(
     () =>
-      z.object({
-        dimension_id: z.string().min(1, t('form.dimensionRequired')),
-        scenario: z.string().min(1, t('form.scenarioRequired')).max(1000, t('form.scenarioMaxLength')),
-        requirement: z.string().min(1, t('form.requirementRequired')).max(2000, t('form.requirementMaxLength')),
-        focus_point: z.string().min(1, t('form.focusPointRequired')).max(500, t('form.focusPointMaxLength')),
-      }),
+      z
+        .object({
+          dimension_id: z.string().min(1, t('form.dimensionRequired')),
+          scenario: z.string().min(1, t('form.scenarioRequired')),
+          requirement: z.string().min(1, t('form.requirementRequired')),
+          focus_point: z.string().min(1, t('form.focusPointRequired')),
+        })
+        .superRefine((v, ctx) => {
+          const limits: Array<[keyof QuestionFormValues, number, string]> = [
+            ['scenario', 1000, t('form.scenarioMaxLength')],
+            ['requirement', 2000, t('form.requirementMaxLength')],
+            ['focus_point', 500, t('form.focusPointMaxLength')],
+          ];
+          for (const [field, max, message] of limits) {
+            if (codePoints(v[field]) > max) {
+              ctx.addIssue({ code: 'custom', path: [field], message });
+            }
+          }
+        }),
     [t],
   );
 
@@ -118,14 +135,11 @@ export function QuestionFormDialog({ open, onOpenChange, question, onSaved, mode
           onSaved();
         },
         onError: (err) => {
-          const code = err instanceof ApiError ? err.code : undefined;
           // 并发冲突（1713）：toast 后废弃缓存刷新列表，弹窗保留（specs §4.1.4 规则9）
-          if (code === ErrCode.QuestionVersionConflict) {
-            toast.error(t('toastConflict'));
-            void queryClient.invalidateQueries({ queryKey: ['question-bank'] });
-            return;
-          }
-          toast.error(t('toastGeneric'));
+          handleWriteError(err, t, {
+            code: ErrCode.QuestionVersionConflict,
+            toastKey: 'toastConflict',
+          });
         },
       },
     );

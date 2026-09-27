@@ -9,6 +9,9 @@ function ensureVisibilityListener() {
   if (visibilityListenerInstalled || typeof document === 'undefined') return;
   visibilityListenerInstalled = true;
   document.addEventListener('visibilitychange', () => {
+    // 恢复可见才通知订阅者：usePageVisible 依赖 setState 幂等，而
+    // subscribeVisibility 的消费方（如恢复即拉）在切到 hidden 时不应触发。
+    if (document.visibilityState !== 'visible') return;
     for (const fn of visibilityListeners) fn();
   });
 }

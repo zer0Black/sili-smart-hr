@@ -144,15 +144,24 @@ func (s *questionGenerationService) validateDimensions(ctx context.Context, dime
 	return deduped, nil
 }
 
-// GetProgress 进度组装（03 §3.14）：RUNNING 态当前维度名回显复用 SP1 双查回填
-// （软删回传存量名）；COMPLETED 附批次号；未开始维度提示 "0"/空串。
-func (s *questionGenerationService) GetProgress(ctx context.Context, id int64) (*GenerationProgressDTO, error) {
-	g, err := s.repo.FindByID(ctx, id)
+// resolveGeneration 生成会话存在性收敛：NotFound 映射 1703，DB 错误 wrap 上报。
+func resolveGeneration(ctx context.Context, gRepo repository.QuestionGenerationRepository, id int64) (*domain.QuestionGeneration, error) {
+	g, err := gRepo.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewError(errcode.GenerationNotFound)
 		}
 		return nil, fmt.Errorf("find question generation: %w", err)
+	}
+	return g, nil
+}
+
+// GetProgress 进度组装（03 §3.14）：RUNNING 态当前维度名回显复用 SP1 双查回填
+// （软删回传存量名）；COMPLETED 附批次号；未开始维度提示 "0"/空串。
+func (s *questionGenerationService) GetProgress(ctx context.Context, id int64) (*GenerationProgressDTO, error) {
+	g, err := resolveGeneration(ctx, s.repo, id)
+	if err != nil {
+		return nil, err
 	}
 	dto := &GenerationProgressDTO{
 		GenerationID:   int64ToString(g.ID),
@@ -192,11 +201,8 @@ func (s *questionGenerationService) GetProgress(ctx context.Context, id int64) (
 // CancelGeneration 协作式取消（03 §3.14 尾部）：存在性收敛 1703，取消语义
 // （QUEUED/RUNNING 置 CANCELED、终态幂等成功）由 repo.RequestCancel 承载。
 func (s *questionGenerationService) CancelGeneration(ctx context.Context, id int64) error {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return NewError(errcode.GenerationNotFound)
-		}
-		return fmt.Errorf("find question generation: %w", err)
+	if _, err := resolveGeneration(ctx, s.repo, id); err != nil {
+		return err
 	}
 	if err := s.repo.RequestCancel(ctx, id); err != nil {
 		return fmt.Errorf("request cancel question generation: %w", err)

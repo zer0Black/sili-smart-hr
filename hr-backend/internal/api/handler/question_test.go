@@ -184,7 +184,8 @@ func TestQuestionHandlerListSuccess(t *testing.T) {
 	}
 }
 
-// TestQuestionHandlerListDefaultPagingAndNoDimension：page/page_size 缺省兜底 1/20，空 dimension_id 不置 Set。
+// TestQuestionHandlerListDefaultPagingAndNoDimension：page/page_size 缺省透传 0（缺省
+// 与钳制由 repository.ClampPage 单一来源收口，见 pagination 测试），空 dimension_id 不置 Set。
 func TestQuestionHandlerListDefaultPagingAndNoDimension(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeQuestionService{listRes: &service.QuestionListResult{}}
@@ -194,8 +195,8 @@ func TestQuestionHandlerListDefaultPagingAndNoDimension(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", code)
 	}
-	if svc.listLast.Page != 1 || svc.listLast.PageSize != 20 {
-		t.Fatalf("page/page_size 兜底失败: %d/%d", svc.listLast.Page, svc.listLast.PageSize)
+	if svc.listLast.Page != 0 || svc.listLast.PageSize != 0 {
+		t.Fatalf("缺省应透传 0 交 ClampPage 收口: %d/%d", svc.listLast.Page, svc.listLast.PageSize)
 	}
 	if svc.listLast.DimensionID != nil {
 		t.Fatalf("空 dimension_id 应为 nil: %+v", svc.listLast)

@@ -2,7 +2,7 @@
 //
 // 每测试独立 :memory: SQLite，内联注册简化版雪花 Create 回调（与生产 model 包
 // 全量反射版等效），AutoMigrate 建 Question 表。
-// 覆盖 ListPage/FindByID/UpdateWithVersion/SoftDeleteWithVersion/ListByIDs/
+// 覆盖 ListPage/FindByID/UpdateWithVersion/SoftDeleteWithVersion/
 // MaxQuestionSeq 的真实 SQL 行为。
 package repository_test
 
@@ -443,41 +443,6 @@ func TestSoftDeleteWithVersion_Conflict(t *testing.T) {
 	}
 	if _, err := repo.FindByID(context.Background(), q.ID); err != nil {
 		t.Fatalf("row must still exist after conflict, got %v", err)
-	}
-}
-
-// TestListByIDs 批量按 ID 查：返回全部命中行；软删行排除；空 ID 列表返回空集。
-func TestListByIDs(t *testing.T) {
-	db := newQuestionTestDB(t)
-	a := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
-	b := seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 101)
-	del := seedAI(t, db, "Q-AG-0003", domain.QuestionStatusActive, "情境三", 101)
-	if err := db.Delete(&del).Error; err != nil {
-		t.Fatalf("seed delete: %v", err)
-	}
-
-	repo := repository.NewQuestionRepository(db)
-	list, err := repo.ListByIDs(context.Background(), []int64{a.ID, b.ID, del.ID, 999999})
-	if err != nil {
-		t.Fatalf("ListByIDs: %v", err)
-	}
-	if len(list) != 2 {
-		t.Fatalf("want 2 rows (soft-deleted excluded), got %d", len(list))
-	}
-	got := map[int64]bool{}
-	for _, q := range list {
-		got[q.ID] = true
-	}
-	if !got[a.ID] || !got[b.ID] {
-		t.Fatalf("want a and b, got %+v", list)
-	}
-
-	empty, err := repo.ListByIDs(context.Background(), nil)
-	if err != nil {
-		t.Fatalf("ListByIDs nil: %v", err)
-	}
-	if len(empty) != 0 {
-		t.Fatalf("nil ids want empty, got %d rows", len(empty))
 	}
 }
 

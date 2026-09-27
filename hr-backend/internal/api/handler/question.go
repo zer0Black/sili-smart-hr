@@ -45,24 +45,29 @@ type deleteQuestionRequest struct {
 	Version int    `json:"version" binding:"required"`
 }
 
-// questionQueryPaging 列表分页参数兜底：缺省或非法取 1/20。
+// questionQueryPaging 列表分页参数解析透传：缺省/非法传 0，缺省与钳制统一由
+// repository.ClampPage 收口（单一来源）。
 func questionQueryPaging(c *gin.Context) (page, pageSize int) {
-	page, err := strconv.Atoi(c.Query("page"))
-	if err != nil || page <= 0 {
-		page = 1
-	}
-	pageSize, err = strconv.Atoi(c.Query("page_size"))
-	if err != nil || pageSize <= 0 {
-		pageSize = 20
-	}
+	page, _ = strconv.Atoi(c.Query("page"))
+	pageSize, _ = strconv.Atoi(c.Query("page_size"))
 	return page, pageSize
 }
 
 // validVersion 乐观锁 version 须为正整数（03 §3.3-§3.6），负数/零在入口即拒 1400。
 func validVersion(v int) bool { return v > 0 }
 
+// bodyID 请求体 string 雪花 ID 解析收敛：非数字返 1400，ok=false 由调用方 return。
+func bodyID(c *gin.Context, s string) (int64, bool) {
+	id, err := parseID(s)
+	if err != nil {
+		response.Fail(c, http.StatusOK, errcode.BadRequest)
+		return 0, false
+	}
+	return id, true
+}
+
 // List 处理 GET /api/questions。source 必填限 AI/SCALE；dimension_id 传值即置 Set；
-// page/page_size 缺省或非法兜底 1/20；业务错误统一 HTTP 200 带 code。
+// page/page_size 缺省与钳制由 ClampPage 统一收口；业务错误统一 HTTP 200 带 code。
 func (h *QuestionHandler) List(c *gin.Context) {
 	source := c.Query("source")
 	if source != domain.QuestionSourceAI && source != domain.QuestionSourceScale {
@@ -75,9 +80,8 @@ func (h *QuestionHandler) List(c *gin.Context) {
 		Keyword: c.Query("keyword"),
 	}
 	if dim := c.Query("dimension_id"); dim != "" {
-		id, err := parseID(dim)
-		if err != nil {
-			response.Fail(c, http.StatusOK, errcode.BadRequest)
+		id, ok := bodyID(c, dim)
+		if !ok {
 			return
 		}
 		in.DimensionID = &id
@@ -93,9 +97,8 @@ func (h *QuestionHandler) List(c *gin.Context) {
 
 // Detail 处理 GET /api/questions/:id（与 /questions 静态路由不冲突，Gin 静态优先）。
 func (h *QuestionHandler) Detail(c *gin.Context) {
-	id, err := parseID(c.Param("id"))
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := idParam(c, "id")
+	if !ok {
 		return
 	}
 	res, err := h.svc.GetQuestion(c.Request.Context(), id)
@@ -113,14 +116,12 @@ func (h *QuestionHandler) Update(c *gin.Context) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
-	id, err := parseID(req.ID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := bodyID(c, req.ID)
+	if !ok {
 		return
 	}
-	dimID, err := parseID(req.DimensionID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	dimID, ok := bodyID(c, req.DimensionID)
+	if !ok {
 		return
 	}
 	in := service.UpdateQuestionInput{
@@ -146,9 +147,8 @@ func (h *QuestionHandler) ToggleStatus(c *gin.Context) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
-	id, err := parseID(req.ID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := bodyID(c, req.ID)
+	if !ok {
 		return
 	}
 	res, err := h.svc.ToggleQuestionStatus(c.Request.Context(), id, req.TargetStatus, req.Version)
@@ -166,14 +166,12 @@ func (h *QuestionHandler) Resubmit(c *gin.Context) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
-	id, err := parseID(req.ID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := bodyID(c, req.ID)
+	if !ok {
 		return
 	}
-	dimID, err := parseID(req.DimensionID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	dimID, ok := bodyID(c, req.DimensionID)
+	if !ok {
 		return
 	}
 	in := service.ResubmitInput{
@@ -199,9 +197,8 @@ func (h *QuestionHandler) Delete(c *gin.Context) {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return
 	}
-	id, err := parseID(req.ID)
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := bodyID(c, req.ID)
+	if !ok {
 		return
 	}
 	if err := h.svc.DeleteQuestion(c.Request.Context(), id, req.Version); err != nil {

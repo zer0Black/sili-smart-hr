@@ -10,11 +10,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { usePendingBatches, useVoidBatch } from '@/features/question-bank/batch-hooks';
+import { handleWriteError } from '@/features/question-bank/write-error';
 import { ErrCode } from '@/lib/contracts';
 import type { QuestionBatchCard } from '@/lib/contracts';
 import { formatDateTime } from '@/lib/format-time';
-import { ApiError } from '@/lib/http-client';
-import { queryClient } from '@/lib/query-client';
 
 export interface BatchCardStripProps {
   onStartReview: (batchId: string) => void;
@@ -41,13 +40,11 @@ export function BatchCardStrip({ onStartReview }: BatchCardStripProps): JSX.Elem
       },
       onError: (err) => {
         // 1706：批次已被确认/作废，刷新批次卡区与题目列表（specs §4.1.3）
-        if (err instanceof ApiError && err.code === ErrCode.QuestionBatchClosed) {
-          toast.error(t('batchStrip.toastClosed'));
-          void queryClient.invalidateQueries({ queryKey: ['question-bank'] });
-          setVoidTarget(null);
-          return;
-        }
-        toast.error(t('toastGeneric'));
+        handleWriteError(err, t, {
+          code: ErrCode.QuestionBatchClosed,
+          toastKey: 'batchStrip.toastClosed',
+          onHit: () => setVoidTarget(null),
+        });
       },
     });
   }

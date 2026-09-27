@@ -25,8 +25,6 @@ type QuestionRepository interface {
 	UpdateWithVersion(ctx context.Context, id int64, version int, updates map[string]any) (int64, error)
 	// SoftDeleteWithVersion 乐观锁软删：WHERE id=? AND version=?，GORM Delete 置 deleted_at。返回 RowsAffected。
 	SoftDeleteWithVersion(ctx context.Context, id int64, version int) (int64, error)
-	// ListByIDs 批量按 ID 查（SP2 确认入库的批内题目定位复用），软删自动过滤。
-	ListByIDs(ctx context.Context, ids []int64) ([]domain.Question, error)
 	// MaxQuestionSeq 按编号前缀查最大序号（含软删行 Unscoped），无行返回 0。SP3/SP4 编号分配复用。
 	MaxQuestionSeq(ctx context.Context, prefix string) (int64, error)
 }
@@ -81,12 +79,17 @@ func (r *questionRepository) FindByID(ctx context.Context, id int64) (*domain.Qu
 }
 
 // UpdateWithVersion 乐观锁更新，version 经 gorm.Expr 自增避免与 updates 字典冲突。
+// 拷贝入参字典再补 version 键，不改写调用方传入的 map（与 ResubmitToBatch 同形态）。
 // 显式写 deleted_at IS NULL 与维度仓储先例语义对齐。
 func (r *questionRepository) UpdateWithVersion(ctx context.Context, id int64, version int, updates map[string]any) (int64, error) {
-	updates["version"] = gorm.Expr("version + 1")
+	merged := make(map[string]any, len(updates)+1)
+	for k, v := range updates {
+		merged[k] = v
+	}
+	merged["version"] = gorm.Expr("version + 1")
 	res := r.db.WithContext(ctx).Model(&domain.Question{}).
 		Where("id = ? AND version = ? AND deleted_at IS NULL", id, version).
-		Updates(updates)
+		Updates(merged)
 	if res.Error != nil {
 		return 0, res.Error
 	}
@@ -103,19 +106,6 @@ func (r *questionRepository) SoftDeleteWithVersion(ctx context.Context, id int64
 		return 0, res.Error
 	}
 	return res.RowsAffected, nil
-}
-
-// ListByIDs 批量按 ID 查，GORM DeletedAt 自动过滤软删行。空 ID 列表直接返回空集，
-// 避免 GORM 对空 IN 子句生成无 WHERE 的全表查询。
-func (r *questionRepository) ListByIDs(ctx context.Context, ids []int64) ([]domain.Question, error) {
-	if len(ids) == 0 {
-		return []domain.Question{}, nil
-	}
-	var list []domain.Question
-	if err := r.db.WithContext(ctx).Where("id IN ?", ids).Find(&list).Error; err != nil {
-		return nil, err
-	}
-	return list, nil
 }
 
 // MaxQuestionSeq 取前缀下 question_no 序号最大值：长度降序+字典序降序取首行后 Go 侧

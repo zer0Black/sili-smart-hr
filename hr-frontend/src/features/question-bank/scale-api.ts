@@ -3,11 +3,10 @@ import { httpClient } from '@/lib/http-client';
 
 import type { ImportScaleResult, ScaleCandidate } from '@/lib/contracts';
 
-/** GET /api/scales：量表候选列表（imported 实时标记，03 §3.11 无分页）。 */
-export async function fetchScales(): Promise<{ list: ScaleCandidate[]; total: number }> {
+/** GET /api/scales：量表候选列表（imported 实时标记，03 §3.11 无分页，data 仅 {list}）。 */
+export async function fetchScales(): Promise<{ list: ScaleCandidate[] }> {
   const { data } = await httpClient.get<{ list: ScaleCandidate[] }>('/scales');
-  // 后端 data 用 {list} 包装（无 total），total 前端按 list 长度补齐保持分页契约同构
-  return { list: data.list ?? [], total: data.list?.length ?? 0 };
+  return { list: data.list ?? [] };
 }
 
 /** POST /api/scales/import：引入九型量表，成功形成待审核 IMPORT 批次（03 §3.12）。 */

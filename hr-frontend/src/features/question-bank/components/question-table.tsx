@@ -35,10 +35,11 @@ import {
   useToggleQuestionStatus,
 } from '@/features/question-bank/hooks';
 import type { QuestionTab } from '@/features/question-bank/types';
+import { questionStatusVariant } from '@/features/question-bank/status-variant';
+import { handleWriteError } from '@/features/question-bank/write-error';
 import { ErrCode } from '@/lib/contracts';
 import type { QuestionListItem } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
-import { queryClient } from '@/lib/query-client';
 
 export interface QuestionTableProps {
   tab: QuestionTab;
@@ -60,12 +61,6 @@ const PAGE_SIZE_OPTIONS = [10, 20, 30];
 const ALL = '__all__';
 /** 摘要展示截断长度（specs §4.1.2 B：过长截断悬浮展示全文）。 */
 const SUMMARY_MAX = 30;
-
-function statusVariant(status: QuestionListItem['status']): 'default' | 'secondary' | 'destructive' {
-  if (status === 'DISABLED') return 'secondary';
-  if (status === 'REJECTED') return 'destructive';
-  return 'default';
-}
 
 /** tab 维度下拉数据源：AI 取启用 AI_MGMT 子能力；SCALE 取 ENNEAGRAM 型别维度（specs §4.1.2 A）。 */
 function useTabDimensions(tab: QuestionTab) {
@@ -166,13 +161,10 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
 
   /** 写操作异常统一处理：1713 冲突刷新列表，其余通用失败（specs §4.1.4 规则9）。 */
   function onWriteError(err: unknown) {
-    const code = err instanceof ApiError ? err.code : undefined;
-    if (code === ErrCode.QuestionVersionConflict) {
-      toast.error(t('toastConflict'));
-      void queryClient.invalidateQueries({ queryKey: ['question-bank'] });
-      return;
-    }
-    toast.error(t('toastGeneric'));
+    handleWriteError(err, t, {
+      code: ErrCode.QuestionVersionConflict,
+      toastKey: 'toastConflict',
+    });
   }
 
   // 乐观锁 version 不在列表项里，启停/删除前先取详情拿当前 version（03 §3.3/§3.4/§3.5）
@@ -220,11 +212,13 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
             setDeleteTarget(null);
           },
           onError: (err) => {
-            const code = err instanceof ApiError ? err.code : undefined;
             // 被引用拒删（1705）：只可停用（specs §4.1.4 规则4）
-            if (code === ErrCode.QuestionReferenced) {
-              toast.error(t('table.toastReferenced'));
-              setDeleteTarget(null);
+            if (err instanceof ApiError && err.code === ErrCode.QuestionReferenced) {
+              handleWriteError(err, t, {
+                code: ErrCode.QuestionReferenced,
+                toastKey: 'table.toastReferenced',
+                onHit: () => setDeleteTarget(null),
+              });
               return;
             }
             onWriteError(err);
@@ -265,12 +259,12 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
             <SelectItem value="REJECTED">{t('table.status.REJECTED')}</SelectItem>
           </SelectContent>
         </Select>
-        <input
+        <Input
           value={draftKeyword}
           onChange={(e) => setDraftKeyword(e.target.value)}
           placeholder={t('table.keywordPlaceholder')}
           aria-label={t('table.keywordLabel')}
-          className="border-input bg-background h-9 w-56 rounded-md border px-3 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          className="w-56"
         />
         <Button variant="outline" onClick={onQuery} disabled={query.isFetching}>
           {t('table.query')}
@@ -329,7 +323,7 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
                     <TableCell>{t(`table.answerMode.${item.answer_mode}`)}</TableCell>
                   )}
                   <TableCell>
-                    <Badge variant={statusVariant(item.status)}>{t(`table.status.${item.status}`)}</Badge>
+                    <Badge variant={questionStatusVariant(item.status, false)}>{t(`table.status.${item.status}`)}</Badge>
                   </TableCell>
                   <TableCell className="text-right">
                     {/* 行操作按状态渲染（specs §4.1.3 / §4.1.4 规则5） */}

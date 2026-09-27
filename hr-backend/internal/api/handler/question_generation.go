@@ -39,9 +39,8 @@ func (h *QuestionGenerationHandler) Create(c *gin.Context) {
 	}
 	dims := make([]int64, 0, len(req.DimensionIDs))
 	for _, s := range req.DimensionIDs {
-		id, err := parseID(s)
-		if err != nil {
-			response.Fail(c, http.StatusOK, errcode.BadRequest)
+		id, ok := bodyID(c, s)
+		if !ok {
 			return
 		}
 		dims = append(dims, id)
@@ -56,9 +55,8 @@ func (h *QuestionGenerationHandler) Create(c *gin.Context) {
 
 // Progress 处理 GET /api/question-generations/:id：路径 ID 解析后委托 service。
 func (h *QuestionGenerationHandler) Progress(c *gin.Context) {
-	id, err := parseID(c.Param("id"))
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := idParam(c, "id")
+	if !ok {
 		return
 	}
 	res, err := h.svc.GetProgress(c.Request.Context(), id)
@@ -72,9 +70,8 @@ func (h *QuestionGenerationHandler) Progress(c *gin.Context) {
 // Cancel 处理 POST /api/question-generations/:id/cancel：无请求体，终态幂等成功
 // 语义由 service/repo 承载。
 func (h *QuestionGenerationHandler) Cancel(c *gin.Context) {
-	id, err := parseID(c.Param("id"))
-	if err != nil {
-		response.Fail(c, http.StatusOK, errcode.BadRequest)
+	id, ok := idParam(c, "id")
+	if !ok {
 		return
 	}
 	if err := h.svc.CancelGeneration(c.Request.Context(), id); err != nil {

@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useQuestionDetail } from '@/features/question-bank/hooks';
+import { questionStatusVariant } from '@/features/question-bank/status-variant';
 import { formatDateTime } from '@/lib/format-time';
 import type { QuestionDetail } from '@/lib/contracts';
 
@@ -22,12 +23,6 @@ export interface QuestionViewDialogProps {
   questionId: string | null;
   /** 跳转编辑：查看弹窗先关闭，父层再打开编辑弹窗。 */
   onEdit: (q: QuestionDetail) => void;
-}
-
-function statusVariant(status: QuestionDetail['status']): 'default' | 'secondary' | 'destructive' {
-  if (status === 'DISABLED') return 'secondary';
-  if (status === 'REJECTED' || status === 'PENDING') return 'destructive';
-  return 'default';
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -64,7 +59,7 @@ export function QuestionViewDialog({ open, onOpenChange, questionId, onEdit }: Q
               <Badge variant="outline">{t(`view.source.${detail.source}`)}</Badge>
               <Badge variant="outline">{detail.dimension_name}</Badge>
               <Badge variant="outline">{t(`view.answerMode.${detail.answer_mode}`)}</Badge>
-              <Badge variant={statusVariant(detail.status)}>{t(`view.status.${detail.status}`)}</Badge>
+              <Badge variant={questionStatusVariant(detail.status, true)}>{t(`view.status.${detail.status}`)}</Badge>
             </div>
             <div className="text-muted-foreground flex items-center gap-4 text-sm">
               <span>{t('view.createdAt', { time: formatDateTime(detail.created_at) })}</span>

@@ -95,12 +95,12 @@ snake_case。时间字段命名 `created_at`/`updated_at`/`deleted_at`，对应 
 
 ### 1.11 模糊查询（LIKE）通配符转义
 
-凡接收用户输入做 `LIKE` 模糊匹配的查询（如关键词搜索 username/name），必须用 [model.EscapeLike](hr-backend/internal/model/db.go) 转义输入里的 `%`、`_`、`\`，并在 SQL 里显式写 `ESCAPE '\'` 子句，让输入按字面匹配而非被当通配符。占位符绑定只防 SQL 注入，不解决通配符字面化，两者各自独立。
+凡接收用户输入做 `LIKE` 模糊匹配的查询（如关键词搜索 username/name），必须用 [likeescape.EscapeLike](hr-backend/internal/pkg/likeescape/likeescape.go) 转义输入里的 `%`、`_`、`\`，并在 SQL 里显式写 `ESCAPE '\'` 子句，让输入按字面匹配而非被当通配符。占位符绑定只防 SQL 注入，不解决通配符字面化，两者各自独立。
 
 | 要点 | 说明 |
 |------|------|
 | 转义对象 | `%`（任意串）、`_`（单字符）、`\`（转义符自身） |
-| 工具函数 | `model.EscapeLike(s)`，先转义反斜杠自身再转义 `%`/`_`，顺序敏感避免二次替换 |
+| 工具函数 | `likeescape.EscapeLike(s)`（pkg/likeescape，从 model 上提破依赖环），先转义反斜杠自身再转义 `%`/`_`，顺序敏感避免二次替换 |
 | SQL 子句 | `WHERE col LIKE ? ESCAPE '\\'`，占位符绑定 `"%"+EscapeLike(k)+"%"` |
 | 跨方言 | SQLite/MySQL/PostgreSQL 的 LIKE 均支持 ESCAPE 子句，反斜杠语义一致 |
 | 反例 | 直接 `LIKE "%"+k+"%"` 会让搜 "a_b" 命中 "axb"、搜 "50%" 命中全表 |

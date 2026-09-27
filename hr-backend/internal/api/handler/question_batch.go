@@ -30,15 +30,18 @@ type confirmRejectItem struct {
 	Reason     string `json:"reason"`
 }
 
-// batchIDParam 路径批次 ID 解析，非数字返 1400。
-func batchIDParam(c *gin.Context) (int64, bool) {
-	id, err := parseID(c.Param("id"))
+// idParam 路径参数 ID 解析收敛：非数字返 1400，ok=false 由调用方 return。
+func idParam(c *gin.Context, name string) (int64, bool) {
+	id, err := parseID(c.Param(name))
 	if err != nil {
 		response.Fail(c, http.StatusOK, errcode.BadRequest)
 		return 0, false
 	}
 	return id, true
 }
+
+// batchIDParam 路径批次 ID 解析，非数字返 1400。
+func batchIDParam(c *gin.Context) (int64, bool) { return idParam(c, "id") }
 
 // ListBatches 处理 GET /api/question-batches：仅 PENDING、不分页，data 用 {list,total} 包装。
 func (h *QuestionBatchHandler) ListBatches(c *gin.Context) {

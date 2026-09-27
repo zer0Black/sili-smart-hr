@@ -69,10 +69,6 @@ func (r *qFakeRepo) SoftDeleteWithVersion(_ context.Context, id int64, _ int) (i
 	return r.deleteRows, r.deleteErr
 }
 
-func (r *qFakeRepo) ListByIDs(_ context.Context, _ []int64) ([]domain.Question, error) {
-	return nil, nil
-}
-
 func (r *qFakeRepo) MaxQuestionSeq(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }

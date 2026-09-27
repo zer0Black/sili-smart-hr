@@ -387,7 +387,7 @@ GET /api/questions/1785000000000000101
 
 - 仅 source=AI 且 status=REJECTED 可重新提交（量表题驳回仅可删除，specs 规则 6）。违反返回 1707。
 - 修正内容校验同编辑接口；dimension_id 限当前启用 AI_MGMT 维度集合。
-- 事务：题目文本更新 + status 置 PENDING + reject_reason 保留（复审再驳回时覆盖）+ 归批（存在 source=AI、batch_type=RESUBMIT、status=PENDING 的批次则 batch_id 改挂并入，否则新建 RESUBMIT 批次，question_count+1 / +N）。
+- 事务：题目文本更新 + status 置 PENDING + reject_reason 保留（复审再驳回时覆盖）+ 归批（存在 source=AI、batch_type=RESUBMIT、status=PENDING 的批次则 batch_id 改挂并入，否则新建 RESUBMIT 批次，question_count+1 / +N）。多条 PENDING RESUBMIT 批并存时（并发建批瞬态）并入 created_at 最早一条。
 - Toast 提示去向「已提交复审，进入重新送审批次」由前端按成功响应渲染（specs 4.1.5）。
 - 乐观锁校验，冲突返回 1713。
 
@@ -884,7 +884,7 @@ GET /api/question-generations/1785000000000003001
 
 **业务规则：**
 
-- 轮询建议间隔 2s，前端持续轮询直至终态（specs 4.3.4 规则 1 同步等待语义）。
+- 轮询建议间隔 2s，前端持续轮询直至终态（specs 4.3.4 规则 1 同步等待语义）。页面不可见（visibilitychange 切走）时暂停轮询、恢复可见后续轮，隐藏期间到达的终态延迟到恢复可见后展示，属合理取舍（避免后台空转，恢复即自愈）。
 - COMPLETED 即批次已自动进入待审核队列（specs 4.3.4 规则 2），题目 status=PENDING；失败/取消零残留（specs 4.3.4 规则 3）。
 - generation 不存在返回 1703 GenerationNotFound。
 
@@ -986,7 +986,7 @@ message 取 errcode 注册的英文默认文案，可见文案由前端按 code 
 
 ### 5.2 输入验证
 
-- 类型与长度校验：handler 层对 scenario（1~1000）、requirement（1~2000）、focus_point（1~500）、驳回原因（1~500）、count（5~30）逐项校验，超长或越界返 1400。
+- 类型与长度校验：handler 层对 scenario（1~1000）、requirement（1~2000）、focus_point（1~500）、驳回原因（1~500）、count（5~30）逐项校验，超长或越界返 1400。文本长度按 Unicode 码点计数（specs 4.1.2 E 字符口径），前端 zod 校验同口径，避免增补平面字符在 UTF-16 code unit 口径下双计导致前端先于后端拒绝。
 - 状态前置校验：编辑/启停/重新提交/删除/确认入库/作废均校验前置状态，非法转换返 1707/1708/1706，防止 API 直调绕过前端按钮约束（specs 6.3）。
 - SQL 注入防护：全程 GORM 链式 API 加占位符绑定；keyword 经 likeescape.EscapeLike 转义加 `ESCAPE '\'` 子句（规则文件 §1.11）。
 

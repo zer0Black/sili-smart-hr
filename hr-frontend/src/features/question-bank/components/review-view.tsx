@@ -10,11 +10,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useBatchQuestions, useConfirmBatch } from '@/features/question-bank/batch-hooks';
+import { handleWriteError } from '@/features/question-bank/write-error';
 import { ErrCode } from '@/lib/contracts';
 import type { ReviewQuestionItem } from '@/lib/contracts';
-import { ApiError } from '@/lib/http-client';
-import { queryClient } from '@/lib/query-client';
 import { cn } from '@/lib/utils';
 
 export interface ReviewViewProps {
@@ -26,17 +26,21 @@ export interface ReviewViewProps {
 /** 驳回原因上限（specs §4.2.2 B：必填 1~500 字）。 */
 const REASON_MAX = 500;
 
+/** 字符长度按 Unicode 码点计数（与后端 rune 口径一致，增补平面字符不双计）。 */
+const codePoints = (s: string): number => [...s].length;
+
 /** 生效判定：原因 trim 后 1~500 字才计入驳回集合，空/超长标记不生效（§4.2.5）。 */
 function isEffectiveReason(reason: string): boolean {
   const trimmed = reason.trim();
-  return trimmed.length >= 1 && trimmed.length <= REASON_MAX;
+  const n = codePoints(trimmed);
+  return n >= 1 && n <= REASON_MAX;
 }
 
 /** 原因输入框错误文案：空与超长分别提示。 */
 function reasonError(t: (k: string) => string, reason: string): string | null {
   const trimmed = reason.trim();
-  if (trimmed.length === 0) return t('review.reasonRequired');
-  if (trimmed.length > REASON_MAX) return t('review.reasonMaxLength');
+  if (codePoints(trimmed) === 0) return t('review.reasonRequired');
+  if (codePoints(trimmed) > REASON_MAX) return t('review.reasonMaxLength');
   return null;
 }
 
@@ -82,7 +86,8 @@ export function ReviewView({ batchId, onExit }: ReviewViewProps): JSX.Element {
   }
 
   function onReasonChange(id: string, value: string) {
-    setMarks((prev) => ({ ...prev, [id]: value.slice(0, REASON_MAX + 100) }));
+    // 截断留 100 码点缓冲防超长输入撑爆输入框，生效判定以 isEffectiveReason 为准
+    setMarks((prev) => ({ ...prev, [id]: [...value].slice(0, REASON_MAX + 100).join('') }));
   }
 
   function onClearAll() {
@@ -116,15 +121,12 @@ export function ReviewView({ batchId, onExit }: ReviewViewProps): JSX.Element {
           onExit();
         },
         onError: (err) => {
-          const code = err instanceof ApiError ? err.code : undefined;
           // 1706：批次已被确认/作废，刷新批次卡区与列表后回列表态（specs §4.2.4 规则1）
-          if (code === ErrCode.QuestionBatchClosed) {
-            toast.error(t('batchStrip.toastClosed'));
-            void queryClient.invalidateQueries({ queryKey: ['question-bank'] });
-            onExit();
-            return;
-          }
-          toast.error(t('toastGeneric'));
+          handleWriteError(err, t, {
+            code: ErrCode.QuestionBatchClosed,
+            toastKey: 'batchStrip.toastClosed',
+            onHit: onExit,
+          });
         },
       },
     );
@@ -216,13 +218,12 @@ export function ReviewView({ batchId, onExit }: ReviewViewProps): JSX.Element {
                     <label htmlFor={`review-reason-${q.id}`} className="text-sm font-medium">
                       {t('review.rejectReason')}
                     </label>
-                    <textarea
+                    <Textarea
                       id={`review-reason-${q.id}`}
                       value={reason}
                       onChange={(e) => onReasonChange(q.id, e.target.value)}
                       rows={2}
                       aria-label={t('review.rejectReasonAria')}
-                      className="border-input bg-background w-full rounded-md border px-3 py-2 text-sm shadow-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
                     />
                     {err && <p className="text-destructive text-sm">{err}</p>}
                   </div>
