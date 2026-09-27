@@ -32,8 +32,8 @@ stages:
     completed_at: "2026-09-13T00:00:00Z"
     check_owner: "lixuetao"
   dev_exec:
-    status: "in_progress"
+    status: "completed"
     started_at: "2026-09-13T00:00:00Z"
-    completed_at: null
-    check_owner: null
+    completed_at: "2026-09-13T00:00:00Z"
+    check_owner: "lixuetao"
 rollback_history: []
