@@ -8,7 +8,7 @@ sub_plans:
   - id: "01"
     name: "任务运营链路"
     file: "01_任务运营链路.md"
-    status: "pending"
+    status: "completed"
 
   - id: "02"
     name: "AI阅卷评分"

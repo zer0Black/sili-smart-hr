@@ -98,9 +98,16 @@
           }
         }
       },
-      "review": null,
+      "review": {
+        "path": "execution-evidence/01-review-c96d033.md",
+        "digest": "858bead19fb616b402ff014c355279f4bef12297d0912a70dcb3923d32e5ac9f",
+        "head_sha": "c96d033903d2cfcdf15a6fff07e6ecc89b258855",
+        "base_sha": "b904f6a95143aff65358449e6e65ca8f29aad2cd",
+        "passed": true,
+        "recorded_at": "2026-09-28T14:39:44Z"
+      },
       "review_failures": 0
     }
   },
-  "updated_at": "2026-09-28T14:25:43Z"
+  "updated_at": "2026-09-28T14:39:44Z"
 }
