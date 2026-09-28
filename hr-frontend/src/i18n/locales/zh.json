@@ -596,7 +596,9 @@
       "subtitle": "查看跑批态势与计划、追溯批次记录、发起手动定向分析"
     },
     "tabs": {
-      "aiUsage": "AI 使用能力"
+      "aiUsage": "AI 使用能力",
+      "aiMgmt": "AI 管理能力",
+      "enneagram": "九型人格"
     },
     "stats": {
       "evalCount": "本期评测次数",
@@ -712,6 +714,70 @@
       "retry": "重试",
       "restartByFailures": "按失败对象重新发起",
       "close": "关闭"
+    },
+    "testTask": {
+      "comingSoon": "功能建设中",
+      "table": {
+        "title": "测试任务",
+        "createAction": "发起评测",
+        "filterStatus": "状态",
+        "filterStatusAll": "全部",
+        "keywordLabel": "对象",
+        "keywordPlaceholder": "姓名或任务号",
+        "query": "查询",
+        "reset": "重置",
+        "status": {
+          "pending": "待作答",
+          "in_progress": "进行中",
+          "completed": "已完成",
+          "expired": "已逾期",
+          "canceled": "已取消"
+        },
+        "linkStatus": {
+          "valid": "有效",
+          "used": "已使用",
+          "invalid": "已失效"
+        },
+        "grading": {
+          "waiting": "待阅卷",
+          "grading": "阅卷中",
+          "scored": "已评分",
+          "degraded": "已降级"
+        },
+        "gradingEnneagram": {
+          "waiting": "待判型",
+          "grading": "判型中",
+          "scored": "已判定",
+          "degraded": "已降级"
+        },
+        "colTaskNo": "任务号",
+        "colStaff": "对象",
+        "colStatus": "状态",
+        "colLink": "作答链接",
+        "colGrading": "阅卷状态",
+        "colGradingEnneagram": "判型状态",
+        "colCreatedAt": "发起时间",
+        "colCompletedAt": "完成时间",
+        "colActions": "操作",
+        "actionLink": "作答链接",
+        "actionResend": "重发",
+        "actionCancel": "取消",
+        "actionResult": "结果",
+        "resultDisabled": "个人画像功能建设中",
+        "cancelTitle": "取消测试任务",
+        "cancelDesc": "确认取消任务 {{taskNo}}（{{staffName}}）？取消后作答链接作废，任务不可恢复。",
+        "cancelConfirm": "确认取消",
+        "cancelSubmitting": "取消中…",
+        "loadError": "数据加载失败，请重试",
+        "empty": "暂无测试任务，点击右上角发起评测",
+        "total": "共 {{total}} 条",
+        "prevPage": "上一页",
+        "nextPage": "下一页",
+        "pageSize10": "10 条/页",
+        "pageSize20": "20 条/页",
+        "pageSize50": "50 条/页",
+        "pageSizeLabel": "每页条数"
+      }
     }
   },
   "questionBank": {

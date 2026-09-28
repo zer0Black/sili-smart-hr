@@ -10,23 +10,33 @@ import {
 } from '@/features/assessment/components/create-batch-dialog';
 import { FailureDetailDialog } from '@/features/assessment/components/failure-detail-dialog';
 import { StatsCards } from '@/features/assessment/components/stats-cards';
+import { TestTaskTable } from '@/features/assessment/components/test-task-table';
 import { fetchBatchTargets } from '@/features/assessment/api';
 import { useBatchStats, useRefetchOnVisible } from '@/features/assessment/hooks';
+import { useTestTaskPollCounts } from '@/features/assessment/test-task-hooks';
+import type { TestType } from '@/features/assessment/test-task-types';
 import type { BatchListItem } from '@/lib/contracts';
+import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/assessment/')({
   component: AssessmentCenterPage,
 });
 
+/** 页内 tab：aiUsage=F6 对话分析，另两类为主动测试任务（specs §4.1.1）。 */
+type PageTab = 'aiUsage' | TestType;
+
 export function AssessmentCenterPage() {
   const { t } = useTranslation('assessment');
 
-  // 页面状态机：两弹窗开关 + 预填值（筛选与分页在 BatchTable 内部自治）
+  // 页面状态机：两弹窗开关 + 预填值（筛选与分页在各表格组件内部自治）
   const [createOpen, setCreateOpen] = useState(false);
   const [createPreset, setCreatePreset] = useState<CreateBatchPreset | null>(null);
   const [failureBatchId, setFailureBatchId] = useState<string | null>(null);
   // specs §4.2.3 提交成功后通知 BatchTable 重置筛选回第一页
   const [tableResetKey, setTableResetKey] = useState(0);
+
+  // 双测试任务 tab 常驻挂载、隐藏非激活 tab，查询状态互不清空（specs §4.1.5）
+  const [activeTab, setActiveTab] = useState<PageTab>('aiUsage');
 
   function onCreateSubmitted() {
     setTableResetKey((k) => k + 1);
@@ -38,12 +48,17 @@ export function AssessmentCenterPage() {
   const statsQ = useBatchStats();
   const hasActiveRunning = (statsQ.data?.running_batch_count ?? 0) > 0;
 
-  // 首屏 stats 未返回前保守开轮询一轮拉到状态（拉到后按数据自收敛）。
-  const polling = statsQ.isLoading || hasActiveRunning;
+  // 主动测试轮询探针（specs §4.1.3 未终态任务轮询）：任一类计数 > 0 即驱动
+  // 对应 tab 列表轮询；两 tab 常驻，各自只消费当前类型的计数。
+  const testPollQ = useTestTaskPollCounts();
+  const testPolling = (testPollQ: { data?: { ai_mgmt_active: number; enneagram_active: number } }) => ({
+    ai_mgmt: (testPollQ.data?.ai_mgmt_active ?? 0) > 0,
+    enneagram: (testPollQ.data?.enneagram_active ?? 0) > 0,
+  });
 
   // 恢复即拉（specs §4.1.3）：refetchOnWindowFocus 全局关闭，切回标签页时
-  // 显式拉一次统计与列表，恢复瞬间数据即时而非等下一个轮询间隔。
-  useRefetchOnVisible([statsQ]);
+  // 显式拉一次统计与探针，恢复瞬间数据即时而非等下一个轮询间隔。
+  useRefetchOnVisible([statsQ, testPollQ]);
 
   function openCreateDialog(preset: CreateBatchPreset | null) {
     setCreatePreset(preset);
@@ -66,6 +81,12 @@ export function AssessmentCenterPage() {
     }
   }
 
+  const tabs: { key: PageTab; label: string }[] = [
+    { key: 'aiUsage', label: t('tabs.aiUsage') },
+    { key: 'ai_mgmt', label: t('tabs.aiMgmt') },
+    { key: 'enneagram', label: t('tabs.enneagram') },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-1">
@@ -73,27 +94,61 @@ export function AssessmentCenterPage() {
         <p className="text-muted-foreground text-sm">{t('page.subtitle')}</p>
       </div>
 
-      {/* tab 容器：首期仅「AI 使用能力」，F7 叠加另两 tab（specs §4.1.1） */}
+      {/* tab 容器：AI 使用能力为 F6 既有，另两 tab 为主动测试任务（specs §4.1.1） */}
       <div role="tablist" className="flex items-center gap-1 border-b">
-        <button
-          type="button"
-          role="tab"
-          aria-selected="true"
-          className="border-primary -mb-px border-b-2 px-3 py-2 text-sm font-medium"
-        >
-          {t('tabs.aiUsage')}
-        </button>
+        {tabs.map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors',
+              activeTab === tab.key
+                ? 'border-primary text-primary'
+                : 'text-muted-foreground hover:text-foreground border-transparent',
+            )}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <StatsCards />
+      {/* 两测试任务 tab 常驻挂载，隐藏非激活 tab 保查询状态（specs §4.1.5 切 tab 不互相污染） */}
+      {(['ai_mgmt', 'enneagram'] as const).map((type) => (
+        <div key={type} className={activeTab === type ? 'contents' : 'hidden'}>
+          <TestTaskTable
+            testType={type}
+            onCreateOpen={() => openCreateDialog(null)}
+            onLinkOpen={() => {
+              // T7 挂作答链接弹窗，本任务先占位提示
+              toast.info(t('testTask.comingSoon'));
+            }}
+            onResend={() => {
+              toast.info(t('testTask.comingSoon'));
+            }}
+            onCancel={() => {
+              // 取消确认在组件内完成，页面级暂无后续动作
+            }}
+            polling={testPolling(testPollQ)[type]}
+          />
+        </div>
+      ))}
 
-      <BatchTable
-        onCreateOpen={() => openCreateDialog(null)}
-        onFailuresOpen={setFailureBatchId}
-        onReSubmit={(batch) => void onReSubmit(batch)}
-        resetKey={tableResetKey}
-        polling={polling}
-      />
+      {activeTab === 'aiUsage' && (
+        <>
+          <StatsCards />
+
+          <BatchTable
+            onCreateOpen={() => openCreateDialog(null)}
+            onFailuresOpen={setFailureBatchId}
+            onReSubmit={(batch) => void onReSubmit(batch)}
+            resetKey={tableResetKey}
+            polling={statsQ.isLoading || hasActiveRunning}
+          />
+        </>
+      )}
 
       <CreateBatchDialog
         open={createOpen}

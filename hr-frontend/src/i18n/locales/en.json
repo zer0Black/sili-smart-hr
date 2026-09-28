@@ -596,7 +596,9 @@
       "subtitle": "Monitor batch runs and plans, trace batch history, launch targeted assessments"
     },
     "tabs": {
-      "aiUsage": "AI Usage"
+      "aiUsage": "AI Usage",
+      "aiMgmt": "AI Management",
+      "enneagram": "Enneagram"
     },
     "stats": {
       "evalCount": "Assessments This Period",
@@ -712,6 +714,70 @@
       "retry": "Retry",
       "restartByFailures": "Relaunch for Failed",
       "close": "Close"
+    },
+    "testTask": {
+      "comingSoon": "Feature under construction",
+      "table": {
+        "title": "Test Tasks",
+        "createAction": "Launch Assessment",
+        "filterStatus": "Status",
+        "filterStatusAll": "All",
+        "keywordLabel": "Person",
+        "keywordPlaceholder": "Name or task no.",
+        "query": "Query",
+        "reset": "Reset",
+        "status": {
+          "pending": "Pending",
+          "in_progress": "In Progress",
+          "completed": "Completed",
+          "expired": "Expired",
+          "canceled": "Canceled"
+        },
+        "linkStatus": {
+          "valid": "Valid",
+          "used": "Used",
+          "invalid": "Invalid"
+        },
+        "grading": {
+          "waiting": "Awaiting Grading",
+          "grading": "Grading",
+          "scored": "Scored",
+          "degraded": "Degraded"
+        },
+        "gradingEnneagram": {
+          "waiting": "Awaiting Typing",
+          "grading": "Typing",
+          "scored": "Typed",
+          "degraded": "Degraded"
+        },
+        "colTaskNo": "Task No.",
+        "colStaff": "Person",
+        "colStatus": "Status",
+        "colLink": "Answer Link",
+        "colGrading": "Grading Status",
+        "colGradingEnneagram": "Typing Status",
+        "colCreatedAt": "Created At",
+        "colCompletedAt": "Completed At",
+        "colActions": "Actions",
+        "actionLink": "Answer Link",
+        "actionResend": "Resend",
+        "actionCancel": "Cancel",
+        "actionResult": "Result",
+        "resultDisabled": "Profile feature is under construction",
+        "cancelTitle": "Cancel Test Task",
+        "cancelDesc": "Cancel task {{taskNo}} ({{staffName}})? The answer link will be invalidated and the task cannot be restored.",
+        "cancelConfirm": "Confirm Cancel",
+        "cancelSubmitting": "Canceling…",
+        "loadError": "Failed to load data, please retry",
+        "empty": "No test tasks yet. Launch one from the top-right",
+        "total": "{{total}} records",
+        "prevPage": "Previous",
+        "nextPage": "Next",
+        "pageSize10": "10 / page",
+        "pageSize20": "20 / page",
+        "pageSize50": "50 / page",
+        "pageSizeLabel": "Page size"
+      }
     }
   },
   "questionBank": {
