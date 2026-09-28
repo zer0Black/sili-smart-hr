@@ -1,0 +1,572 @@
+// assessment_test_task 主动测试域业务层：任务列表（A1）、轮询计数（A2）、发起（B1）、
+// 量表就绪（B2）、链接查询/重发/取消（C1/C2/C3）。口径细节见 specs P2_TST_001
+// §4.1/§4.2/§5.1 与 03 §3。
+package service
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/pkg/errcode"
+	"sili-smart-hr/backend/internal/questionbank/scaledata"
+	"sili-smart-hr/backend/internal/repository"
+
+	"gorm.io/gorm"
+)
+
+// linkTTL 链接有效期常量：自生成时刻起算 7 天，重发重新起算（specs §4.1.4 规则4，
+// 在线配置不在本期范围）。
+const linkTTL = 7 * 24 * time.Hour
+
+// 任务号前缀（specs §8.1 术语表）：T=AI 管理能力，E=九型人格。
+const (
+	taskNoPrefixAIMgmt    = "T"
+	taskNoPrefixEnneagram = "E"
+)
+
+// answerURLPrefix 作答链接前缀（specs §5.1.2 步骤3），令牌原文拼入路径。
+const answerURLPrefix = "/answer/"
+
+// tokenBytes 令牌随机字节数：base64url 编码后恒 43 字符（specs §5.1.4 规则1）。
+const tokenBytes = 32
+
+// ListTestTaskFilter 任务列表查询条件（03 A1）：test_type 必填二值，status/keyword 空跳过。
+type ListTestTaskFilter struct {
+	TestType  string
+	Status    string
+	Keyword   string
+	Page      int
+	PageSize  int
+}
+
+// TestTaskListDTO 列表行（03 A1 响应字段一一对应）。CreatedAt/CompletedAt 直出
+// yyyy-MM-dd HH:mm 本地时区字符串，未完成 CompletedAt 为 nil 前端渲染 —。
+type TestTaskListDTO struct {
+	ID            int64   `json:"id,string"`
+	TaskNo        string  `json:"task_no"`
+	TestType      string  `json:"test_type"`
+	StaffName     string  `json:"staff_name"`
+	Status        string  `json:"status"`
+	LinkStatus    string  `json:"link_status"`
+	GradingStatus string  `json:"grading_status"`
+	CreatedAt     string  `json:"created_at"`
+	CompletedAt   *string `json:"completed_at"`
+}
+
+// TestTaskPollCountsDTO 轮询探针计数（03 A2）：两类任务未终态计数。
+type TestTaskPollCountsDTO struct {
+	AIMgmtActive    int64 `json:"ai_mgmt_active"`
+	EnneagramActive int64 `json:"enneagram_active"`
+}
+
+// CreateTestTaskPayload B1 请求体（service 侧）。DimensionIDs 为维度雪花 ID 字符串数组，
+// 仅 ai_mgmt 消费（03 §2.4 string 化约定）。
+type CreateTestTaskPayload struct {
+	TestType     string
+	StaffID      string
+	StaffName    string
+	DimensionIDs []string
+}
+
+// CreateTestTaskResult B1 响应。AnswerURL 含令牌原文，供前端留存上下文（03 B1）。
+type CreateTestTaskResult struct {
+	ID         int64  `json:"id,string"`
+	TaskNo     string `json:"task_no"`
+	TestType   string `json:"test_type"`
+	StaffName  string `json:"staff_name"`
+	Status     string `json:"status"`
+	AnswerURL  string `json:"answer_url"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// TestScaleStatusDTO 九型量表就绪查询（03 B2）：未就绪 Ready=false 空串零值。
+type TestScaleStatusDTO struct {
+	Ready               bool   `json:"ready"`
+	ScaleKey            string `json:"scale_key"`
+	ScaleName           string `json:"scale_name"`
+	ActiveQuestionCount int    `json:"active_question_count"`
+}
+
+// TestTaskLinkDTO 链接弹窗数据（03 C1/C2 共用，重发后 link_status 恒 valid）。
+type TestTaskLinkDTO struct {
+	TaskID      int64  `json:"task_id,string"`
+	TaskNo      string `json:"task_no"`
+	TestType    string `json:"test_type"`
+	StaffName   string `json:"staff_name"`
+	AnswerURL   string `json:"answer_url"`
+	LinkStatus  string `json:"link_status"`
+	GeneratedAt string `json:"generated_at"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
+// TestTaskCancelDTO 取消响应（03 C3）。
+type TestTaskCancelDTO struct {
+	TaskID int64  `json:"task_id,string"`
+	Status string `json:"status"`
+}
+
+// AssessmentTestTaskService 是主动测试域业务接口。
+type AssessmentTestTaskService interface {
+	List(ctx context.Context, f ListTestTaskFilter) ([]TestTaskListDTO, int64, error)
+	PollCounts(ctx context.Context) (*TestTaskPollCountsDTO, error)
+	Create(ctx context.Context, p CreateTestTaskPayload) (*CreateTestTaskResult, error)
+	ScaleStatus(ctx context.Context) (*TestScaleStatusDTO, error)
+	Link(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error)
+	Resend(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error)
+	Cancel(ctx context.Context, taskID int64) (*TestTaskCancelDTO, error)
+}
+
+type assessmentTestTaskService struct {
+	taskRepo   repository.AssessmentTestTaskRepository
+	questionRepo repository.QuestionRepository
+	batchRepo  repository.QuestionBatchRepository
+	dimRepo    repository.DimensionRepository
+	staffs     userapiClient
+	secretRepo repository.IntegrationSecretRepository
+	encKey     []byte
+	now        func() time.Time
+}
+
+// NewAssessmentTestTaskService 构造主动测试 service。now 注入便于测试锚定
+// 令牌有效期与时间直出口径。
+func NewAssessmentTestTaskService(
+	taskRepo repository.AssessmentTestTaskRepository,
+	questionRepo repository.QuestionRepository,
+	batchRepo repository.QuestionBatchRepository,
+	dimRepo repository.DimensionRepository,
+	staffs userapiClient,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	now func() time.Time,
+) AssessmentTestTaskService {
+	return &assessmentTestTaskService{
+		taskRepo:     taskRepo,
+		questionRepo: questionRepo,
+		batchRepo:    batchRepo,
+		dimRepo:      dimRepo,
+		staffs:       staffs,
+		secretRepo:   secretRepo,
+		encKey:       encKey,
+		now:          now,
+	}
+}
+
+// List 枚举校验（test_type 必填二值、status 可空五值，违者 1400）→ repo 分页 → DTO 组装。
+func (s *assessmentTestTaskService) List(ctx context.Context, f ListTestTaskFilter) ([]TestTaskListDTO, int64, error) {
+	if !validTestType(f.TestType) || !validTestTaskStatus(f.Status) {
+		return nil, 0, NewError(errcode.BadRequest)
+	}
+	rows, total, err := s.taskRepo.ListByFilter(ctx, repository.TestTaskFilter{
+		TestType: f.TestType,
+		Status:   f.Status,
+		Keyword:  f.Keyword,
+		Page:     f.Page,
+		PageSize: f.PageSize,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("list test tasks: %w", err)
+	}
+	items := make([]TestTaskListDTO, 0, len(rows))
+	for i := range rows {
+		items = append(items, toTestTaskListDTO(&rows[i]))
+	}
+	return items, total, nil
+}
+
+// toTestTaskListDTO 组装列表行：无链接行时 LinkStatus 取零值空串由前端兜底。
+func toTestTaskListDTO(row *repository.TestTaskRow) TestTaskListDTO {
+	dto := TestTaskListDTO{
+		ID:            row.Task.ID,
+		TaskNo:        row.Task.TaskNo,
+		TestType:      row.Task.TestType,
+		StaffName:     row.Task.StaffName,
+		Status:        row.Task.Status,
+		LinkStatus:    row.LinkStatus,
+		GradingStatus: row.Task.GradingStatus,
+		CreatedAt:     row.Task.CreatedAt.Local().Format(layoutDateTime),
+	}
+	if row.Task.CompletedAt != nil {
+		v := row.Task.CompletedAt.Local().Format(layoutDateTime)
+		dto.CompletedAt = &v
+	}
+	return dto
+}
+
+// PollCounts 轮询探针两类未终态计数直通（03 A2，repo 层承载口径）。
+func (s *assessmentTestTaskService) PollCounts(ctx context.Context) (*TestTaskPollCountsDTO, error) {
+	aiMgmt, enneagram, err := s.taskRepo.CountActiveByType(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("count active test tasks: %w", err)
+	}
+	return &TestTaskPollCountsDTO{AIMgmtActive: aiMgmt, EnneagramActive: enneagram}, nil
+}
+
+// Create 发起六步（specs §5.1.2）：①枚举校验 → ②对象校验（上游比对，1805）
+// → ③组卷（1803/1804）→ ④快照序列化 → ⑤令牌生成 → ⑥取号+单事务落库。
+// 同人多任务并存，无重复校验无告警（specs §4.1.4 规则3）。
+func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTaskPayload) (*CreateTestTaskResult, error) {
+	// ① 枚举校验：test_type 二值、staff 非空（空白视为缺失）、ai_mgmt 时
+	// dimension_ids 非空（specs §4.2.2）。
+	if !validTestType(p.TestType) {
+		return nil, NewError(errcode.BadRequest)
+	}
+	if p.StaffID == "" || strings.TrimSpace(p.StaffName) == "" {
+		return nil, NewError(errcode.BadRequest)
+	}
+	if p.TestType == domain.TestTypeAIMgmt && len(p.DimensionIDs) == 0 {
+		return nil, NewError(errcode.BadRequest)
+	}
+
+	// ② 对象校验：解密密钥后经 userapi.ListStaffs 拉取比对 staff_id+staff_name，
+	// 上游失败或未命中一律 1805 且任务不创建（specs §5.1.5 第一行）。
+	if err := s.validateStaff(ctx, p.StaffID, p.StaffName); err != nil {
+		return nil, err
+	}
+
+	// ③+④ 组卷与快照序列化。
+	var (
+		questionIDs     []int64
+		dimensionCodes  []string
+		scaleKey        string
+	)
+	switch p.TestType {
+	case domain.TestTypeAIMgmt:
+		dims, codes, names, err := s.selectAIMgmtDimensions(ctx, p.DimensionIDs)
+		if err != nil {
+			return nil, err
+		}
+		questions, qerr := s.questionRepo.ListActiveByDimensionIDs(ctx, dims)
+		if qerr != nil {
+			return nil, fmt.Errorf("list active questions: %w", qerr)
+		}
+		// 每子能力启用题全取，0 题报错携维度名（specs §4.2.4 规则1）。
+		byDim := make(map[int64]int, len(dims))
+		for i := range questions {
+			byDim[questions[i].DimensionID]++
+		}
+		for i := range dims {
+			if byDim[dims[i]] == 0 {
+				return nil, NewErrorWithMsg(errcode.TestDimensionQuestionsEmpty,
+					fmt.Sprintf("子能力 %s 无可用题目，请先在题库补充", names[dims[i]]))
+			}
+		}
+		for i := range questions {
+			questionIDs = append(questionIDs, questions[i].ID)
+		}
+		dimensionCodes = codes
+	default: // enneagram
+		batch, berr := s.batchRepo.FindLatestImportedBatch(ctx)
+		if berr != nil {
+			if errors.Is(berr, gorm.ErrRecordNotFound) {
+				return nil, NewError(errcode.TestScaleNotReady)
+			}
+			return nil, fmt.Errorf("find latest imported batch: %w", berr)
+		}
+		questions, qerr := s.questionRepo.ListActiveByScaleKey(ctx, batch.ScaleKey)
+		if qerr != nil {
+			return nil, fmt.Errorf("list active scale questions: %w", qerr)
+		}
+		if len(questions) == 0 {
+			return nil, NewError(errcode.TestScaleNotReady)
+		}
+		for i := range questions {
+			questionIDs = append(questionIDs, questions[i].ID)
+		}
+		scaleKey = batch.ScaleKey
+	}
+	idsJSON, err := marshalQuestionIDs(questionIDs)
+	if err != nil {
+		return nil, err
+	}
+	codesJSON := "[]"
+	if dimensionCodes != nil {
+		if codesJSON, err = marshalStrings(dimensionCodes); err != nil {
+			return nil, err
+		}
+	}
+
+	// ⑤ 令牌生成：crypto/rand 32 字节 base64url=43 字符，hash=SHA-256 hex（specs §5.1.4 规则1）。
+	now := s.now()
+	plain, hash, err := generateToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate token: %w", err)
+	}
+
+	// ⑥ 取号 + 单事务落库（任务行+链接行+引用计数 +1，T3 CreateWithLink 收口）。
+	prefix := taskNoPrefixAIMgmt
+	if p.TestType == domain.TestTypeEnneagram {
+		prefix = taskNoPrefixEnneagram
+	}
+	taskNo, err := s.taskRepo.NextTaskNo(ctx, prefix, now)
+	if err != nil {
+		return nil, fmt.Errorf("next task no: %w", err)
+	}
+	task := &domain.AssessmentTestTask{
+		TaskNo:             taskNo,
+		TestType:           p.TestType,
+		StaffID:            p.StaffID,
+		StaffName:          p.StaffName,
+		Status:             domain.TestTaskStatusPending,
+		GradingStatus:      domain.GradingStatusWaiting,
+		QuestionIDsJSON:    idsJSON,
+		ScaleKey:           scaleKey,
+		DimensionCodesJSON: codesJSON,
+	}
+	link := &domain.AssessmentTestLink{
+		TokenPlain:  plain,
+		TokenHash:   hash,
+		Status:      domain.LinkStatusValid,
+		GeneratedAt: now,
+		ExpiresAt:   now.Add(linkTTL),
+	}
+	if err := s.taskRepo.CreateWithLink(ctx, task, link); err != nil {
+		return nil, fmt.Errorf("create test task with link: %w", err)
+	}
+	return &CreateTestTaskResult{
+		ID:        task.ID,
+		TaskNo:    taskNo,
+		TestType:  p.TestType,
+		StaffName: p.StaffName,
+		Status:    task.Status,
+		AnswerURL: answerURLPrefix + plain,
+		CreatedAt: now.Local().Format(layoutDateTime),
+	}, nil
+}
+
+// selectAIMgmtDimensions 圈定勾选维度：取 SourceTest 启用集过滤 ModuleCode=AI_MGMT，
+// 与 dimension_ids 求交集校验（越界即 1400），返回按维度表 code ASC 序的 ID、编码与名称。
+func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, dimensionIDs []string) ([]int64, []string, map[int64]string, error) {
+	dims, err := s.dimRepo.ListEnabledFullByDataSource(ctx, domain.SourceTest)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("list enabled dimensions: %w", err)
+	}
+	enabled := make(map[int64]domain.Dimension, len(dims))
+	for i := range dims {
+		if dims[i].ModuleCode == domain.ModuleAIMgmt {
+			enabled[dims[i].ID] = dims[i]
+		}
+	}
+	// 勾选集合去重并按维度表序（dims 本身 code ASC）输出，防重复 ID 重复取题。
+	seen := make(map[int64]bool, len(dimensionIDs))
+	for _, raw := range dimensionIDs {
+		id, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil {
+			return nil, nil, nil, NewError(errcode.BadRequest)
+		}
+		if _, ok := enabled[id]; !ok {
+			return nil, nil, nil, NewError(errcode.BadRequest)
+		}
+		seen[id] = true
+	}
+	if len(seen) == 0 {
+		return nil, nil, nil, NewError(errcode.BadRequest)
+	}
+	ordered := make([]int64, 0, len(seen))
+	codes := make([]string, 0, len(seen))
+	names := make(map[int64]string, len(seen))
+	for i := range dims { // dims 为 code ASC 序，快照编码与 ID 同序
+		d := dims[i]
+		if d.ModuleCode == domain.ModuleAIMgmt && seen[d.ID] {
+			ordered = append(ordered, d.ID)
+			codes = append(codes, d.Code)
+			names[d.ID] = d.Name
+		}
+	}
+	return ordered, codes, names, nil
+}
+
+// validateStaff 对象校验：经 userapi.ListStaffs（keyword=staff_name）拉取比对
+// staff_id+staff_name 双命中；未配置密钥、上游失败、未命中统一 1805（specs §5.1.5）。
+func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, staffName string) error {
+	secret, err := ResolveIntegrationSecret(ctx, s.secretRepo, s.encKey)
+	if err != nil {
+		return NewError(errcode.TestStaffInvalid)
+	}
+	staffs, _, err := s.staffs.ListStaffs(ctx, secret, staffName, 1, 100)
+	if err != nil {
+		return NewError(errcode.TestStaffInvalid)
+	}
+	for i := range staffs {
+		if staffs[i].StaffID == staffID && staffs[i].StaffName == staffName {
+			return nil
+		}
+	}
+	return NewError(errcode.TestStaffInvalid)
+}
+
+// ScaleStatus 量表就绪查询：FindLatestImportedBatch + ListActiveByScaleKey 计数，
+// 未就绪 Ready=false 空串零值，弹窗打开不阻断（03 B2）。
+func (s *assessmentTestTaskService) ScaleStatus(ctx context.Context) (*TestScaleStatusDTO, error) {
+	notReady := &TestScaleStatusDTO{}
+	batch, err := s.batchRepo.FindLatestImportedBatch(ctx)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return notReady, nil
+		}
+		return nil, fmt.Errorf("find latest imported batch: %w", err)
+	}
+	questions, qerr := s.questionRepo.ListActiveByScaleKey(ctx, batch.ScaleKey)
+	if qerr != nil {
+		return nil, fmt.Errorf("list active scale questions: %w", qerr)
+	}
+	if len(questions) == 0 {
+		return notReady, nil
+	}
+	name := ""
+	if tpl, ok := scaledata.FindByKey(batch.ScaleKey); ok {
+		name = tpl.Name
+	}
+	return &TestScaleStatusDTO{
+		Ready:               true,
+		ScaleKey:            batch.ScaleKey,
+		ScaleName:           name,
+		ActiveQuestionCount: len(questions),
+	}, nil
+}
+
+// Link 作答链接查询：GetByID（查无 1801）+ CurrentLink 组装，无链接行时
+// answer_url 空串、link_status=invalid（specs §4.3.4 规则1 降级）。
+func (s *assessmentTestTaskService) Link(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error) {
+	task, err := s.loadTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	link, err := s.taskRepo.CurrentLink(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("current link: %w", err)
+	}
+	return toTestTaskLinkDTO(task, link), nil
+}
+
+// Resend 重发：读任务校验（查无 1801、status ∈ {pending, expired}，其余 1802），
+// ReplaceLink 生成新令牌新有效期（expired 任务由 repo 事务内回 pending，specs §6.2）。
+func (s *assessmentTestTaskService) Resend(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error) {
+	task, err := s.loadTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task.Status != domain.TestTaskStatusPending && task.Status != domain.TestTaskStatusExpired {
+		return nil, NewError(errcode.TestTaskStatusInvalid)
+	}
+	now := s.now()
+	plain, hash, err := generateToken()
+	if err != nil {
+		return nil, fmt.Errorf("generate token: %w", err)
+	}
+	newLink := &domain.AssessmentTestLink{
+		TokenPlain:  plain,
+		TokenHash:   hash,
+		Status:      domain.LinkStatusValid,
+		GeneratedAt: now,
+		ExpiresAt:   now.Add(linkTTL),
+	}
+	if err := s.taskRepo.ReplaceLink(ctx, taskID, newLink); err != nil {
+		return nil, fmt.Errorf("replace link: %w", err)
+	}
+	dto := toTestTaskLinkDTO(task, newLink)
+	dto.LinkStatus = domain.LinkStatusValid // 重发响应恒 valid（03 C2）
+	return dto, nil
+}
+
+// Cancel 取消任务：repo CancelTask 条件更新，affected=0 按当前状态区分
+//（查无 1801、completed/canceled 1802，specs §4.1.4 规则2）。
+func (s *assessmentTestTaskService) Cancel(ctx context.Context, taskID int64) (*TestTaskCancelDTO, error) {
+	task, err := s.loadTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	affected, err := s.taskRepo.CancelTask(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("cancel test task: %w", err)
+	}
+	if affected == 0 {
+		return nil, NewError(errcode.TestTaskStatusInvalid)
+	}
+	return &TestTaskCancelDTO{TaskID: task.ID, Status: domain.TestTaskStatusCanceled}, nil
+}
+
+// loadTask 点查任务，nil 行映射 1801。
+func (s *assessmentTestTaskService) loadTask(ctx context.Context, taskID int64) (*domain.AssessmentTestTask, error) {
+	task, err := s.taskRepo.GetByID(ctx, taskID)
+	if err != nil {
+		return nil, fmt.Errorf("get test task: %w", err)
+	}
+	if task == nil {
+		return nil, NewError(errcode.TestTaskNotFound)
+	}
+	return task, nil
+}
+
+// toTestTaskLinkDTO 组装链接弹窗 DTO：link 为 nil（无链接行）时降级
+// answer_url 空串、link_status=invalid，时间字段空串。
+func toTestTaskLinkDTO(task *domain.AssessmentTestTask, link *domain.AssessmentTestLink) *TestTaskLinkDTO {
+	dto := &TestTaskLinkDTO{
+		TaskID:     task.ID,
+		TaskNo:     task.TaskNo,
+		TestType:   task.TestType,
+		StaffName:  task.StaffName,
+		LinkStatus: domain.LinkStatusInvalid,
+	}
+	if link == nil {
+		return dto
+	}
+	dto.AnswerURL = answerURLPrefix + link.TokenPlain
+	dto.LinkStatus = link.Status
+	dto.GeneratedAt = link.GeneratedAt.Local().Format(layoutDateTime)
+	dto.ExpiresAt = link.ExpiresAt.Local().Format(layoutDateTime)
+	return dto
+}
+
+// generateToken 生成一次性令牌：crypto/rand 32 字节 base64url（43 字符）+ SHA-256 hex。
+func generateToken() (plain, hash string, err error) {
+	buf := make([]byte, tokenBytes)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	plain = base64.RawURLEncoding.EncodeToString(buf)
+	sum := sha256.Sum256([]byte(plain))
+	return plain, hex.EncodeToString(sum[:]), nil
+}
+
+// marshalQuestionIDs 快照题目 ID 数组序列化。
+func marshalQuestionIDs(ids []int64) (string, error) {
+	b, err := json.Marshal(ids)
+	if err != nil {
+		return "", fmt.Errorf("marshal question ids: %w", err)
+	}
+	return string(b), nil
+}
+
+// marshalStrings 字符串数组序列化。
+func marshalStrings(v []string) (string, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "", fmt.Errorf("marshal strings: %w", err)
+	}
+	return string(b), nil
+}
+
+// validTestType test_type 枚举校验（空串非法：03 A1 test_type 必填）。
+func validTestType(v string) bool {
+	return v == domain.TestTypeAIMgmt || v == domain.TestTypeEnneagram
+}
+
+// validTestTaskStatus status 枚举校验，空串视为全部放行（03 A1）。
+func validTestTaskStatus(v string) bool {
+	switch v {
+	case "", domain.TestTaskStatusPending, domain.TestTaskStatusInProgress,
+		domain.TestTaskStatusCompleted, domain.TestTaskStatusExpired, domain.TestTaskStatusCanceled:
+		return true
+	}
+	return false
+}
