@@ -126,6 +126,15 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAssessmentTestTaskServiceAdapter,
 		NewTestExpireTickHandlerTyped,
 		handler.NewAssessmentTestTaskHandler,
+		// AI 阅卷域（specs §5.2，02-T4）：result 仓储 + 阅卷专用 LLM 客户端
+		//（240s Timeout，独立 gate）+ Grader 十参装配 + assessment:test-grade
+		// handler 经参数注入 NewMux + Asynq 投递适配器（service.TestGradeEnqueuer
+		// 窄接口，default 队列 MaxRetry 默认 25 不收紧，03 §4.5）。
+		repository.NewAssessmentTestResultRepository,
+		NewGradingLLMClient,
+		NewGradingProvider,
+		NewTestGradeHandlerTyped,
+		NewAsynqTestGradeEnqueuer,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,
 		handler.NewSetupHandler,
@@ -149,6 +158,8 @@ func InitializeApp(configPath string) (*App, error) {
 		wire.Bind(new(service.ConversationlogPinger), new(*conversationlog.Client)),
 		// 生成任务投递：*AsynqGenerationEnqueuer 绑定 service.GenerationEnqueuer 窄接口。
 		wire.Bind(new(service.GenerationEnqueuer), new(*AsynqGenerationEnqueuer)),
+		// 阅卷任务投递：*AsynqTestGradeEnqueuer 绑定 service.TestGradeEnqueuer 窄接口。
+		wire.Bind(new(service.TestGradeEnqueuer), new(*AsynqTestGradeEnqueuer)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

@@ -91,7 +91,8 @@ func InitializeApp(configPath string) (*App, error) {
 	assessmentTestTaskRepository := repository.NewAssessmentTestTaskRepository(db)
 	questionRepository := repository.NewQuestionRepository(db)
 	questionBatchRepository := repository.NewQuestionBatchRepository(db)
-	assessmentTestTaskService := NewAssessmentTestTaskServiceAdapter(assessmentTestTaskRepository, questionRepository, questionBatchRepository, dimensionRepository, userapiClient, integrationSecretRepository, v, nowFunc)
+	asynqTestGradeEnqueuer := NewAsynqTestGradeEnqueuer(asynqClient)
+	assessmentTestTaskService := NewAssessmentTestTaskServiceAdapter(assessmentTestTaskRepository, questionRepository, questionBatchRepository, dimensionRepository, userapiClient, integrationSecretRepository, v, nowFunc, asynqTestGradeEnqueuer)
 	assessmentTestTaskHandler := handler.NewAssessmentTestTaskHandler(assessmentTestTaskService)
 	llmConfigService := service.NewLLMConfigService(llmConfigRepository, rsakeyManager, v)
 	llmConfigHandler := handler.NewLLMConfigHandler(llmConfigService)
@@ -123,7 +124,11 @@ func InitializeApp(configPath string) (*App, error) {
 	generator := NewQuestionGenProvider(questionGenLLMClient, questionGenerationRepository, questionDimensionSpecReader)
 	questionGenerateHandler := NewQuestionGenerateHandlerTyped(generator)
 	testExpireTickHandler := NewTestExpireTickHandlerTyped(assessmentTestTaskRepository)
-	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler)
+	gradingLLMClient := NewGradingLLMClient(enabledModelProvider)
+	assessmentTestResultRepository := repository.NewAssessmentTestResultRepository(db)
+	grader := NewGradingProvider(gradingLLMClient, enabledModelProvider, assessmentTestTaskRepository, questionRepository, assessmentTestResultRepository, dimensionRepository, dimensionScoreRepository, scorerScorer, assessmentConfigRepository, systemParamReader)
+	testGradeHandler := NewTestGradeHandlerTyped(grader, assessmentTestTaskRepository, assessmentTestResultRepository)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,

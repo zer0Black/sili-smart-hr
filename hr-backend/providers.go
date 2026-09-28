@@ -19,6 +19,7 @@ import (
 	"sili-smart-hr/backend/internal/engine/evaluator"
 	"sili-smart-hr/backend/internal/engine/extractor"
 	"sili-smart-hr/backend/internal/engine/fallback"
+	"sili-smart-hr/backend/internal/engine/grading"
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/questiongen"
 	"sili-smart-hr/backend/internal/engine/scorer"
@@ -392,7 +393,8 @@ func NewAssessmentBatchServiceAdapter(
 // NewAssessmentTestTaskServiceAdapter 是 Wire 装配适配器：接收 NowFunc 命名类型，
 // 内部转裸 func 调 service.NewAssessmentTestTaskService（九参，userapiClient 经
 // service.ProvideUserapiClient 绑定，NewAssessmentBatchServiceAdapter 同款）。
-// gradeEnqueuer 暂传 nil 占位（CompleteTask 投递依赖 T4 接 AsynqTestGradeEnqueuer）。
+// gradeEnqueuer 形参为窄接口：*AsynqTestGradeEnqueuer 经 wire.Bind 绑定注入
+//（AsynqGenerationEnqueuer 同款闭环，T4 接通）。
 func NewAssessmentTestTaskServiceAdapter(
 	taskRepo repository.AssessmentTestTaskRepository,
 	questionRepo repository.QuestionRepository,
@@ -402,9 +404,10 @@ func NewAssessmentTestTaskServiceAdapter(
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	now NowFunc,
+	gradeEnqueuer service.TestGradeEnqueuer,
 ) service.AssessmentTestTaskService {
 	return service.NewAssessmentTestTaskService(taskRepo, questionRepo, batchRepo, dimRepo,
-		service.ProvideUserapiClient(staffs), secretRepo, encKey, nil,
+		service.ProvideUserapiClient(staffs), secretRepo, encKey, gradeEnqueuer,
 		(func() time.Time)(now))
 }
 
@@ -429,14 +432,26 @@ func NewTestExpireTickHandlerTyped(runner repository.AssessmentTestTaskRepositor
 	return TestExpireTickHandler(task.NewTestExpireTickHandler(runner))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收六个命名类型 handler，转调 task.NewMux
+// TestGradeHandler 是 assessment:test-grade 任务 handler 命名类型
+//（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。
+type TestGradeHandler func(context.Context, *asynq.Task) error
+
+// NewTestGradeHandlerTyped 构造 AI 阅卷 handler（命名类型透出；task 包内测试
+// 用原 NewTestGradeHandler 注入 fake，*grading.Grader 在此收敛装配：task 包
+// 不可 import grading，grading→pipeline→task 依赖链）。
+func NewTestGradeHandlerTyped(grader *grading.Grader, taskRepo repository.AssessmentTestTaskRepository,
+	resultRepo repository.AssessmentTestResultRepository) TestGradeHandler {
+	return TestGradeHandler(task.NewTestGradeHandler(grader, taskRepo, resultRepo))
+}
+
+// NewMuxAdapter Wire 装配适配器：接收七个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
 	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler,
-	testExpireTick TestExpireTickHandler) *asynq.ServeMux {
+	testExpireTick TestExpireTickHandler, testGrade TestGradeHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
 		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate),
-		asynq.HandlerFunc(testExpireTick))
+		asynq.HandlerFunc(testExpireTick), asynq.HandlerFunc(testGrade))
 }
 
 // QuestionGenLLMClient 用命名接口类型区分出题专用 client 与全局 llm.Client，
@@ -497,6 +512,73 @@ func NewQuestionGenProvider(llmClient QuestionGenLLMClient, genRepo repository.Q
 	dims *QuestionDimensionSpecReader) *questiongen.Generator {
 	return questiongen.New(llmClient, genRepo, dims)
 }
+
+// GradingLLMClient 用命名接口类型区分阅卷专用 client 与全局 llm.Client，
+// 规避 Wire 类型表 multiple bindings 冲突（与 EvaluatorLLMClient 同款）。
+type GradingLLMClient llm.Client
+
+// GradingLLMClientTimeout 阅卷专用 LLM 客户端超时（specs §5.2.4 规则3 初值
+// 240s）：小于任务级超时 300s（worker/task 的 testGradeTimeout）保重试边界
+// 自洽。包级导出常量供装配测试锚定。
+const GradingLLMClientTimeout = 240 * time.Second
+
+// NewGradingLLMClient 构造阅卷专用 LLM 客户端（specs §5.2.4 规则3、03 §4.5）：
+// Timeout 240s，与全局/评估/出题 client 各持独立并发 gate（默认 4）。
+// MaxRetries=1 + 退避 5-10s 与其余专用 client 同款，任务级重试归 Asynq。
+func NewGradingLLMClient(provider llm.EnabledModelProvider) GradingLLMClient {
+	return llm.New(llm.Config{
+		Timeout:        GradingLLMClientTimeout,
+		MaxRetries:     1,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     10 * time.Second,
+		MaxRetryAfter:  60 * time.Second,
+		TokenCounter:   llm.NewCharDiv3Counter(),
+	}, provider)
+}
+
+// NewGradingProvider 装配 AI 阅卷引擎（十参，specs §5.2.2 步骤2-6）：阅卷专用
+// LLM client + task/question/result/dimension/score/config 六仓储 + 聚合窄面
+//（*scorer.Scorer 满足 AggRepo，与 evaluator 同源实例）+ 系统参数（脱敏正则）。
+// 维度口径复用 DimensionRepository（Grader 内按 AI_MGMT ∩ 快照过滤）。
+func NewGradingProvider(llmClient GradingLLMClient, modelProvider llm.EnabledModelProvider,
+	taskRepo repository.AssessmentTestTaskRepository, questionRepo repository.QuestionRepository,
+	resultRepo repository.AssessmentTestResultRepository, dimRepo repository.DimensionRepository,
+	scoreRepo repository.DimensionScoreRepository, agg *scorer.Scorer,
+	configRepo repository.AssessmentConfigRepository, sysParams repository.SystemParamReader) *grading.Grader {
+	return grading.New(llmClient, modelProvider, taskRepo, questionRepo, resultRepo,
+		dimRepo, scoreRepo, agg, configRepo, sysParams)
+}
+
+// AsynqTestGradeEnqueuer 把 AsynqClient 适配为 service.TestGradeEnqueuer
+// 窄接口（AsynqGenerationEnqueuer 同款）：service 层不 import asynq。
+type AsynqTestGradeEnqueuer struct {
+	client *asynq.Client
+}
+
+// NewAsynqTestGradeEnqueuer 组装阅卷任务投递适配器。
+func NewAsynqTestGradeEnqueuer(client *asynq.Client) *AsynqTestGradeEnqueuer {
+	return &AsynqTestGradeEnqueuer{client: client}
+}
+
+// EnqueueTestGrade 投递阅卷任务（specs §5.2.4 规则3、03 §4.5）：default 队列
+// 分流 batch/extract，payload 为雪花 ID 十进制字符串（worker/task 消费侧同构）。
+// MaxRetry 不收紧沿用 Asynq 默认 25（阅卷轻任务预算，耗尽落 degraded 终态）。
+// tx 形参仅语义占位：Asynq 投递无事务性，失败返 error 由 repo 层回滚提交事务。
+func (e *AsynqTestGradeEnqueuer) EnqueueTestGrade(ctx context.Context, tx *gorm.DB, taskID int64) error {
+	payload, err := json.Marshal(task.TestGradePayload{TaskID: fmt.Sprintf("%d", taskID)})
+	if err != nil {
+		return fmt.Errorf("test grade payload 序列化: %w", err)
+	}
+	if _, err := e.client.EnqueueContext(ctx,
+		asynq.NewTask(task.TypeTestGrade, payload),
+		asynq.Queue(task.QueueDefault)); err != nil {
+		return fmt.Errorf("test grade 投递: %w", err)
+	}
+	return nil
+}
+
+// 编译期断言：适配器满足 service.TestGradeEnqueuer 窄接口。
+var _ service.TestGradeEnqueuer = (*AsynqTestGradeEnqueuer)(nil)
 
 // QuestionGenerateHandler 是 questionbank:generate 任务 handler 命名类型
 //（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。

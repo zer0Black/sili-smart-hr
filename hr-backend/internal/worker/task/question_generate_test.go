@@ -276,7 +276,7 @@ func TestQuestionGenerateTimeoutConst(t *testing.T) {
 // TestNewMuxRegistersQuestionGenerate 核心锚点：mux 已注册 TypeQuestionGenerate
 // 且路由可达（NewMux 五参化后新增任务类型）。
 func TestNewMuxRegistersQuestionGenerate(t *testing.T) {
-	mux := NewMux(nil, nil, nil, nil, nil, nil)
+	mux := NewMux(nil, nil, nil, nil, nil, nil, nil)
 	if h, pattern := mux.Handler(asynq.NewTask(TypeQuestionGenerate, []byte(`{}`))); pattern != TypeQuestionGenerate || h == nil {
 		t.Errorf("questionbank:generate 路由未注册: pattern = %q", pattern)
 	}
@@ -291,7 +291,7 @@ func TestNewMuxQuestionGenerateTimeout(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(nil, nil, nil, nil, inner, nil)
+	mux := NewMux(nil, nil, nil, nil, inner, nil, nil)
 	h, pattern := mux.Handler(asynq.NewTask(TypeQuestionGenerate, []byte(`{}`)))
 	if pattern != TypeQuestionGenerate {
 		t.Fatalf("pattern = %q, want %q", pattern, TypeQuestionGenerate)
