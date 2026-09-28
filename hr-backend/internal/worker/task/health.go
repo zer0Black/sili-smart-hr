@@ -21,12 +21,13 @@ const (
 	QueueExtract = "extract"
 )
 
-// NewMux 构造 worker 任务路由：健康任务原地注册，抽取、评估、批次与生成任务经
-// 参数注入（保持单一注册入口）。session-extract / person-evaluate / batch-tick /
-// batch-run / questionbank:generate 均以 context.WithTimeout 挂任务级超时
+// NewMux 构造 worker 任务路由：健康任务原地注册，抽取、评估、批次、生成与
+// 逾期 tick 任务经参数注入（保持单一注册入口）。session-extract / person-evaluate /
+// batch-tick / batch-run / questionbank:generate / assessment:test-expire-tick
+// 均以 context.WithTimeout 挂任务级超时
 // （asynq v0.26.0 ServeMux 无 options 注册 API），预算声明见各自任务文件的
 // timeout 常量。
-func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerate asynq.HandlerFunc) *asynq.ServeMux {
+func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerate, testExpireTick asynq.HandlerFunc) *asynq.ServeMux {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeHealthCheck, HandleHealthCheck)
 	mux.Handle(TypeSessionExtract, withTimeout(sessionExtract, sessionExtractTimeout))
@@ -34,6 +35,7 @@ func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerat
 	mux.Handle(TypeBatchTick, withTimeout(batchTick, batchTickTimeout))
 	mux.Handle(TypeBatchRun, withTimeout(batchRun, batchRunTimeout))
 	mux.Handle(TypeQuestionGenerate, withTimeout(questionGenerate, questionGenerateTimeout))
+	mux.Handle(TypeTestExpireTick, withTimeout(testExpireTick, testExpireTickTimeout))
 	return mux
 }
 

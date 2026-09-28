@@ -389,6 +389,24 @@ func NewAssessmentBatchServiceAdapter(
 		(func() time.Time)(now), submitter)
 }
 
+// NewAssessmentTestTaskServiceAdapter 是 Wire 装配适配器：接收 NowFunc 命名类型，
+// 内部转裸 func 调 service.NewAssessmentTestTaskService（八参，userapiClient 经
+// service.ProvideUserapiClient 绑定，NewAssessmentBatchServiceAdapter 同款）。
+func NewAssessmentTestTaskServiceAdapter(
+	taskRepo repository.AssessmentTestTaskRepository,
+	questionRepo repository.QuestionRepository,
+	batchRepo repository.QuestionBatchRepository,
+	dimRepo repository.DimensionRepository,
+	staffs *userapi.Client,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	now NowFunc,
+) service.AssessmentTestTaskService {
+	return service.NewAssessmentTestTaskService(taskRepo, questionRepo, batchRepo, dimRepo,
+		service.ProvideUserapiClient(staffs), secretRepo, encKey,
+		(func() time.Time)(now))
+}
+
 // NewBatchTickHandlerTyped 构造 batch-tick handler（命名类型透出）。
 func NewBatchTickHandlerTyped(orch *pipeline.Orchestrator) BatchTickHandler {
 	return BatchTickHandler(task.NewBatchTickHandler(orch))
@@ -399,12 +417,25 @@ func NewBatchRunHandlerTyped(orch *pipeline.Orchestrator) BatchRunHandler {
 	return BatchRunHandler(task.NewBatchRunHandler(orch))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收五个命名类型 handler，转调 task.NewMux
+// TestExpireTickHandler 是主动测试逾期 tick 任务 handler 命名类型
+//（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。
+type TestExpireTickHandler func(context.Context, *asynq.Task) error
+
+// NewTestExpireTickHandlerTyped 构造 assessment:test-expire-tick handler（命名
+// 类型透出；runner 直接注入 repository.AssessmentTestTaskRepository，语义为调用
+// 仓储 ExpirePending，specs §5.3.2）。
+func NewTestExpireTickHandlerTyped(runner repository.AssessmentTestTaskRepository) TestExpireTickHandler {
+	return TestExpireTickHandler(task.NewTestExpireTickHandler(runner))
+}
+
+// NewMuxAdapter Wire 装配适配器：接收六个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
-	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler) *asynq.ServeMux {
+	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler,
+	testExpireTick TestExpireTickHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
-		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate))
+		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate),
+		asynq.HandlerFunc(testExpireTick))
 }
 
 // QuestionGenLLMClient 用命名接口类型区分出题专用 client 与全局 llm.Client，

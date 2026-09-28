@@ -29,6 +29,7 @@ func NewRouter(
 	dimensionHandler *handler.DimensionHandler,
 	assessmentConfigHandler *handler.AssessmentConfigHandler,
 	assessmentBatchHandler *handler.AssessmentBatchHandler,
+	assessmentTestTaskHandler *handler.AssessmentTestTaskHandler,
 	llmConfigHandler *handler.LLMConfigHandler,
 	integrationSecretHandler *handler.IntegrationSecretHandler,
 	questionHandler *handler.QuestionHandler,
@@ -122,6 +123,15 @@ func NewRouter(
 	auth.GET("/assessment/batches/targets", assessmentBatchHandler.Targets)
 	auth.GET("/assessment/batches/failures", assessmentBatchHandler.Failures)
 	auth.POST("/assessment/batches/create", assessmentBatchHandler.Create)
+	// 主动测试域：七接口 JWT 鉴权挂 auth 组（specs §2.2 + 03 §3 A1/A2/B1/B2/C1-C3），
+	// 无角色差异。test-tasks 前缀下静态子路径与根 List 路由不冲突（Gin 静态优先）。
+	auth.GET("/assessment/test-tasks", assessmentTestTaskHandler.List)
+	auth.GET("/assessment/test-tasks/poll-counts", assessmentTestTaskHandler.PollCounts)
+	auth.GET("/assessment/test-tasks/scale-status", assessmentTestTaskHandler.ScaleStatus)
+	auth.GET("/assessment/test-tasks/link", assessmentTestTaskHandler.Link)
+	auth.POST("/assessment/test-tasks/create", assessmentTestTaskHandler.Create)
+	auth.POST("/assessment/test-tasks/resend", assessmentTestTaskHandler.Resend)
+	auth.POST("/assessment/test-tasks/cancel", assessmentTestTaskHandler.Cancel)
 	// 题库域：六接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵六行 / BR1）。
 	// /questions/:id 参数路由与 /questions 静态路由不冲突（Gin 静态优先）。
 	auth.GET("/questions", questionHandler.List)

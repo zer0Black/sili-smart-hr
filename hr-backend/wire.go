@@ -120,6 +120,12 @@ func InitializeApp(configPath string) (*App, error) {
 		// 批次查询/发起域（03 §3）：时钟经 NowFunc 命名类型注入规避 func 同型冲突。
 		ProvideNowFunc,
 		NewAssessmentBatchServiceAdapter,
+		// 主动测试域（specs P2_TST_001）：task 仓储 + service 经 NowFunc 复用装配 +
+		// handler（03 §3 七接口）+ 逾期 tick handler（§5.3，runner 直连仓储）。
+		repository.NewAssessmentTestTaskRepository,
+		NewAssessmentTestTaskServiceAdapter,
+		NewTestExpireTickHandlerTyped,
+		handler.NewAssessmentTestTaskHandler,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,
 		handler.NewSetupHandler,
