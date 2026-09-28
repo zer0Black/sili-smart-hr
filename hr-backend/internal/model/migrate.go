@@ -349,5 +349,7 @@ func allModels() []any {
 		&domain.Question{},
 		&domain.QuestionBatch{},
 		&domain.QuestionGeneration{},
+		&domain.AssessmentTestTask{},
+		&domain.AssessmentTestLink{},
 	}
 }
