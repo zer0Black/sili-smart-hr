@@ -183,6 +183,46 @@ func TestFindPendingResubmitBatch_Empty(t *testing.T) {
 	}
 }
 
+// TestFindLatestImportedBatch 最新引入量批判定（specs TST 03 B2）：IMPORT 且 CLOSED
+// 批次按 created_at DESC 取首行，两批并存返回较新者；非 IMPORT（GENERATE/RESUBMIT）
+// 与非 CLOSED（PENDING/VOIDED）批次不参与判定。
+func TestFindLatestImportedBatch(t *testing.T) {
+	db := newQBatchTestDB(t)
+	old := seedBatch(t, db, "#S0920", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusClosed, 144)
+	latest := seedBatch(t, db, "#S0925", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusClosed, 36)
+	seedBatch(t, db, "#S0926", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusPending, 36)
+	seedBatch(t, db, "#S0927", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusVoided, 36)
+	seedBatch(t, db, "#G0928", domain.QuestionSourceAI, domain.QuestionBatchTypeGenerate, domain.QuestionBatchStatusClosed, 2)
+	seedBatch(t, db, "#R0928", domain.QuestionSourceAI, domain.QuestionBatchTypeResubmit, domain.QuestionBatchStatusClosed, 1)
+	db.Model(&domain.QuestionBatch{}).Where("id = ?", old.ID).Update("created_at", time.Now().Add(-24*time.Hour))
+	db.Model(&domain.QuestionBatch{}).Where("id = ?", latest.ID).Update("created_at", time.Now())
+
+	repo := repository.NewQuestionBatchRepository(db)
+	got, err := repo.FindLatestImportedBatch(context.Background())
+	if err != nil {
+		t.Fatalf("FindLatestImportedBatch: %v", err)
+	}
+	if got.ID != latest.ID || got.BatchNo != "#S0925" {
+		t.Fatalf("want latest batch %s, got %+v", latest.BatchNo, got)
+	}
+	if got.BatchType != domain.QuestionBatchTypeImport || got.Status != domain.QuestionBatchStatusClosed {
+		t.Fatalf("want IMPORT/CLOSED, got %s/%s", got.BatchType, got.Status)
+	}
+}
+
+// TestFindLatestImportedBatch_Empty 无 IMPORT CLOSED 批次返回 ErrRecordNotFound
+//（量表未引入的判定哨兵，服务层映射 1804）。
+func TestFindLatestImportedBatch_Empty(t *testing.T) {
+	db := newQBatchTestDB(t)
+	seedBatch(t, db, "#G0925", domain.QuestionSourceAI, domain.QuestionBatchTypeGenerate, domain.QuestionBatchStatusClosed, 2)
+	seedBatch(t, db, "#S0926", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusVoided, 144)
+
+	repo := repository.NewQuestionBatchRepository(db)
+	if _, err := repo.FindLatestImportedBatch(context.Background()); err != gorm.ErrRecordNotFound {
+		t.Fatalf("no imported closed batch want ErrRecordNotFound, got %v", err)
+	}
+}
+
 // TestCreateBatchWithQuestions 建批事务：批次行落库、题目编号按前缀分流连续分配
 // （含软删行占号）、status 强制 PENDING、batch_id 回填、version 补 1。
 func TestCreateBatchWithQuestions(t *testing.T) {

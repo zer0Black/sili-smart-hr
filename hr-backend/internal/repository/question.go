@@ -27,6 +27,16 @@ type QuestionRepository interface {
 	SoftDeleteWithVersion(ctx context.Context, id int64, version int) (int64, error)
 	// MaxQuestionSeq 按编号前缀查最大序号（含软删行 Unscoped），无行返回 0。SP3/SP4 编号分配复用。
 	MaxQuestionSeq(ctx context.Context, prefix string) (int64, error)
+	// ListActiveByDimensionIDs 主动测试 AI 取题：source=AI AND status=ACTIVE AND dimension_id IN (?)，
+	// question_no ASC（specs TST §4.2.4 规则1 全取口径，软删自动过滤；返回行由调用方按 dimension_id 分组消费）。
+	ListActiveByDimensionIDs(ctx context.Context, dimensionIDs []int64) ([]domain.Question, error)
+	// ListActiveByScaleKey 主动测试九型取题：source=SCALE AND status=ACTIVE AND scale_key=?，
+	// question_no ASC（specs TST §4.2.4 规则2 固定量表全量）。
+	ListActiveByScaleKey(ctx context.Context, scaleKey string) ([]domain.Question, error)
+	// IncrementReferenceCounts 题目引用计数 +1：在传入 tx 通道执行
+	// UPDATE questions SET reference_count = reference_count + 1 WHERE id IN (?)
+	//（specs TST §5.1.2 步骤4，与任务创建同事务；tx 为 nil 则走自身 db 通道）。
+	IncrementReferenceCounts(ctx context.Context, tx *gorm.DB, questionIDs []int64) error
 }
 
 type questionRepository struct {
@@ -131,4 +141,45 @@ func (r *questionRepository) MaxQuestionSeq(ctx context.Context, prefix string) 
 		return 0, nil
 	}
 	return seq, nil
+}
+
+// ListActiveByDimensionIDs 空维度集直接返回空切片，避免空 IN () 语义漂移。
+func (r *questionRepository) ListActiveByDimensionIDs(ctx context.Context, dimensionIDs []int64) ([]domain.Question, error) {
+	if len(dimensionIDs) == 0 {
+		return []domain.Question{}, nil
+	}
+	var list []domain.Question
+	if err := r.db.WithContext(ctx).
+		Where("source = ? AND status = ? AND dimension_id IN ?", domain.QuestionSourceAI, domain.QuestionStatusActive, dimensionIDs).
+		Order("question_no ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+func (r *questionRepository) ListActiveByScaleKey(ctx context.Context, scaleKey string) ([]domain.Question, error) {
+	var list []domain.Question
+	if err := r.db.WithContext(ctx).
+		Where("source = ? AND status = ? AND scale_key = ?", domain.QuestionSourceScale, domain.QuestionStatusActive, scaleKey).
+		Order("question_no ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// IncrementReferenceCounts gorm.Expr 自增防读改写竞态；空 ID 集 no-op。
+// tx 是任务创建的外层事务通道，直接在其上执行而不自开事务（specs §5.1.2 步骤4）。
+func (r *questionRepository) IncrementReferenceCounts(ctx context.Context, tx *gorm.DB, questionIDs []int64) error {
+	if len(questionIDs) == 0 {
+		return nil
+	}
+	run := r.db
+	if tx != nil {
+		run = tx
+	}
+	return run.WithContext(ctx).Model(&domain.Question{}).
+		Where("id IN ?", questionIDs).
+		Update("reference_count", gorm.Expr("reference_count + 1")).Error
 }

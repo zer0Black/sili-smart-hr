@@ -8,6 +8,7 @@ package repository_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -512,5 +513,166 @@ func TestMaxQuestionSeq_FiveDigitOverflow(t *testing.T) {
 	}
 	if seq != 10000 {
 		t.Fatalf("seq want 10000 (five-digit max), got %d", seq)
+	}
+}
+
+// TestListActiveByDimensionIDs AI 取题（specs TST §4.2.4 规则1 组卷口径）：两维度
+// 各 2 条 ACTIVE AI 题 + 各 1 条 DISABLED + 1 条 SCALE 题后，传两维度 ID 恰返回
+// 4 行且全为 ACTIVE/AI、question_no ASC；DISABLED/SCALE/软删行排除。
+func TestListActiveByDimensionIDs(t *testing.T) {
+	db := newQuestionTestDB(t)
+	a1 := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+	a2 := seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 101)
+	seedAI(t, db, "Q-AG-0003", domain.QuestionStatusDisabled, "情境三", 101)
+	a4 := seedAI(t, db, "Q-AG-0004", domain.QuestionStatusActive, "情境四", 202)
+	a5 := seedAI(t, db, "Q-AG-0005", domain.QuestionStatusActive, "情境五", 202)
+	seedAI(t, db, "Q-AG-0006", domain.QuestionStatusDisabled, "情境六", 202)
+	seedScaleQuestion(t, db, "Q-Scale-0001", domain.QuestionStatusActive, domain.ScaleKeyRisoHudson)
+	softDeleted := seedAI(t, db, "Q-AG-0007", domain.QuestionStatusActive, "情境七", 101)
+	if err := db.Delete(&softDeleted).Error; err != nil {
+		t.Fatalf("seed delete: %v", err)
+	}
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListActiveByDimensionIDs(context.Background(), []int64{101, 202})
+	if err != nil {
+		t.Fatalf("ListActiveByDimensionIDs: %v", err)
+	}
+	if len(list) != 4 {
+		t.Fatalf("want exactly 4 rows, got %d: %+v", len(list), list)
+	}
+	wantOrder := []int64{a1.ID, a2.ID, a4.ID, a5.ID}
+	for i, q := range list {
+		if q.ID != wantOrder[i] {
+			t.Fatalf("row %d want question %d (question_no ASC), got %d", i, wantOrder[i], q.ID)
+		}
+		if q.Source != domain.QuestionSourceAI || q.Status != domain.QuestionStatusActive {
+			t.Fatalf("row %s want ACTIVE/AI, got %s/%s", q.QuestionNo, q.Status, q.Source)
+		}
+	}
+}
+
+// TestListActiveByDimensionIDs_ExcludesOtherDimensions 未勾选维度的 ACTIVE AI 题不混入。
+func TestListActiveByDimensionIDs_ExcludesOtherDimensions(t *testing.T) {
+	db := newQuestionTestDB(t)
+	dim101 := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+	seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 303)
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListActiveByDimensionIDs(context.Background(), []int64{dim101.DimensionID})
+	if err != nil {
+		t.Fatalf("ListActiveByDimensionIDs: %v", err)
+	}
+	if len(list) != 1 || list[0].ID != dim101.ID {
+		t.Fatalf("want only dimension 101 row, got %+v", list)
+	}
+}
+
+// TestListActiveByDimensionIDs_EmptyIDs 空 ID 集返回空切片非 error。
+func TestListActiveByDimensionIDs_EmptyIDs(t *testing.T) {
+	db := newQuestionTestDB(t)
+	seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListActiveByDimensionIDs(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("ListActiveByDimensionIDs nil ids: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("nil ids want 0 rows, got %d", len(list))
+	}
+}
+
+// TestListActiveByScaleKey 九型取题（specs TST §4.2.4 规则2）：指定量表 key 的
+// ACTIVE SCALE 题全量返回 question_no ASC；DISABLED、他量表、AI 题排除。
+func TestListActiveByScaleKey(t *testing.T) {
+	db := newQuestionTestDB(t)
+	s1 := seedScaleQuestion(t, db, "Q-Scale-0001", domain.QuestionStatusActive, domain.ScaleKeyRisoHudson)
+	s2 := seedScaleQuestion(t, db, "Q-Scale-0002", domain.QuestionStatusActive, domain.ScaleKeyRisoHudson)
+	seedScaleQuestion(t, db, "Q-Scale-0003", domain.QuestionStatusDisabled, domain.ScaleKeyRisoHudson)
+	seedScaleQuestion(t, db, "Q-Scale-0004", domain.QuestionStatusActive, domain.ScaleKeyEssence)
+	seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListActiveByScaleKey(context.Background(), domain.ScaleKeyRisoHudson)
+	if err != nil {
+		t.Fatalf("ListActiveByScaleKey: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("want 2 rows, got %d: %+v", len(list), list)
+	}
+	if list[0].ID != s1.ID || list[1].ID != s2.ID {
+		t.Fatalf("want question_no ASC [%s %s], got [%d %d]", s1.QuestionNo, s2.QuestionNo, list[0].ID, list[1].ID)
+	}
+	for _, q := range list {
+		if q.Source != domain.QuestionSourceScale || q.Status != domain.QuestionStatusActive ||
+			q.ScaleKey != domain.ScaleKeyRisoHudson {
+			t.Fatalf("row %s want ACTIVE/SCALE/RISO_HUDSON, got %+v", q.QuestionNo, q)
+		}
+	}
+}
+
+// TestIncrementReferenceCounts 引用计数 +1（specs TST §5.1.2 步骤4）：调用后
+// 传入题目 reference_count 各 +1，未传入题目不动。
+func TestIncrementReferenceCounts(t *testing.T) {
+	db := newQuestionTestDB(t)
+	q1 := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+	q2 := seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 101)
+	untouched := seedAI(t, db, "Q-AG-0003", domain.QuestionStatusActive, "情境三", 101)
+	db.Model(&domain.Question{}).Where("id = ?", q1.ID).Update("reference_count", 5)
+
+	repo := repository.NewQuestionRepository(db)
+	if err := repo.IncrementReferenceCounts(context.Background(), nil, []int64{q1.ID, q2.ID}); err != nil {
+		t.Fatalf("IncrementReferenceCounts: %v", err)
+	}
+	var got1, got2, got3 domain.Question
+	if err := db.Where("id = ?", q1.ID).First(&got1).Error; err != nil {
+		t.Fatalf("load q1: %v", err)
+	}
+	if err := db.Where("id = ?", q2.ID).First(&got2).Error; err != nil {
+		t.Fatalf("load q2: %v", err)
+	}
+	if err := db.Where("id = ?", untouched.ID).First(&got3).Error; err != nil {
+		t.Fatalf("load untouched: %v", err)
+	}
+	if got1.ReferenceCount != 6 || got2.ReferenceCount != 1 {
+		t.Fatalf("reference_count want 6/1 (each +1), got %d/%d", got1.ReferenceCount, got2.ReferenceCount)
+	}
+	if got3.ReferenceCount != 0 {
+		t.Fatalf("untouched row want 0, got %d", got3.ReferenceCount)
+	}
+}
+
+// TestIncrementReferenceCounts_ExternalTxRollback 走外层创建事务通道：外层回滚时
+// 计数不落库（specs §5.1.2 步骤4 与任务创建同事务）。
+func TestIncrementReferenceCounts_ExternalTxRollback(t *testing.T) {
+	db := newQuestionTestDB(t)
+	q := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+
+	repo := repository.NewQuestionRepository(db)
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := repo.IncrementReferenceCounts(context.Background(), tx, []int64{q.ID}); err != nil {
+			return err
+		}
+		return errors.New("force rollback")
+	})
+	if err == nil {
+		t.Fatal("outer transaction want rollback error")
+	}
+	var row domain.Question
+	if err := db.Where("id = ?", q.ID).First(&row).Error; err != nil {
+		t.Fatalf("load row: %v", err)
+	}
+	if row.ReferenceCount != 0 {
+		t.Fatalf("after rollback want reference_count=0, got %d", row.ReferenceCount)
+	}
+}
+
+// TestIncrementReferenceCounts_EmptyIDs 空 ID 集 no-op 不报错。
+func TestIncrementReferenceCounts_EmptyIDs(t *testing.T) {
+	db := newQuestionTestDB(t)
+	repo := repository.NewQuestionRepository(db)
+	if err := repo.IncrementReferenceCounts(context.Background(), nil, nil); err != nil {
+		t.Fatalf("nil ids want no error, got %v", err)
 	}
 }
