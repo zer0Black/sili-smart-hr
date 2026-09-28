@@ -13,7 +13,7 @@ sub_plans:
   - id: "02"
     name: "AI阅卷评分"
     file: "02_AI阅卷评分.md"
-    status: "pending"
+    status: "completed"
 
 execution_order:
   - "01"

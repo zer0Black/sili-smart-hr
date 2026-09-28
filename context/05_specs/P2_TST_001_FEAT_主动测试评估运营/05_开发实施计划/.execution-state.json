@@ -165,7 +165,14 @@
           }
         }
       },
-      "review": null,
+      "review": {
+        "path": "execution-evidence/02-review-d9dbd30.md",
+        "digest": "6200838e6ed5adf5f265db605615a582be84c209ae69e825b6b77cb8ffc74032",
+        "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+        "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+        "passed": true,
+        "recorded_at": "2026-09-28T16:23:10Z"
+      },
       "review_failures": 0,
       "plan_changes": [
         {
@@ -202,5 +209,5 @@
       ]
     }
   },
-  "updated_at": "2026-09-28T16:08:41Z"
+  "updated_at": "2026-09-28T16:23:10Z"
 }
