@@ -95,6 +95,10 @@ func (f *fakeAssessmentTestTaskService) Cancel(_ context.Context, taskID int64) 
 	return f.cancelRes, f.cancelErr
 }
 
+// CompleteTask/StartSession 无 HTTP 面（03 §1.3/§1.5），测试桩恒 nil 仅保接口完整。
+func (f *fakeAssessmentTestTaskService) CompleteTask(_ context.Context, _ int64) error { return nil }
+func (f *fakeAssessmentTestTaskService) StartSession(_ context.Context, _ int64) error { return nil }
+
 var _ service.AssessmentTestTaskService = (*fakeAssessmentTestTaskService)(nil)
 
 // newTestTaskRouter 挂载与 router.go 相同的七条路径（03 §3 A1/A2/B1/B2/C1/C2/C3）。

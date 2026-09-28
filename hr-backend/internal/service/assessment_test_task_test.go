@@ -7,6 +7,9 @@
 //   - Resend：expired 回 pending / 新令牌新有效期、pending 换链接、状态守卫 1802/1801
 //   - Cancel：成功 / completed 1802 / 查无 1801
 //   - Link：正常组装 / 无链接行降级 / 查无 1801
+//   - CompleteTask：enqueue 成功三步推进 / 投递失败整体回滚上抛 / 哨兵映射 1802 /
+//     已 completed 幂等不重触投递
+//   - StartSession：pending 推进 in_progress / 重复上报幂等不改写 / 查无 1801
 //   - List 枚举校验与 DTO 组装、PollCounts 直通、ScaleStatus 三态
 package service_test
 
@@ -49,6 +52,10 @@ type fakeTSTRepo struct {
 	activeAI       int64
 	activeEnne     int64
 	countErr       error
+	startErr        error
+	startAffected   bool // MarkSessionStarted 是否实际推进（模拟条件更新 affected>0）
+	completeErr     error
+	completeStatus  string // CompleteTask 后任务的模拟落库状态（空串表示未推进）
 
 	listCalled   bool
 	gotFilter    repository.TestTaskFilter
@@ -60,6 +67,9 @@ type fakeTSTRepo struct {
 	replaceTaskID int64
 	replacedLink  *domain.AssessmentTestLink
 	gotCancelID   int64
+	gotStartID    int64
+	gotCompleteID int64
+	enqueueCalls  int
 }
 
 func (f *fakeTSTRepo) ListByFilter(_ context.Context, tf repository.TestTaskFilter) ([]repository.TestTaskRow, int64, error) {
@@ -117,14 +127,41 @@ func (f *fakeTSTRepo) CancelTask(_ context.Context, taskID int64) (int64, error)
 	}
 	return f.cancelAffected, nil
 }
-func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, _ int64) error { return nil }
+// MarkSessionStarted 模拟 WHERE status='pending' 条件更新：任务存在且 pending 时
+// 推进 in_progress 置 startAffected，其余（in_progress/completed/查无）幂等返回 nil。
+func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) error {
+	f.gotStartID = taskID
+	if f.startErr != nil {
+		return f.startErr
+	}
+	if f.byID != nil && f.byID.ID == taskID && f.byID.Status == domain.TestTaskStatusPending {
+		f.byID.Status = domain.TestTaskStatusInProgress
+		f.startAffected = true
+	}
+	return nil
+}
 func (f *fakeTSTRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return f.activeAI, f.activeEnne, f.countErr
 }
 func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) (int64, error) {
 	return 0, nil
 }
-func (f *fakeTSTRepo) CompleteTask(_ context.Context, _ int64, _ func(*gorm.DB) error, _ time.Time) error {
+
+// CompleteTask 模拟真实事务语义（specs §5.2.2 步骤1）：三步推进 + enqueue 同事务，
+// enqueue 报错整体回滚（任务状态不落 completeStatus）；哨兵与幂等口径由
+// completeErr 显式注入（ErrTaskNotSubmittable / nil 幂等）。
+func (f *fakeTSTRepo) CompleteTask(_ context.Context, taskID int64, enqueue func(*gorm.DB) error, _ time.Time) error {
+	f.gotCompleteID = taskID
+	if f.completeErr != nil {
+		return f.completeErr
+	}
+	if err := enqueue(nil); err != nil {
+		return err // 模拟事务回滚：状态未推进
+	}
+	f.completeStatus = domain.TestTaskStatusCompleted
+	if f.byID != nil && f.byID.ID == taskID {
+		f.byID.Status = domain.TestTaskStatusCompleted
+	}
 	return nil
 }
 func (f *fakeTSTRepo) MarkGradingTerminal(_ context.Context, _ int64, _ string) error {
@@ -132,6 +169,21 @@ func (f *fakeTSTRepo) MarkGradingTerminal(_ context.Context, _ int64, _ string) 
 }
 
 var _ repository.AssessmentTestTaskRepository = (*fakeTSTRepo)(nil)
+
+// fakeGradeEnqueuer 是 service.TestGradeEnqueuer 的假实现，承载投递成败与探针。
+type fakeGradeEnqueuer struct {
+	err   error
+	calls int
+	gotTaskID int64
+}
+
+func (f *fakeGradeEnqueuer) EnqueueTestGrade(_ context.Context, _ *gorm.DB, taskID int64) error {
+	f.calls++
+	f.gotTaskID = taskID
+	return f.err
+}
+
+var _ service.TestGradeEnqueuer = (*fakeGradeEnqueuer)(nil)
 
 // fakeTSTQuestionRepo 是 repository.QuestionRepository 的测试假实现，
 // ListActiveByDimensionIDs / ListActiveByScaleKey 承载组卷取题行为。
@@ -227,10 +279,17 @@ var _ repository.QuestionBatchRepository = (*fakeTSTBatchRepo)(nil)
 func tstFixedNow() time.Time { return time.Date(2026, 9, 28, 8, 30, 0, 0, time.Local) }
 
 // newTSTSvc 组装被测 service；密文用 batchEncKey 加密，与构造注入的 encKey 同源。
+// 默认挂投递成功的 enqueuer，CompleteTask 专用用例走 newTSTSvcEnq 注入。
 func newTSTSvc(t *testing.T, taskRepo *fakeTSTRepo, qRepo *fakeTSTQuestionRepo, bRepo *fakeTSTBatchRepo, dimRepo *fakeDimRepo, ua *fakeUserapiClient, now func() time.Time) service.AssessmentTestTaskService {
 	t.Helper()
+	return newTSTSvcEnq(t, taskRepo, qRepo, bRepo, dimRepo, ua, &fakeGradeEnqueuer{}, now)
+}
+
+// newTSTSvcEnq 组装携带指定阅卷投递 enqueuer 的被测 service。
+func newTSTSvcEnq(t *testing.T, taskRepo *fakeTSTRepo, qRepo *fakeTSTQuestionRepo, bRepo *fakeTSTBatchRepo, dimRepo *fakeDimRepo, ua *fakeUserapiClient, enq service.TestGradeEnqueuer, now func() time.Time) service.AssessmentTestTaskService {
+	t.Helper()
 	secretRepo := &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1, SecretCipher: encryptedSecret(t, "sec")}}
-	return service.NewAssessmentTestTaskService(taskRepo, qRepo, bRepo, dimRepo, ua, secretRepo, batchEncKey, now)
+	return service.NewAssessmentTestTaskService(taskRepo, qRepo, bRepo, dimRepo, ua, secretRepo, batchEncKey, enq, now)
 }
 
 // aiMgmtEnabledDims 模拟 ListEnabledFullByDataSource(TEST) 返回：5 个启用 AI_MGMT 子能力
@@ -985,4 +1044,147 @@ func TestCreateDimensionIDNormalizes(t *testing.T) {
 	if len(codes) != 2 || codes[0] != "MGT_PLAN" || codes[1] != "MGT_DELEGATE" {
 		t.Errorf("codes = %v, want 按维度表序 [MGT_PLAN MGT_DELEGATE]", codes)
 	}
+}
+
+// tstInProgressTask 构造 in_progress 任务行（CompleteTask/StartSession 用例共享）。
+func tstInProgressTask() *domain.AssessmentTestTask {
+	return &domain.AssessmentTestTask{
+		ID: 7, TaskNo: "T202609280001", TestType: domain.TestTypeAIMgmt,
+		StaffID: "u1", StaffName: "张敏", Status: domain.TestTaskStatusInProgress,
+		GradingStatus: domain.GradingStatusWaiting, QuestionIDsJSON: "[3001]",
+	}
+}
+
+// TestServiceCompleteTaskHappy 核心断言：enqueue 成功时 CompleteTask 返回 nil，
+// repo 层任务推进 completed 且投递恰一次（specs §5.2.2 步骤1 三步+投递同事务）。
+func TestServiceCompleteTaskHappy(t *testing.T) {
+	task := tstInProgressTask()
+	taskRepo := &fakeTSTRepo{byID: task}
+	enq := &fakeGradeEnqueuer{}
+	svc := newTSTSvcEnq(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, enq, tstFixedNow)
+
+	if err := svc.CompleteTask(context.Background(), 7); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	if taskRepo.gotCompleteID != 7 {
+		t.Errorf("repo CompleteTask taskID = %d, want 7", taskRepo.gotCompleteID)
+	}
+	if taskRepo.completeStatus != domain.TestTaskStatusCompleted || task.Status != domain.TestTaskStatusCompleted {
+		t.Errorf("任务推进 = repo %q / 行 %q, want completed", taskRepo.completeStatus, task.Status)
+	}
+	if enq.calls != 1 || enq.gotTaskID != 7 {
+		t.Errorf("enqueue 投递 = calls %d taskID %d, want 1 次 taskID 7", enq.calls, enq.gotTaskID)
+	}
+}
+
+// TestServiceCompleteTaskEnqueueFail 核心断言：gradeEnqueuer 返回 error 时
+// CompleteTask 上抛该 error 且 repo 层任务未推进（specs §5.2.5 第二行：投递失败
+// 提交整体回滚，不存在提交成功但阅卷未投递的中间态）。
+func TestServiceCompleteTaskEnqueueFail(t *testing.T) {
+	task := tstInProgressTask()
+	taskRepo := &fakeTSTRepo{byID: task}
+	enq := &fakeGradeEnqueuer{err: errors.New("redis down")}
+	svc := newTSTSvcEnq(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, enq, tstFixedNow)
+
+	err := svc.CompleteTask(context.Background(), 7)
+	if err == nil || !strings.Contains(err.Error(), "redis down") {
+		t.Fatalf("err = %v, want 透传投递错误", err)
+	}
+	if taskRepo.completeStatus != "" || task.Status != domain.TestTaskStatusInProgress {
+		t.Errorf("投递失败任务被推进 = repo %q / 行 %q, want 未推进（整体回滚）", taskRepo.completeStatus, task.Status)
+	}
+}
+
+// TestServiceCompleteTaskRepoErr：repo 层错误映射：ErrTaskNotSubmittable → 1802
+//（specs 03 §5 状态不允许），仓储错误包装上抛；ErrTaskNotSubmittable 不触发投递。
+func TestServiceCompleteTaskRepoErr(t *testing.T) {
+	t.Run("哨兵映射 1802", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{completeErr: repository.ErrTaskNotSubmittable}
+		enq := &fakeGradeEnqueuer{}
+		svc := newTSTSvcEnq(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, enq, tstFixedNow)
+
+		err := svc.CompleteTask(context.Background(), 7)
+		wantServiceErr(t, err, errcode.TestTaskStatusInvalid)
+		if enq.calls != 0 {
+			t.Errorf("哨兵拦截后 enqueue calls = %d, want 0", enq.calls)
+		}
+	})
+	t.Run("仓储错误包装上抛", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{completeErr: errors.New("db down")}
+		svc := newTSTSvcEnq(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, &fakeGradeEnqueuer{}, tstFixedNow)
+
+		err := svc.CompleteTask(context.Background(), 7)
+		var serr *service.Error
+		if err == nil || errors.As(err, &serr) {
+			t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
+		}
+	})
+}
+
+// TestServiceCompleteTaskIdempotent：repo 层 completed 幂等返回 nil 路径
+// service 直通 nil（不重触投递由 repo affected=0 守卫承载，fake 注入 nil 模拟）。
+func TestServiceCompleteTaskIdempotent(t *testing.T) {
+	task := &domain.AssessmentTestTask{ID: 7, Status: domain.TestTaskStatusCompleted, GradingStatus: domain.GradingStatusGrading}
+	taskRepo := &fakeTSTRepo{byID: task} // completeErr=nil、enqueue 不被触达（fake 直接成功路径）
+	enq := &fakeGradeEnqueuer{}
+	svc := newTSTSvcEnq(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, enq, tstFixedNow)
+
+	if err := svc.CompleteTask(context.Background(), 7); err != nil {
+		t.Fatalf("重复提交应幂等 nil: %v", err)
+	}
+}
+
+// TestServiceStartSessionHappy 核心断言：pending 任务经 StartSession 推进
+// in_progress（specs §6.2 待作答→进行中，员工建立会话触发）。
+func TestServiceStartSessionHappy(t *testing.T) {
+	task := &domain.AssessmentTestTask{ID: 7, Status: domain.TestTaskStatusPending}
+	taskRepo := &fakeTSTRepo{byID: task}
+	svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+	if err := svc.StartSession(context.Background(), 7); err != nil {
+		t.Fatalf("StartSession: %v", err)
+	}
+	if taskRepo.gotStartID != 7 {
+		t.Errorf("MarkSessionStarted taskID = %d, want 7", taskRepo.gotStartID)
+	}
+	if !taskRepo.startAffected || task.Status != domain.TestTaskStatusInProgress {
+		t.Errorf("任务推进 = %q（affected=%v）, want in_progress", task.Status, taskRepo.startAffected)
+	}
+}
+
+// TestServiceStartSessionIdempotent 核心断言：in_progress 任务重复上报返回 nil
+// 且不重复改写（specs §6.2 条件更新守卫幂等）；不存在任务返 1801。
+func TestServiceStartSessionIdempotent(t *testing.T) {
+	t.Run("in_progress 重复上报", func(t *testing.T) {
+		task := tstInProgressTask()
+		taskRepo := &fakeTSTRepo{byID: task}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+		if err := svc.StartSession(context.Background(), 7); err != nil {
+			t.Fatalf("重复上报应幂等 nil: %v", err)
+		}
+		if taskRepo.startAffected {
+			t.Error("in_progress 任务不应被重复改写")
+		}
+		if task.Status != domain.TestTaskStatusInProgress {
+			t.Errorf("任务状态 = %q, want in_progress 不变", task.Status)
+		}
+	})
+	t.Run("查无 1801", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+		err := svc.StartSession(context.Background(), 999)
+		wantServiceErr(t, err, errcode.TestTaskNotFound)
+	})
+	t.Run("仓储错误包装上抛", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{byID: &domain.AssessmentTestTask{ID: 7, Status: domain.TestTaskStatusPending}, startErr: errors.New("db down")}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+		err := svc.StartSession(context.Background(), 7)
+		var serr *service.Error
+		if err == nil || errors.As(err, &serr) {
+			t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
+		}
+	})
 }

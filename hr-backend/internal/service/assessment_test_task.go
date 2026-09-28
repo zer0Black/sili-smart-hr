@@ -115,7 +115,14 @@ type TestTaskCancelDTO struct {
 	Status string `json:"status"`
 }
 
-// AssessmentTestTaskService 是主动测试域业务接口。
+// TestGradeEnqueuer 阅卷任务投递窄接口（03 §4.6 契约表）：service 不 import asynq，
+// tx 形参经本层闭包抹平为 repo 层 enqueue，装配层用 Asynq client 适配（T4）。
+type TestGradeEnqueuer interface {
+	EnqueueTestGrade(ctx context.Context, tx *gorm.DB, taskID int64) error
+}
+
+// AssessmentTestTaskService 是主动测试域业务接口。CompleteTask/StartSession 为
+// F8 提交接口与会话上报的事务内动作，无 HTTP 面（03 §1.3/§1.5）。
 type AssessmentTestTaskService interface {
 	List(ctx context.Context, f ListTestTaskFilter) ([]TestTaskListDTO, int64, error)
 	PollCounts(ctx context.Context) (*TestTaskPollCountsDTO, error)
@@ -124,6 +131,8 @@ type AssessmentTestTaskService interface {
 	Link(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error)
 	Resend(ctx context.Context, taskID int64) (*TestTaskLinkDTO, error)
 	Cancel(ctx context.Context, taskID int64) (*TestTaskCancelDTO, error)
+	CompleteTask(ctx context.Context, taskID int64) error
+	StartSession(ctx context.Context, taskID int64) error
 }
 
 type assessmentTestTaskService struct {
@@ -134,6 +143,7 @@ type assessmentTestTaskService struct {
 	staffs     userapiClient
 	secretRepo repository.IntegrationSecretRepository
 	encKey     []byte
+	gradeEnqueuer TestGradeEnqueuer
 	now        func() time.Time
 }
 
@@ -147,6 +157,7 @@ func NewAssessmentTestTaskService(
 	staffs userapiClient,
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
+	gradeEnqueuer TestGradeEnqueuer,
 	now func() time.Time,
 ) AssessmentTestTaskService {
 	return &assessmentTestTaskService{
@@ -157,6 +168,7 @@ func NewAssessmentTestTaskService(
 		staffs:       staffs,
 		secretRepo:   secretRepo,
 		encKey:       encKey,
+		gradeEnqueuer: gradeEnqueuer,
 		now:          now,
 	}
 }
@@ -493,6 +505,35 @@ func (s *assessmentTestTaskService) Cancel(ctx context.Context, taskID int64) (*
 		return nil, NewError(errcode.TestTaskStatusInvalid)
 	}
 	return &TestTaskCancelDTO{TaskID: task.ID, Status: domain.TestTaskStatusCanceled}, nil
+}
+
+// CompleteTask 员工作答提交的事务内推进（specs §5.2.2 步骤1、03 §4.6）：组装
+// enqueue 闭包抹平 tx 形参后交 repo 单事务收口（三步推进 + 投递，报错整体回滚）；
+// repo 哨兵 ErrTaskNotSubmittable 映射 1802，completed 幂等路径 repo 已返回 nil。
+func (s *assessmentTestTaskService) CompleteTask(ctx context.Context, taskID int64) error {
+	enqueue := func(tx *gorm.DB) error {
+		return s.gradeEnqueuer.EnqueueTestGrade(ctx, tx, taskID)
+	}
+	if err := s.taskRepo.CompleteTask(ctx, taskID, enqueue, s.now()); err != nil {
+		if errors.Is(err, repository.ErrTaskNotSubmittable) {
+			return NewError(errcode.TestTaskStatusInvalid)
+		}
+		return fmt.Errorf("complete test task: %w", err)
+	}
+	return nil
+}
+
+// StartSession F8 会话上报：pending→in_progress 条件更新直通（specs §6.2），
+// 任务不存在 1801；幂等由 repo 守卫承载（affected=0 且任务存在即已在
+// in_progress/completed，返回 nil 不重复改写）。
+func (s *assessmentTestTaskService) StartSession(ctx context.Context, taskID int64) error {
+	if _, err := s.loadTask(ctx, taskID); err != nil {
+		return err
+	}
+	if err := s.taskRepo.MarkSessionStarted(ctx, taskID); err != nil {
+		return fmt.Errorf("mark session started: %w", err)
+	}
+	return nil
 }
 
 // loadTask 点查任务，nil 行映射 1801。

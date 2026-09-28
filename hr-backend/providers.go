@@ -390,8 +390,9 @@ func NewAssessmentBatchServiceAdapter(
 }
 
 // NewAssessmentTestTaskServiceAdapter 是 Wire 装配适配器：接收 NowFunc 命名类型，
-// 内部转裸 func 调 service.NewAssessmentTestTaskService（八参，userapiClient 经
+// 内部转裸 func 调 service.NewAssessmentTestTaskService（九参，userapiClient 经
 // service.ProvideUserapiClient 绑定，NewAssessmentBatchServiceAdapter 同款）。
+// gradeEnqueuer 暂传 nil 占位（CompleteTask 投递依赖 T4 接 AsynqTestGradeEnqueuer）。
 func NewAssessmentTestTaskServiceAdapter(
 	taskRepo repository.AssessmentTestTaskRepository,
 	questionRepo repository.QuestionRepository,
@@ -403,7 +404,7 @@ func NewAssessmentTestTaskServiceAdapter(
 	now NowFunc,
 ) service.AssessmentTestTaskService {
 	return service.NewAssessmentTestTaskService(taskRepo, questionRepo, batchRepo, dimRepo,
-		service.ProvideUserapiClient(staffs), secretRepo, encKey,
+		service.ProvideUserapiClient(staffs), secretRepo, encKey, nil,
 		(func() time.Time)(now))
 }
 
