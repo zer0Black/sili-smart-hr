@@ -17,6 +17,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// ErrTaskNotSubmittable 提交守卫拒绝：任务非 pending/in_progress（已 completed 幂等
+// 路径除外）、不存在或已终态，CompleteTask 条件更新 affected=0 时返回。
+var ErrTaskNotSubmittable = errors.New("assessment test task not submittable")
+
 // TestTaskFilter 任务列表筛选条件：TestType 必填（tab 即类型），Status/Keyword 空跳过。
 type TestTaskFilter struct {
 	TestType  string
@@ -63,6 +67,16 @@ type AssessmentTestTaskRepository interface {
 	// ExpirePending 扫描 pending 且当前 valid 链接 expires_at < now 的任务批量推进
 	// expired + 链接 invalid，条件更新守卫幂等，返回推进条数（specs §5.3.2/§5.3.4）。
 	ExpirePending(ctx context.Context, now time.Time) (int64, error)
+	// CompleteTask 提交事务三步 + enqueue 同事务（specs §5.2.2 步骤1）：任务条件更新
+	//（pending/in_progress）置 completed + completed_at → 当前 valid 链接置 used +
+	// used_at → grading_status waiting→grading → enqueue(tx) 投递阅卷，报错整体回滚
+	//（不存在提交成功但阅卷未投递的中间态，specs §5.2.5）。已 completed/canceled/
+	// expired 或不存在时 affected=0：completed 幂等返回 nil（不重触 enqueue），其余返
+	// ErrTaskNotSubmittable。pending 直达 completed 为 03 §1.6 声明的防御性放行。
+	CompleteTask(ctx context.Context, taskID int64, enqueue func(tx *gorm.DB) error, now time.Time) error
+	// MarkGradingTerminal grading→scored/degraded 条件更新（specs §6.2 阅卷状态机），
+	// WHERE grading_status='grading' 守卫：已终态/在途前幂等返回 nil，不回退已终态。
+	MarkGradingTerminal(ctx context.Context, taskID int64, gradingStatus string) error
 }
 
 type assessmentTestTaskRepository struct {
@@ -326,4 +340,69 @@ func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now ti
 		}
 	}
 	return advanced, nil
+}
+
+// CompleteTask 四步同事务（specs §5.2.2 步骤1、§5.2.5）：提交三步（任务 completed、
+// 链接 used、阅卷轴 waiting→grading）+ enqueue 在事务闭包内投递，报错整体回滚，
+// 不存在提交成功但阅卷未投递的中间态。affected=0 时重读任务区分幂等与状态错：
+// completed 幂等返回 nil（不重触 enqueue、used_at 不被改写）；canceled/expired/
+// 不存在返回 ErrTaskNotSubmittable。map Updates 不触发 autoUpdateTime，updated_at
+// 显式随 now 写入。
+func (r *assessmentTestTaskRepository) CompleteTask(ctx context.Context, taskID int64, enqueue func(tx *gorm.DB) error, now time.Time) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&domain.AssessmentTestTask{}).
+			Where("id = ? AND status IN ?", taskID, []string{
+				domain.TestTaskStatusPending,
+				domain.TestTaskStatusInProgress,
+			}).
+			Updates(map[string]any{
+				"status":       domain.TestTaskStatusCompleted,
+				"completed_at": now,
+				"updated_at":   now,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			var status string
+			if err := tx.Model(&domain.AssessmentTestTask{}).Where("id = ?", taskID).
+				Pluck("status", &status).Error; err != nil {
+				return err
+			}
+			if status == domain.TestTaskStatusCompleted {
+				return nil // 重复提交幂等（specs §5.2.4 规则1 风格）
+			}
+			return ErrTaskNotSubmittable
+		}
+		if err := tx.Model(&domain.AssessmentTestLink{}).
+			Where("task_id = ? AND status = ?", taskID, domain.LinkStatusValid).
+			Updates(map[string]any{
+				"status":     domain.LinkStatusUsed,
+				"used_at":    now,
+				"updated_at": now,
+			}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&domain.AssessmentTestTask{}).
+			Where("id = ? AND grading_status = ?", taskID, domain.GradingStatusWaiting).
+			Updates(map[string]any{
+				"grading_status": domain.GradingStatusGrading,
+				"updated_at":     now,
+			}).Error; err != nil {
+			return err
+		}
+		return enqueue(tx)
+	})
+}
+
+// MarkGradingTerminal WHERE grading_status='grading' 条件更新（specs §6.2 阅卷状态机
+// 单向：scored/degraded 终态无出边，非 grading 前置态 affected=0 幂等返回 nil，
+// 终态不被改写）。
+func (r *assessmentTestTaskRepository) MarkGradingTerminal(ctx context.Context, taskID int64, gradingStatus string) error {
+	return r.db.WithContext(ctx).Model(&domain.AssessmentTestTask{}).
+		Where("id = ? AND grading_status = ?", taskID, domain.GradingStatusGrading).
+		Updates(map[string]any{
+			"grading_status": gradingStatus,
+			"updated_at":     utcNow(),
+		}).Error
 }

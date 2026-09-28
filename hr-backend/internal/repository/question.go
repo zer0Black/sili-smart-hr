@@ -33,6 +33,10 @@ type QuestionRepository interface {
 	// ListActiveByScaleKey 主动测试九型取题：source=SCALE AND status=ACTIVE AND scale_key=?，
 	// question_no ASC（specs TST §4.2.4 规则2 固定量表全量）。
 	ListActiveByScaleKey(ctx context.Context, scaleKey string) ([]domain.Question, error)
+	// ListByIDsUnscoped 按 ID 现读题目全文（阅卷题目上下文，specs TST §5.2.2 步骤2）：
+	// Unscoped 含软删行（快照与题库删除隔离），question_no ASC，状态与来源不过滤
+	//（快照只认 question_ids_json 的 ID 集合）。空 ID 集返回空切片。
+	ListByIDsUnscoped(ctx context.Context, ids []int64) ([]domain.Question, error)
 	// IncrementReferenceCounts 题目引用计数 +1：在传入 tx 通道执行
 	// UPDATE questions SET reference_count = reference_count + 1 WHERE id IN (?)
 	//（specs TST §5.1.2 步骤4，与任务创建同事务；tx 为 nil 则走自身 db 通道）。
@@ -162,6 +166,21 @@ func (r *questionRepository) ListActiveByScaleKey(ctx context.Context, scaleKey 
 	var list []domain.Question
 	if err := r.db.WithContext(ctx).
 		Where("source = ? AND status = ? AND scale_key = ?", domain.QuestionSourceScale, domain.QuestionStatusActive, scaleKey).
+		Order("question_no ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// ListByIDsUnscoped 空 ID 集直接返回空切片，避免空 IN () 语义漂移。
+func (r *questionRepository) ListByIDsUnscoped(ctx context.Context, ids []int64) ([]domain.Question, error) {
+	if len(ids) == 0 {
+		return []domain.Question{}, nil
+	}
+	var list []domain.Question
+	if err := r.db.WithContext(ctx).Unscoped().
+		Where("id IN ?", ids).
 		Order("question_no ASC").
 		Find(&list).Error; err != nil {
 		return nil, err

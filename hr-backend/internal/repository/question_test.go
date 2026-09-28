@@ -676,3 +676,58 @@ func TestIncrementReferenceCounts_EmptyIDs(t *testing.T) {
 		t.Fatalf("nil ids want no error, got %v", err)
 	}
 }
+
+// TestListByIDsUnscoped 按 ID 现读题目（阅卷题目上下文，specs TST §5.2.2 步骤2）：
+// 软删行仍返回（快照与题库启停/删除隔离，Unscoped），question_no ASC 排序，
+// 状态与来源不过滤（快照只认 ID 集合）。
+func TestListByIDsUnscoped(t *testing.T) {
+	db := newQuestionTestDB(t)
+	q2 := seedAI(t, db, "Q-AG-0002", domain.QuestionStatusActive, "情境二", 101)
+	softDeleted := seedAI(t, db, "Q-AG-0003", domain.QuestionStatusActive, "情境三", 101)
+	q1 := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+	seedAI(t, db, "Q-AG-0004", domain.QuestionStatusActive, "情境四", 101) // 未传入不返回
+	disabled := seedAI(t, db, "Q-AG-0005", domain.QuestionStatusDisabled, "情境五", 101)
+	if err := db.Delete(&softDeleted).Error; err != nil {
+		t.Fatalf("seed delete: %v", err)
+	}
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListByIDsUnscoped(context.Background(), []int64{q2.ID, softDeleted.ID, q1.ID, disabled.ID})
+	if err != nil {
+		t.Fatalf("ListByIDsUnscoped: %v", err)
+	}
+	if len(list) != 4 {
+		t.Fatalf("want 4 rows (incl soft-deleted + disabled), got %d", len(list))
+	}
+	wantOrder := []int64{q1.ID, q2.ID, softDeleted.ID, disabled.ID} // question_no ASC
+	for i, q := range list {
+		if q.ID != wantOrder[i] {
+			t.Fatalf("row %d want %d (question_no ASC), got %d", i, wantOrder[i], q.ID)
+		}
+	}
+	var softDeletedSeen bool
+	for _, q := range list {
+		if q.ID == softDeleted.ID {
+			softDeletedSeen = true
+		}
+	}
+	if !softDeletedSeen {
+		t.Fatal("soft-deleted question must be returned by ListByIDsUnscoped")
+	}
+}
+
+// TestListByIDsUnscoped_EmptyAndMissing 空 ID 集返回空切片；含不存在 ID 不报错只少行。
+func TestListByIDsUnscoped_EmptyAndMissing(t *testing.T) {
+	db := newQuestionTestDB(t)
+	q := seedAI(t, db, "Q-AG-0001", domain.QuestionStatusActive, "情境一", 101)
+
+	repo := repository.NewQuestionRepository(db)
+	list, err := repo.ListByIDsUnscoped(context.Background(), nil)
+	if err != nil || len(list) != 0 {
+		t.Fatalf("nil ids: list=%v err=%v, want empty", list, err)
+	}
+	list, err = repo.ListByIDsUnscoped(context.Background(), []int64{q.ID, 999999})
+	if err != nil || len(list) != 1 || list[0].ID != q.ID {
+		t.Fatalf("with missing id: list=%v err=%v, want only existing row", list, err)
+	}
+}

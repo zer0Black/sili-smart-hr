@@ -124,6 +124,12 @@ func (f *fakeTSTRepo) CountActiveByType(_ context.Context) (int64, int64, error)
 func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) (int64, error) {
 	return 0, nil
 }
+func (f *fakeTSTRepo) CompleteTask(_ context.Context, _ int64, _ func(*gorm.DB) error, _ time.Time) error {
+	return nil
+}
+func (f *fakeTSTRepo) MarkGradingTerminal(_ context.Context, _ int64, _ string) error {
+	return nil
+}
 
 var _ repository.AssessmentTestTaskRepository = (*fakeTSTRepo)(nil)
 
@@ -171,6 +177,9 @@ func (f *fakeTSTQuestionRepo) ListActiveByScaleKey(_ context.Context, scaleKey s
 		return nil, f.byScaleErr
 	}
 	return f.byScale, nil
+}
+func (f *fakeTSTQuestionRepo) ListByIDsUnscoped(_ context.Context, _ []int64) ([]domain.Question, error) {
+	return nil, nil
 }
 func (f *fakeTSTQuestionRepo) IncrementReferenceCounts(_ context.Context, _ *gorm.DB, _ []int64) error {
 	return nil

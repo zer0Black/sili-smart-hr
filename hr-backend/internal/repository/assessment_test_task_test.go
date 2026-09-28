@@ -791,3 +791,230 @@ func TestListByFilterNoLink(t *testing.T) {
 		t.Fatalf("no link: total=%d list=%v err=%v", total, list, err)
 	}
 }
+
+// --- CompleteTask / MarkGradingTerminal ---
+
+// loadResultRow 直读判型结果行（本文件不建 result 表，仅用 task/link/question 三表，
+// result 侧行为由 assessment_test_result_test.go 覆盖）。
+
+// TestCompleteTaskTransactional enqueue 报错整体回滚（任务仍 pending、链接仍 valid、
+// grading_status 仍 waiting）；enqueue 成功时任务 completed+completed_at、链接 used+
+// used_at、grading_status=grading（BR1 §5.2.2 步骤1、BR2 §5.2.5 投递失败即提交失败）。
+func TestCompleteTaskTransactional(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+
+	// 回滚分支：enqueue 注入报错。
+	failTask, failLink := mustCreate(t, repo, "T202609280001", []domain.Question{q})
+	submittedAt := tUTC(2026, 9, 28, 12, 0)
+	calls := 0
+	err := repo.CompleteTask(ctx, failTask.ID, func(tx *gorm.DB) error {
+		calls++
+		return errors.New("inject: enqueue failed")
+	}, submittedAt)
+	if err == nil {
+		t.Fatal("enqueue failure must propagate")
+	}
+	got := loadTask(t, db, failTask.ID)
+	if got.Status != domain.TestTaskStatusPending || got.CompletedAt != nil ||
+		got.GradingStatus != domain.GradingStatusWaiting {
+		t.Fatalf("rollback: task = %s/%v/%s, want pending/nil/waiting",
+			got.Status, got.CompletedAt, got.GradingStatus)
+	}
+	gotLink := loadLink(t, db, failLink.ID)
+	if gotLink.Status != domain.LinkStatusValid || gotLink.UsedAt != nil {
+		t.Fatalf("rollback: link = %s/%v, want valid/nil", gotLink.Status, gotLink.UsedAt)
+	}
+
+	// 成功分支：pending 直达 completed（03 §1.6 防御性放行）。
+	okTask, okLink := mustCreate(t, repo, "T202609280002", []domain.Question{q})
+	calls = 0
+	if err := repo.CompleteTask(ctx, okTask.ID, func(tx *gorm.DB) error {
+		calls++
+		return nil
+	}, submittedAt); err != nil {
+		t.Fatalf("CompleteTask success: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("enqueue calls = %d, want 1", calls)
+	}
+	got = loadTask(t, db, okTask.ID)
+	if got.Status != domain.TestTaskStatusCompleted {
+		t.Fatalf("success: status = %s, want completed", got.Status)
+	}
+	if got.CompletedAt == nil || !got.CompletedAt.Equal(submittedAt) {
+		t.Fatalf("success: completed_at = %v, want %v", got.CompletedAt, submittedAt)
+	}
+	if got.GradingStatus != domain.GradingStatusGrading {
+		t.Fatalf("success: grading_status = %s, want grading", got.GradingStatus)
+	}
+	gotLink = loadLink(t, db, okLink.ID)
+	if gotLink.Status != domain.LinkStatusUsed {
+		t.Fatalf("success: link = %s, want used", gotLink.Status)
+	}
+	if gotLink.UsedAt == nil || !gotLink.UsedAt.Equal(submittedAt) {
+		t.Fatalf("success: used_at = %v, want %v", gotLink.UsedAt, submittedAt)
+	}
+}
+
+// TestCompleteTaskInProgress in_progress 正常链路同样闭合（§6.2 进行中→已完成）。
+func TestCompleteTaskInProgress(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+	task, link := mustCreate(t, repo, "T202609280001", []domain.Question{q})
+	if err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
+		t.Fatalf("MarkSessionStarted: %v", err)
+	}
+	submittedAt := tUTC(2026, 9, 28, 12, 30)
+	if err := repo.CompleteTask(ctx, task.ID, func(tx *gorm.DB) error { return nil }, submittedAt); err != nil {
+		t.Fatalf("CompleteTask in_progress: %v", err)
+	}
+	got := loadTask(t, db, task.ID)
+	if got.Status != domain.TestTaskStatusCompleted || got.GradingStatus != domain.GradingStatusGrading {
+		t.Fatalf("task = %s/%s, want completed/grading", got.Status, got.GradingStatus)
+	}
+	if gotLink := loadLink(t, db, link.ID); gotLink.Status != domain.LinkStatusUsed {
+		t.Fatalf("link = %s, want used", gotLink.Status)
+	}
+}
+
+// TestCompleteTaskIdempotent completed 任务再次 CompleteTask 不触发 enqueue、
+// 链接 used_at 不被二次改写；canceled 任务报状态错（BR4 §6.2 链接转换、§6.1 终态无出边）。
+func TestCompleteTaskIdempotent(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+	submittedAt := tUTC(2026, 9, 28, 12, 0)
+
+	task, link := mustCreate(t, repo, "T202609280001", []domain.Question{q})
+	if err := repo.CompleteTask(ctx, task.ID, func(tx *gorm.DB) error { return nil }, submittedAt); err != nil {
+		t.Fatalf("first CompleteTask: %v", err)
+	}
+	firstUsedAt := loadLink(t, db, link.ID).UsedAt
+	if firstUsedAt == nil {
+		t.Fatal("first used_at must be set")
+	}
+
+	calls := 0
+	if err := repo.CompleteTask(ctx, task.ID, func(tx *gorm.DB) error {
+		calls++
+		return nil
+	}, submittedAt.Add(time.Hour)); err != nil {
+		t.Fatalf("replay CompleteTask: %v", err)
+	}
+	if calls != 0 {
+		t.Fatalf("replay enqueue calls = %d, want 0", calls)
+	}
+	if got := loadTask(t, db, task.ID); got.CompletedAt == nil || !got.CompletedAt.Equal(submittedAt) {
+		t.Fatalf("replay rewrote completed_at: %v, want %v", got.CompletedAt, submittedAt)
+	}
+	if got := loadLink(t, db, link.ID); got.UsedAt == nil || !got.UsedAt.Equal(*firstUsedAt) {
+		t.Fatalf("replay rewrote used_at: %v, want %v", got.UsedAt, firstUsedAt)
+	}
+
+	// canceled 任务：提交守卫拒绝，报状态错误。
+	canceled, _ := mustCreate(t, repo, "T202609280002", []domain.Question{q})
+	if _, err := repo.CancelTask(ctx, canceled.ID); err != nil {
+		t.Fatalf("CancelTask: %v", err)
+	}
+	calls = 0
+	err := repo.CompleteTask(ctx, canceled.ID, func(tx *gorm.DB) error {
+		calls++
+		return nil
+	}, submittedAt)
+	if !errors.Is(err, repository.ErrTaskNotSubmittable) {
+		t.Fatalf("canceled CompleteTask err = %v, want ErrTaskNotSubmittable", err)
+	}
+	if calls != 0 {
+		t.Fatalf("canceled enqueue calls = %d, want 0", calls)
+	}
+}
+
+// TestCompleteTaskExpiredGuard expired 任务提交：守卫拒绝报状态错（§6.2 expired
+// 仅重发回 pending 或取消，无完成边）。
+func TestCompleteTaskExpiredGuard(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+	task, _ := mustCreate(t, repo, "T202609280001", []domain.Question{q})
+	db.Model(&domain.AssessmentTestTask{}).Where("id = ?", task.ID).
+		Update("status", domain.TestTaskStatusExpired)
+
+	if err := repo.CompleteTask(ctx, task.ID, func(tx *gorm.DB) error { return nil }, tUTC(2026, 9, 28, 12, 0)); !errors.Is(err, repository.ErrTaskNotSubmittable) {
+		t.Fatalf("expired CompleteTask err = %v, want ErrTaskNotSubmittable", err)
+	}
+	if got := loadTask(t, db, task.ID); got.Status != domain.TestTaskStatusExpired {
+		t.Fatalf("expired task mutated: %s", got.Status)
+	}
+}
+
+// TestCompleteTaskMissingTask 不存在任务：affected=0 同样报状态错。
+func TestCompleteTaskMissingTask(t *testing.T) {
+	_, repo := newTestTaskRepo(t)
+	err := repo.CompleteTask(context.Background(), 12345, func(tx *gorm.DB) error { return nil }, tUTC(2026, 9, 28, 12, 0))
+	if !errors.Is(err, repository.ErrTaskNotSubmittable) {
+		t.Fatalf("missing task err = %v, want ErrTaskNotSubmittable", err)
+	}
+}
+
+// TestMarkGradingTerminal grading→scored 条件更新，非 grading 前置态幂等跳过，
+// grading_status 不回退（§6.2 阅卷状态机单向；BR5 §5.2.4 规则4 取消任务在途
+// 阅卷照常收敛）。
+func TestMarkGradingTerminal(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+	submittedAt := tUTC(2026, 9, 28, 12, 0)
+
+	// 正常链路：提交进 grading 后置 scored。
+	task, _ := mustCreate(t, repo, "T202609280001", []domain.Question{q})
+	if err := repo.CompleteTask(ctx, task.ID, func(tx *gorm.DB) error { return nil }, submittedAt); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	if err := repo.MarkGradingTerminal(ctx, task.ID, domain.GradingStatusScored); err != nil {
+		t.Fatalf("MarkGradingTerminal scored: %v", err)
+	}
+	if got := loadTask(t, db, task.ID); got.GradingStatus != domain.GradingStatusScored {
+		t.Fatalf("grading_status = %s, want scored", got.GradingStatus)
+	}
+
+	// 幂等：已 scored 再置 scored/degraded 不改写。
+	if err := repo.MarkGradingTerminal(ctx, task.ID, domain.GradingStatusScored); err != nil {
+		t.Fatalf("replay scored: %v", err)
+	}
+	if err := repo.MarkGradingTerminal(ctx, task.ID, domain.GradingStatusDegraded); err != nil {
+		t.Fatalf("degraded after scored: %v", err)
+	}
+	if got := loadTask(t, db, task.ID); got.GradingStatus != domain.GradingStatusScored {
+		t.Fatalf("terminal grading_status rewrote: %s, want scored", got.GradingStatus)
+	}
+
+	// waiting 前置态（作答未提交的取消任务停留 waiting，§5.2.4 规则4）：不推进。
+	waiting, _ := mustCreate(t, repo, "T202609280002", []domain.Question{q})
+	if _, err := repo.CancelTask(ctx, waiting.ID); err != nil {
+		t.Fatalf("CancelTask: %v", err)
+	}
+	if err := repo.MarkGradingTerminal(ctx, waiting.ID, domain.GradingStatusScored); err != nil {
+		t.Fatalf("MarkGradingTerminal on waiting: %v", err)
+	}
+	if got := loadTask(t, db, waiting.ID); got.GradingStatus != domain.GradingStatusWaiting {
+		t.Fatalf("waiting grading_status mutated: %s", got.GradingStatus)
+	}
+
+	// 取消任务在途阅卷照常收敛：canceled+grading → scored（BR5）。
+	inFlight, _ := mustCreate(t, repo, "T202609280003", []domain.Question{q})
+	if err := repo.CompleteTask(ctx, inFlight.ID, func(tx *gorm.DB) error { return nil }, submittedAt); err != nil {
+		t.Fatalf("CompleteTask inFlight: %v", err)
+	}
+	if _, err := repo.CancelTask(ctx, inFlight.ID); err != nil {
+		t.Fatalf("CancelTask inFlight: %v", err)
+	}
+	if err := repo.MarkGradingTerminal(ctx, inFlight.ID, domain.GradingStatusScored); err != nil {
+		t.Fatalf("MarkGradingTerminal canceled in-flight: %v", err)
+	}
+	if got := loadTask(t, db, inFlight.ID); got.GradingStatus != domain.GradingStatusScored {
+		t.Fatalf("canceled in-flight grading_status = %s, want scored", got.GradingStatus)
+	}
+}

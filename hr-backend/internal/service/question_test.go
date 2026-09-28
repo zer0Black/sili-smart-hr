@@ -81,6 +81,10 @@ func (r *qFakeRepo) ListActiveByScaleKey(_ context.Context, _ string) ([]domain.
 	return nil, nil
 }
 
+func (r *qFakeRepo) ListByIDsUnscoped(_ context.Context, _ []int64) ([]domain.Question, error) {
+	return nil, nil
+}
+
 func (r *qFakeRepo) IncrementReferenceCounts(_ context.Context, _ *gorm.DB, _ []int64) error {
 	return nil
 }
