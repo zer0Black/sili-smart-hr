@@ -107,7 +107,100 @@
         "recorded_at": "2026-09-28T14:39:44Z"
       },
       "review_failures": 0
+    },
+    "02": {
+      "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+      "plan_digest": "1099f1392c72310836d7103f1c80c98361fe8038c979c43b66633291a42a2d18",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T1",
+          "status": "verified",
+          "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+          "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+          "verification": {
+            "path": "execution-evidence/02-T1-f5cbb82.md",
+            "digest": "6eb1617a8036ac725c8d8145989c6b02a7754d259ddc593c7cb91e197007de99",
+            "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+            "recorded_at": "2026-09-28T15:31:32Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T2",
+          "status": "verified",
+          "base_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+          "head_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+          "verification": {
+            "path": "execution-evidence/02-T2-e5a6d9c.md",
+            "digest": "5983ae50403872afe209d67462d59c82c5f7f6de9fe8dc3598abd8aecb35e00e",
+            "head_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+            "recorded_at": "2026-09-28T15:31:53Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T3",
+          "status": "verified",
+          "base_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+          "head_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+          "verification": {
+            "path": "execution-evidence/02-T3-9fbe1b2.md",
+            "digest": "d21a304b37028b6d6f6d28c6db292f71fc05fde5d14f5ef32682dfedcd5f988b",
+            "head_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+            "recorded_at": "2026-09-28T15:43:23Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T4",
+          "status": "verified",
+          "base_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+          "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+          "verification": {
+            "path": "execution-evidence/02-T4-d9dbd30.md",
+            "digest": "58432dae1174dd5f244b90d4033ec84dcd63edebf1383379c6f9529cb475402f",
+            "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+            "recorded_at": "2026-09-28T16:08:41Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": null,
+      "review_failures": 0,
+      "plan_changes": [
+        {
+          "reason": "控制器按 specs 裁决回改 02-T2 容差锚点（98.5 拒绝改为 97.9/102.1 拒绝、98/98.5/102 接受），普通锚点修正不影响任务骨架",
+          "recorded_at": "2026-09-28T15:30:58Z",
+          "previous": {
+            "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+            "plan_digest": "b3ad9ac430043cbc1b6f383de5844e9b9472e1ffd7f375df38ead3789ba51307",
+            "tasks": {
+              "T1": {
+                "key": "P2_TST_001_FEAT_主动测试评估运营/02/T1",
+                "status": "verified",
+                "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+                "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                "verification": {
+                  "path": "execution-evidence/02-T1-f5cbb82.md",
+                  "digest": "6eb1617a8036ac725c8d8145989c6b02a7754d259ddc593c7cb91e197007de99",
+                  "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                  "recorded_at": "2026-09-28T14:51:39Z",
+                  "deferred_reason": null
+                }
+              },
+              "T2": {
+                "key": "P2_TST_001_FEAT_主动测试评估运营/02/T2",
+                "status": "started",
+                "base_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                "head_sha": null
+              }
+            },
+            "review": null,
+            "review_failures": 0
+          }
+        }
+      ]
     }
   },
-  "updated_at": "2026-09-28T14:39:44Z"
+  "updated_at": "2026-09-28T16:08:41Z"
 }
