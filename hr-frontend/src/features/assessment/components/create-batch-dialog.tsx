@@ -1,6 +1,7 @@
-// 发起评测弹窗（specs §4.2）：三类型卡片 + 评估对象多选 + 评估时段 + 提交/取消闭环。
-// 首期仅对话分析可选，另两类型置灰点击 toast 提示后续开放（BR1 §4.2.2）。
-// 取消二次确认仅在评估对象非空时触发；提交进行中禁止关闭（BR4 §4.2.3）。
+// 发起评测弹窗（specs §4.2 / P2_TST_001 §4.2.2-§4.2.5）：三类型卡片可选 + 三分支表单。
+// conversation 保持 F6 批次表单；ai_mgmt/enneagram 为主动测试单人定向发起（决策 12）。
+// 类型选择会话级记忆（模块级变量，刷新回 conversation，P2_TST_001 §4.2.2 A）。
+// 取消二次确认在测评对象非空时触发（三分支同口径）；提交进行中禁止关闭（§4.2.3）。
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -34,7 +35,10 @@ import {
   StaffMultiSelect,
   type StaffSelectValue,
 } from '@/features/assessment/components/staff-multi-select';
+import { StaffSingleSelect } from '@/features/assessment/components/staff-single-select';
 import { useBatchPlan, useCreateBatch } from '@/features/assessment/hooks';
+import { useCreateTestTask, useScaleStatus } from '@/features/assessment/test-task-hooks';
+import { useEnabledAiMgmtDimensions } from '@/features/question-bank/dimension-options';
 import { previousPeriodRange } from '@/features/assessment/period-default';
 import { ErrCode } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
@@ -49,12 +53,17 @@ export interface CreateBatchPreset {
   period: { start: string; end: string };
 }
 
+/** 弹窗可选评测类型：conversation=对话分析（F6 批次），另两类为主动测试。 */
+export type DialogTestType = 'conversation' | 'ai_mgmt' | 'enneagram';
+
 export interface CreateBatchDialogProps {
   open: boolean;
   preset: CreateBatchPreset | null;
   onClose: () => void;
   /** 提交成功回调：页面侧负责重置筛选回第一页（§4.2.3 提交）。 */
   onSubmitted: () => void;
+  /** 提交成功回调（携类型）：页面切到对应 tab 并重置该 tab 查询（P2_TST_001 §4.2.3）。 */
+  onSubmittedType?: (type: DialogTestType) => void;
 }
 
 interface FormValues {
@@ -63,22 +72,45 @@ interface FormValues {
   periodEnd: string;
 }
 
+/** 主动测试分支表单：单人对象 + 子能力集合（enneagram 不消费）。 */
+interface TestFormValues {
+  staff: { staff_id: string; staff_name: string } | null;
+  dimensionIds: string[];
+}
+
+// 会话级记忆（P2_TST_001 §4.2.2 A 默认值列）：模块级内存变量，同标签页弹窗重开保持
+// 上次选择，刷新即重置回 conversation。
+let lastTestType: DialogTestType = 'conversation';
+
+/** 测试钩子：重置会话记忆到初始 conversation 态。 */
+export function resetDialogTypeMemory(): void {
+  lastTestType = 'conversation';
+}
+
 export function CreateBatchDialog({
   open,
   preset,
   onClose,
   onSubmitted,
+  onSubmittedType,
 }: CreateBatchDialogProps): JSX.Element {
   const { t } = useTranslation('assessment');
   const planQ = useBatchPlan();
   const createMut = useCreateBatch();
+  const createTestMut = useCreateTestTask();
+  const dims = useEnabledAiMgmtDimensions();
+  const scaleQ = useScaleStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // 打开时从会话记忆初始化；关闭后再开保持 lastTestType（会话语义在模块级变量）
+  const [activeType, setActiveType] = useState<DialogTestType>(lastTestType);
   // 昨天快照：渲染期直取（fake timer 友好），schema refine 用校验时点值
   const yesterday = dayjs().subtract(1, 'day').format('YYYY-MM-DD');
   // 焦点落评估对象触发框（§4.2.5）
   const targetAnchorRef = useRef<HTMLDivElement>(null);
   // 本轮 open 是否已回填：plan 晚到不重置用户已改的表单
   const filledRef = useRef(false);
+
+  const isTest = activeType !== 'conversation';
 
   const schema = useMemo(
     () =>
@@ -122,6 +154,71 @@ export function CreateBatchDialog({
     formState: { errors },
   } = form;
 
+  // 子能力至少一项校验仅 ai_mgmt 适用（specs §4.2.2 B：九型表单无子能力字段）
+  const testSchema = useMemo(
+    () =>
+      z.object({
+        staff: z
+          .object({ staff_id: z.string(), staff_name: z.string() })
+          .nullable()
+          .refine((v) => v !== null, { message: t('create.singleTargetRequired') }),
+        dimensionIds:
+          activeType === 'ai_mgmt'
+            ? z.array(z.string()).refine((v) => v.length > 0, {
+                message: t('create.dimsRequired'),
+              })
+            : z.array(z.string()),
+      }),
+    [t, activeType],
+  );
+
+  const testForm = useForm<TestFormValues>({
+    resolver: zodResolver(testSchema),
+    defaultValues: { staff: null, dimensionIds: [] },
+  });
+  const {
+    control: testControl,
+    handleSubmit: testHandleSubmit,
+    reset: testReset,
+    setValue,
+    getValues: testGetValues,
+    formState: { errors: testErrors },
+  } = testForm;
+
+  // 维度启用集合到达时按「全选启用项」对齐默认值（§4.2.2 A 默认全选；用户已手动
+  // 改动过则保留用户选择）。切换分支重开表单时同样走这里初始化。
+  const dimsTouchedRef = useRef(false);
+  useEffect(() => {
+    if (activeType !== 'ai_mgmt') {
+      dimsTouchedRef.current = false;
+      return;
+    }
+    if (dimsTouchedRef.current) return;
+    const current = testGetValues().dimensionIds;
+    // 初始化或维度集合变化且用户未改动时同步全选
+    const allIds = dims.map((d) => d.id);
+    if (current.length === 0 || current.every((id) => allIds.includes(id))) {
+      if (current.length !== allIds.length) {
+        setValue('dimensionIds', allIds, { shouldDirty: false });
+      }
+    }
+  }, [activeType, dims, setValue, testGetValues]);
+
+  // 类型切换：表单区整体切换，已填内容丢弃（P2_TST_001 §4.2.5）
+  function switchType(next: DialogTestType) {
+    if (next === activeType) return;
+    setActiveType(next);
+    lastTestType = next;
+    testReset({ staff: null, dimensionIds: [] });
+    dimsTouchedRef.current = false;
+    reset({
+      target: { mode: 'specified', staffs: [] },
+      periodStart: '',
+      periodEnd: '',
+    });
+    filledRef.current = true; // 切换后用户改动优先，不再被 plan 回填覆盖
+  }
+
   // 打开时回填（每次 open 只执行一次，filledRef 防重入）：preset 覆盖人员与时段；
   // 否则默认上一完整周期窗口（周期取 plan，BR2）。plan 未就绪等待数据到达后回填
   //（防 daily 配置下以 weekly 兜底窗口误提交），但用户已改动表单后不再覆盖。
@@ -131,6 +228,15 @@ export function CreateBatchDialog({
       return;
     }
     if (filledRef.current) return;
+    if (isTest) {
+      // 主动测试分支无回填语义：preset 只服务 conversation 批次链路
+      filledRef.current = true;
+      const tmr = setTimeout(() => {
+        const btn = targetAnchorRef.current?.querySelector('button');
+        btn?.focus();
+      }, 0);
+      return () => clearTimeout(tmr);
+    }
     if (preset) {
       // 预填止日钳位到昨天：定时批次的 PeriodEnd 是触发当日（如 daily 当天），
       // 原样回填会撞后端「终点不含今天」校验 1602，当日补跑被硬拒（§4.3.3）。
@@ -167,19 +273,41 @@ export function CreateBatchDialog({
       btn?.focus();
     }, 0);
     return () => clearTimeout(tmr);
-  }, [open, preset, reset, planQ.data, planQ.isError]);
+  }, [open, preset, reset, planQ.data, planQ.isError, isTest]);
 
+  /** 对象非空判定（取消二次确认触发口径，三分支同）：conversation 看名单，主动测试看单人。 */
   function staffsSelected(): boolean {
+    if (isTest) return testGetValues().staff !== null;
     const v = form.getValues().target;
     return v.mode === 'all' || v.staffs.length > 0;
   }
 
   function requestClose() {
-    if (createMut.isPending) return;
+    if (createMut.isPending || createTestMut.isPending) return;
     if (staffsSelected()) {
       setConfirmOpen(true);
     } else {
       onClose();
+    }
+  }
+
+  /** 主动测试提交错误码分桶（P2_TST_001 specs §4.2.4/§5.1.5 原文）：
+   * 1803 文案含动态维度名透出后端 message；1804/1805/1305 为固定 i18n 文案。 */
+  function toastTestError(err: unknown) {
+    if (err instanceof ApiError) {
+      if (err.code === ErrCode.TestDimensionQuestionsEmpty) {
+        toast.error(err.message || t('create.toastDimEmpty'));
+      } else if (err.code === ErrCode.TestScaleNotReady) {
+        toast.error(t('create.toastScaleNotReady'));
+      } else if (err.code === ErrCode.TestStaffInvalid) {
+        toast.error(t('create.toastStaffInvalid'));
+      } else if (err.code === ErrCode.StaffListUnavailable) {
+        toast.error(t('create.toastStaffUnavailable'));
+      } else {
+        toast.error(t('create.toastGeneric'));
+      }
+    } else {
+      toast.error(t('create.toastGeneric'));
     }
   }
 
@@ -201,6 +329,7 @@ export function CreateBatchDialog({
         onSuccess: () => {
           toast.success(t('create.toastCreated'));
           onSubmitted();
+          onSubmittedType?.('conversation');
           onClose();
         },
         onError: (err) => {
@@ -217,21 +346,35 @@ export function CreateBatchDialog({
     );
   };
 
-  const disabledTypeHint = t('create.typeDisabled');
-  const disabledTypeCard = (key: 'aiMgmt' | 'enneagram', label: string) => (
-    // 置灰卡片：disabled 不吞点击提示，用外层 div 承载 click + title（BR1 §4.2.2）
-    <div
-      data-testid={`type-card-${key === 'aiMgmt' ? 'ai-mgmt' : 'enneagram'}`}
-      title={disabledTypeHint}
-      onClick={() => toast(disabledTypeHint)}
-      className="flex-1 cursor-not-allowed rounded-md border p-3 opacity-50"
-    >
-      <button type="button" disabled title={disabledTypeHint} className="w-full text-left">
-        <span className="text-sm font-medium">{label}</span>
-        <span className="text-muted-foreground mt-1 block text-xs">{disabledTypeHint}</span>
-      </button>
-    </div>
-  );
+  const onTestSubmit = (values: TestFormValues) => {
+    if (!values.staff) return;
+    createTestMut.mutate(
+      {
+        // 分支守卫：testForm 仅在主动测试分支渲染提交
+        test_type: activeType === 'enneagram' ? 'enneagram' : 'ai_mgmt',
+        staff_id: values.staff.staff_id,
+        staff_name: values.staff.staff_name,
+        ...(activeType === 'ai_mgmt' ? { dimension_ids: values.dimensionIds } : {}),
+      },
+      {
+        onSuccess: () => {
+          toast.success(t('create.toastTestCreated'));
+          onSubmitted();
+          onSubmittedType?.(activeType);
+          onClose();
+        },
+        onError: (err) => toastTestError(err),
+      },
+    );
+  };
+
+  const submitting = createMut.isPending || createTestMut.isPending;
+
+  const typeCards: { key: DialogTestType; label: string }[] = [
+    { key: 'conversation', label: t('create.typeConversation') },
+    { key: 'ai_mgmt', label: t('create.typeAiMgmt') },
+    { key: 'enneagram', label: t('create.typeEnneagram') },
+  ];
 
   return (
     <>
@@ -246,92 +389,177 @@ export function CreateBatchDialog({
             <DialogTitle>{t('create.title')}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={isTest ? testHandleSubmit(onTestSubmit) : handleSubmit(onSubmit)}
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
               <Label>{t('create.typeLabel')}</Label>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  aria-pressed="true"
-                  className={cn(
-                    'border-primary flex-1 rounded-md border-2 p-3 text-left',
-                  )}
-                >
-                  <span className="text-sm font-medium">{t('create.typeConversation')}</span>
-                </button>
-                {disabledTypeCard('aiMgmt', t('create.typeAiMgmt'))}
-                {disabledTypeCard('enneagram', t('create.typeEnneagram'))}
+                {typeCards.map((card) => (
+                  <button
+                    key={card.key}
+                    type="button"
+                    aria-pressed={activeType === card.key}
+                    data-testid={`type-card-${card.key}`}
+                    onClick={() => switchType(card.key)}
+                    className={cn(
+                      'flex-1 rounded-md border p-3 text-left',
+                      activeType === card.key
+                        ? 'border-primary border-2'
+                        : 'hover:bg-accent border',
+                    )}
+                  >
+                    <span className="text-sm font-medium">{card.label}</span>
+                  </button>
+                ))}
               </div>
             </div>
 
-            <div className="flex flex-col gap-2" ref={targetAnchorRef}>
-              <Label>{t('create.targetLabel')}</Label>
-              <Controller
-                control={control}
-                name="target"
-                render={({ field }) => (
-                  <StaffMultiSelect value={field.value} onChange={field.onChange} />
+            {isTest ? (
+              <>
+                <div className="flex flex-col gap-2" ref={targetAnchorRef}>
+                  <Label>{t('create.singleTargetLabel')}</Label>
+                  <Controller
+                    control={testControl}
+                    name="staff"
+                    render={({ field }) => (
+                      <StaffSingleSelect value={field.value} onChange={field.onChange} />
+                    )}
+                  />
+                  {testErrors.staff && (
+                    <p className="text-destructive text-sm">{testErrors.staff.message}</p>
+                  )}
+                </div>
+
+                {activeType === 'ai_mgmt' && (
+                  <div className="flex flex-col gap-2">
+                    <Label>{t('create.dimsLabel')}</Label>
+                    <Controller
+                      control={testControl}
+                      name="dimensionIds"
+                      render={({ field }) => (
+                        <div className="grid grid-cols-2 gap-2">
+                          {dims.map((d) => {
+                            const checked = field.value.includes(d.id);
+                            return (
+                              <label
+                                key={d.id}
+                                className="hover:bg-accent flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  aria-label={d.name}
+                                  onChange={(e) => {
+                                    dimsTouchedRef.current = true;
+                                    const next = e.target.checked
+                                      ? [...field.value, d.id]
+                                      : field.value.filter((id) => id !== d.id);
+                                    field.onChange(next);
+                                  }}
+                                />
+                                {d.name}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    />
+                    {testErrors.dimensionIds && (
+                      <p className="text-destructive text-sm">
+                        {testErrors.dimensionIds.message}
+                      </p>
+                    )}
+                  </div>
                 )}
-              />
-              {errors.target && (
-                <p className="text-destructive text-sm">{errors.target.message}</p>
-              )}
-            </div>
 
-            <div className="flex flex-col gap-2">
-              <Label>{t('create.periodLabel')}</Label>
-              <div className="flex items-center gap-2">
-                <div className="flex flex-1 flex-col gap-1">
+                {activeType === 'enneagram' && (
+                  <div className="flex flex-col gap-2">
+                    <Label>{t('create.scaleLabel')}</Label>
+                    {scaleQ.isLoading ? (
+                      <p className="text-muted-foreground text-sm">{t('create.scaleLoading')}</p>
+                    ) : scaleQ.data?.ready ? (
+                      <p className="text-sm">
+                        {scaleQ.data.scale_name}
+                        <span className="text-muted-foreground">
+                          {' '}
+                          {t('create.scaleCount', { count: scaleQ.data.active_question_count })}
+                        </span>
+                      </p>
+                    ) : (
+                      // 未就绪提示不阻断：提交时报 1804（B2 口径）
+                      <p className="text-muted-foreground text-sm">
+                        {t('create.toastScaleNotReady')}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="flex flex-col gap-2" ref={targetAnchorRef}>
+                  <Label>{t('create.targetLabel')}</Label>
                   <Controller
                     control={control}
-                    name="periodStart"
+                    name="target"
                     render={({ field }) => (
-                      <Input
-                        {...field}
-                        type="date"
-                        aria-label={t('create.periodStartPlaceholder')}
-                        max={yesterday}
-                      />
+                      <StaffMultiSelect value={field.value} onChange={field.onChange} />
                     )}
                   />
-                  {errors.periodStart && (
-                    <p className="text-destructive text-sm">{errors.periodStart.message}</p>
+                  {errors.target && (
+                    <p className="text-destructive text-sm">{errors.target.message}</p>
                   )}
                 </div>
-                <span className="text-muted-foreground">~</span>
-                <div className="flex flex-1 flex-col gap-1">
-                  <Controller
-                    control={control}
-                    name="periodEnd"
-                    render={({ field }) => (
-                      <Input
-                        {...field}
-                        type="date"
-                        aria-label={t('create.periodEndPlaceholder')}
-                        max={yesterday}
+
+                <div className="flex flex-col gap-2">
+                  <Label>{t('create.periodLabel')}</Label>
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-1 flex-col gap-1">
+                      <Controller
+                        control={control}
+                        name="periodStart"
+                        render={({ field }) => (
+                          <Input
+                            {...field}
+                            type="date"
+                            aria-label={t('create.periodStartPlaceholder')}
+                            max={yesterday}
+                          />
+                        )}
                       />
-                    )}
-                  />
-                  {errors.periodEnd && (
-                    <p className="text-destructive text-sm">{errors.periodEnd.message}</p>
-                  )}
+                      {errors.periodStart && (
+                        <p className="text-destructive text-sm">{errors.periodStart.message}</p>
+                      )}
+                    </div>
+                    <span className="text-muted-foreground">~</span>
+                    <div className="flex flex-1 flex-col gap-1">
+                      <Controller
+                        control={control}
+                        name="periodEnd"
+                        render={({ field }) => (
+                          <Input
+                            {...field}
+                            type="date"
+                            aria-label={t('create.periodEndPlaceholder')}
+                            max={yesterday}
+                          />
+                        )}
+                      />
+                      {errors.periodEnd && (
+                        <p className="text-destructive text-sm">{errors.periodEnd.message}</p>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </>
+            )}
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={requestClose}
-                disabled={createMut.isPending}
-              >
+              <Button type="button" variant="outline" onClick={requestClose} disabled={submitting}>
                 {t('create.cancel')}
               </Button>
-              <Button type="submit" disabled={createMut.isPending}>
-                {createMut.isPending ? t('create.submitting') : t('create.submit')}
+              <Button type="submit" disabled={submitting}>
+                {submitting ? t('create.submitting') : t('create.submit')}
               </Button>
             </DialogFooter>
           </form>
@@ -342,7 +570,9 @@ export function CreateBatchDialog({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t('create.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('create.cancelConfirm')}</AlertDialogDescription>
+            <AlertDialogDescription>
+              {t(isTest ? 'create.cancelTestConfirm' : 'create.cancelConfirm')}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t('create.cancel')}</AlertDialogCancel>

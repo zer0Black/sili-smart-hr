@@ -674,7 +674,6 @@
       "typeConversation": "对话分析",
       "typeAiMgmt": "AI 管理能力",
       "typeEnneagram": "九型人格",
-      "typeDisabled": "该评测类型将在后续版本开放",
       "targetLabel": "评估对象",
       "targetPlaceholder": "点击选择评估对象",
       "targetSearchPlaceholder": "输入人名搜索",
@@ -699,10 +698,24 @@
       "cancel": "取消",
       "cancelConfirm": "已选择评估对象，确定放弃并关闭？",
       "cancelConfirmOk": "放弃并关闭",
+      "singleTargetLabel": "测评对象",
+      "singleTargetPlaceholder": "点击选择测评对象",
+      "singleTargetClear": "清除 {{name}}",
+      "singleTargetRequired": "请选择测评对象",
+      "dimsLabel": "子能力维度",
+      "dimsRequired": "请至少选择一项子能力",
+      "scaleLabel": "使用量表",
+      "scaleLoading": "加载中…",
+      "scaleCount": "共 {{count}} 题",
+      "cancelTestConfirm": "已选择测评对象，确定放弃并关闭？",
       "toastCreated": "已发起评测，批次进入评估队列",
+      "toastTestCreated": "已发起测试，任务进入待作答",
       "toastGeneric": "发起失败，请稍后重试",
       "toastPeriodInvalid": "评估时段无效：结束日期须早于今天",
-      "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试"
+      "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试",
+      "toastDimEmpty": "子能力无可用题目，请先在题库补充",
+      "toastScaleNotReady": "九型量表未就绪，请先在题库引入量表",
+      "toastStaffInvalid": "人员信息获取失败，请稍后重试"
     },
     "failures": {
       "title": "失败明细 · {{batchNo}}",
@@ -716,7 +729,6 @@
       "close": "关闭"
     },
     "testTask": {
-      "comingSoon": "功能建设中",
       "table": {
         "title": "测试任务",
         "createAction": "发起评测",
@@ -777,6 +789,26 @@
         "pageSize20": "20 条/页",
         "pageSize50": "50 条/页",
         "pageSizeLabel": "每页条数"
+      },
+      "linkDialog": {
+        "title": "作答链接",
+        "taskNo": "任务号",
+        "staff": "对象",
+        "testType": "评测类型",
+        "generatedAt": "生成时间",
+        "linkLabel": "作答链接",
+        "copy": "复制",
+        "copySuccess": "链接已复制到剪贴板",
+        "copyFailed": "复制失败，请手动复制链接",
+        "usedHint": "已使用：作答已提交",
+        "invalidHint": "已失效：可重发生成新链接",
+        "footerHint": "员工提交作答后链接即刻失效。逾期未作答请在记录中点击重发生成新链接，复制后手动分发",
+        "loading": "加载中…",
+        "loadError": "链接信息加载失败，请重试",
+        "retry": "重试",
+        "close": "关闭",
+        "resendSuccess": "已重发作答链接",
+        "resendFailed": "重发失败，请稍后重试"
       }
     }
   },

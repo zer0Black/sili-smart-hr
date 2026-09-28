@@ -1,6 +1,6 @@
-// CreateBatchDialog 测试（specs §4.2 / BR1-BR4）
+// CreateBatchDialog 测试（specs §4.2 / BR1-BR4 / P2_TST_001 §4.2.2-§4.2.5 三态激活）
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 
 import i18n from '@/i18n/config';
 
@@ -12,6 +12,9 @@ const origScrollIntoView = Element.prototype.scrollIntoView;
 const createMutateMock = vi.hoisted(() => vi.fn());
 const useBatchPlanMock = vi.hoisted(() => vi.fn());
 const useStaffsMock = vi.hoisted(() => vi.fn());
+const useEnabledAiMgmtDimensionsMock = vi.hoisted(() => vi.fn());
+const useScaleStatusMock = vi.hoisted(() => vi.fn());
+const testTaskMutateMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/features/assessment/hooks', () => ({
   useCreateBatch: () => ({
@@ -23,6 +26,18 @@ vi.mock('@/features/assessment/hooks', () => ({
 
 vi.mock('@/features/system-params/hooks', () => ({
   useStaffs: (...args: unknown[]) => useStaffsMock(...args),
+}));
+
+vi.mock('@/features/question-bank/dimension-options', () => ({
+  useEnabledAiMgmtDimensions: (...args: unknown[]) => useEnabledAiMgmtDimensionsMock(...args),
+}));
+
+vi.mock('@/features/assessment/test-task-hooks', () => ({
+  useCreateTestTask: () => ({
+    mutate: (...args: unknown[]) => testTaskMutateMock(...args),
+    isPending: false,
+  }),
+  useScaleStatus: () => useScaleStatusMock(),
 }));
 
 const toastSuccess = vi.fn();
@@ -38,12 +53,20 @@ vi.mock('sonner', () => ({
   ),
 }));
 
-import { CreateBatchDialog } from '@/features/assessment/components/create-batch-dialog';
+import {
+  CreateBatchDialog,
+  resetDialogTypeMemory,
+} from '@/features/assessment/components/create-batch-dialog';
 import type { CreateBatchPreset } from '@/features/assessment/components/create-batch-dialog';
 import type { BatchPlan, StaffItem } from '@/lib/contracts';
 
 const STAFF_A: StaffItem = { staff_id: 'u1', staff_name: '张三' };
 const STAFF_B: StaffItem = { staff_id: 'u2', staff_name: '李四' };
+
+const DIMS = [
+  { id: 'd1', code: 'MGT-1', name: 'AI 战略规划', module_code: 'AI_MGMT', group_code: null, data_source: 'CONVERSATION', weight: 20, include_overview: true, enabled: true },
+  { id: 'd2', code: 'MGT-2', name: 'AI 流程设计', module_code: 'AI_MGMT', group_code: null, data_source: 'CONVERSATION', weight: 20, include_overview: true, enabled: true },
+];
 
 function makePlan(overrides: Partial<BatchPlan> = {}): BatchPlan {
   return {
@@ -64,26 +87,32 @@ function renderDialog(props?: {
   preset?: CreateBatchPreset | null;
   onClose?: () => void;
   onSubmitted?: () => void;
+  onSubmittedType?: (type: 'conversation' | 'ai_mgmt' | 'enneagram') => void;
 }) {
   const onClose = props?.onClose ?? vi.fn();
   const onSubmitted = props?.onSubmitted ?? vi.fn();
+  const onSubmittedType = props?.onSubmittedType ?? vi.fn();
   render(
     <CreateBatchDialog
       open={props?.open ?? true}
       preset={props?.preset ?? null}
       onClose={onClose}
       onSubmitted={onSubmitted}
+      onSubmittedType={onSubmittedType}
     />,
   );
-  return { onClose, onSubmitted };
+  return { onClose, onSubmitted, onSubmittedType };
 }
 
 beforeEach(() => {
   void i18n.changeLanguage('zh');
+  // 会话记忆模块级变量跨用例泄漏：每用例重置回 conversation（刷新即重置语义）
+  resetDialogTypeMemory();
   Element.prototype.hasPointerCapture = () => false;
   Element.prototype.releasePointerCapture = () => {};
   Element.prototype.scrollIntoView = () => {};
   createMutateMock.mockReset();
+  testTaskMutateMock.mockReset();
   toastSuccess.mockReset();
   toastError.mockReset();
   toastInfo.mockReset();
@@ -94,6 +123,12 @@ beforeEach(() => {
     isError: false,
     refetch: vi.fn(),
   });
+  useEnabledAiMgmtDimensionsMock.mockReturnValue(DIMS);
+  useScaleStatusMock.mockReturnValue({
+    data: { ready: true, scale_key: 'RISO_HUDSON', scale_name: 'Riso-Hudson 九型人格量表', active_question_count: 18 },
+    isLoading: false,
+    isError: false,
+  });
 });
 
 afterEach(() => {
@@ -103,26 +138,7 @@ afterEach(() => {
   Element.prototype.scrollIntoView = origScrollIntoView;
 });
 
-describe('CreateBatchDialog（specs §4.2）', () => {
-  it('TestCreateDialogTypeCards：另两类型卡片置灰，点击 toast 后续版本开放（BR1）', () => {
-    renderDialog();
-
-    // 对话分析为选中态，另两类型置灰
-    const aiMgmt = screen.getByText('AI 管理能力').closest('button');
-    const enneagram = screen.getByText('九型人格').closest('button');
-    const conversation = screen.getByText('对话分析').closest('button');
-    expect(conversation).toHaveAttribute('aria-pressed', 'true');
-    expect(aiMgmt).toBeDisabled();
-    expect(enneagram).toBeDisabled();
-    expect(aiMgmt).toHaveAttribute('title', '该评测类型将在后续版本开放');
-    expect(enneagram).toHaveAttribute('title', '该评测类型将在后续版本开放');
-
-    // 置灰卡片点击：toast 提示后续版本开放（disabled 按钮不响应 click，组件需另行承载点击提示）
-    const aiMgmtClickable = screen.getByTestId('type-card-ai-mgmt');
-    fireEvent.click(aiMgmtClickable);
-    expect(toastInfo).toHaveBeenCalledWith('该评测类型将在后续版本开放');
-  });
-
+describe('CreateBatchDialog（specs §4.2 对话分析既有链路）', () => {
   it('TestCreateDialogDefaultPeriod：常规打开时段默认上一完整周窗口（BR2）', () => {
     // 固定 now 为 2026-09-13（周日）；weekly 上一完整周窗口为 2026-08-31 ~ 2026-09-06
     vi.useFakeTimers({ shouldAdvanceTime: false });
@@ -213,8 +229,8 @@ describe('CreateBatchDialog（specs §4.2）', () => {
     expect(end.value).toBe('2026-08-07');
   });
 
-  it('TestCreateDialogSubmit：校验通过调 createBatch，成功回调 onSubmitted 且关弹窗（BR3）', async () => {
-    const { onClose, onSubmitted } = renderDialog({
+  it('TestCreateDialogSubmit：校验通过调 createBatch，成功回调 onSubmitted 且关弹窗（BR3/BR5）', async () => {
+    const { onClose, onSubmitted, onSubmittedType } = renderDialog({
       preset: {
         staffs: [STAFF_A],
         period: { start: '2026-08-01', end: '2026-08-07' },
@@ -237,10 +253,11 @@ describe('CreateBatchDialog（specs §4.2）', () => {
       expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
     );
     expect(onSubmitted).toHaveBeenCalledTimes(1);
+    expect(onSubmittedType).toHaveBeenCalledWith('conversation');
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('TestCreateDialogSubmitFail：接口失败 toast 留弹窗（BR3）', async () => {
+  it('TestCreateDialogSubmitFail：接口失败 toast 留弹窗（BR5）', async () => {
     const { onClose } = renderDialog({
       preset: {
         staffs: [STAFF_A],
@@ -257,7 +274,7 @@ describe('CreateBatchDialog（specs §4.2）', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('TestCreateDialogCancelConfirm：staffs 非空取消弹二次确认（BR4）', async () => {
+  it('TestCreateDialogCancelConfirm：staffs 非空取消弹二次确认（BR4 口径）', async () => {
     const { onClose } = renderDialog({
       preset: {
         staffs: [STAFF_A],
@@ -273,7 +290,7 @@ describe('CreateBatchDialog（specs §4.2）', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 
-  it('TestCreateDialogCancelEmpty：staffs 为空取消直接关闭不确认（BR4）', () => {
+  it('TestCreateDialogCancelEmpty：staffs 为空取消直接关闭不确认（BR4 口径）', () => {
     const { onClose } = renderDialog();
     fireEvent.click(screen.getByRole('button', { name: '取消' }));
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -285,5 +302,208 @@ describe('CreateBatchDialog（specs §4.2）', () => {
     await vi.waitFor(() => {
       expect(screen.getByText('点击选择评估对象').closest('button')).toHaveFocus();
     });
+  });
+});
+
+describe('CreateBatchDialog 三态激活（P2_TST_001 specs §4.2.2/§4.2.5）', () => {
+  it('TestCreateDialogTypeSwitch：点 AI 管理能力卡片出现子能力复选框组默认全选（BR1/BR3）', async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    // 表单区出现子能力复选框组，默认全选（BR3）
+    const cb1 = await screen.findByLabelText('AI 战略规划');
+    const cb2 = screen.getByLabelText('AI 流程设计');
+    expect(cb1).toBeChecked();
+    expect(cb2).toBeChecked();
+    // 评估时段字段随类型切换消失（表单区整体切换）
+    expect(screen.queryByLabelText('开始日期')).not.toBeInTheDocument();
+  });
+
+  it('TestCreateDialogEnneagramScale：切九型卡片出现使用量表只读行，显量表名与题数（BR4）', async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByText('九型人格'));
+    expect(await screen.findByText('Riso-Hudson 九型人格量表')).toBeInTheDocument();
+    expect(screen.getByText('共 18 题')).toBeInTheDocument();
+  });
+
+  it('TestCreateDialogEnneagramScaleNotReady：量表未就绪显提示不阻断（BR4）', async () => {
+    useScaleStatusMock.mockReturnValue({
+      data: { ready: false, scale_key: '', scale_name: '', active_question_count: 0 },
+      isLoading: false,
+      isError: false,
+    });
+    renderDialog();
+
+    fireEvent.click(screen.getByText('九型人格'));
+    expect(
+      await screen.findByText('九型量表未就绪，请先在题库引入量表'),
+    ).toBeInTheDocument();
+  });
+
+  it('TestCreateDialogSwitchDiscards：三卡片切换后已填对象被清空（BR7）', async () => {
+    const { onClose } = renderDialog({
+      preset: {
+        staffs: [STAFF_A],
+        period: { start: '2026-08-01', end: '2026-08-07' },
+      },
+    });
+    expect(screen.getByLabelText('移除 张三')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    // conversation 表单内容随切换丢弃：回到 conversation 不再预填张三
+    fireEvent.click(screen.getByText('对话分析'));
+    expect(await screen.findByLabelText('开始日期')).toBeInTheDocument();
+    expect(screen.queryByLabelText('移除 张三')).not.toBeInTheDocument();
+    // 对象非空口径按当前分支判定：conversation 回到空名单，取消直接关不确认
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('TestCreateDialogAiMgmtSubmit：ai_mgmt 提交走 createTestTask，成功回调 onSubmittedType(ai_mgmt)（BR5）', async () => {
+    const { onClose, onSubmittedType } = renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    fireEvent.click(screen.getByText('点击选择测评对象'));
+    fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
+
+    testTaskMutateMock.mockImplementation((_p: unknown, opts: { onSuccess: () => void }) => {
+      opts.onSuccess();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+    await waitFor(() => expect(testTaskMutateMock).toHaveBeenCalledTimes(1));
+    expect(testTaskMutateMock).toHaveBeenCalledWith(
+      {
+        test_type: 'ai_mgmt',
+        staff_id: 'u1',
+        staff_name: '张三',
+        dimension_ids: ['d1', 'd2'],
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(onSubmittedType).toHaveBeenCalledWith('ai_mgmt');
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(createMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('TestCreateDialogAiMgmtEmptyDims：ai_mgmt 取消全选维度提交被 zod 拦截字段下标红（BR3）', async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    // 默认全选取消两项
+    fireEvent.click(await screen.findByLabelText('AI 战略规划'));
+    fireEvent.click(screen.getByLabelText('AI 流程设计'));
+
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+    expect(await screen.findByText('请至少选择一项子能力')).toBeInTheDocument();
+    expect(testTaskMutateMock).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it('TestCreateDialogAiMgmtEmptyStaff：ai_mgmt 空对象提交字段下标红不调接口（BR2）', async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+    expect(await screen.findByText('请选择测评对象')).toBeInTheDocument();
+    expect(testTaskMutateMock).not.toHaveBeenCalled();
+  });
+
+  it('TestCreateDialogEnneagramSubmit：enneagram 提交走 createTestTask 不带 dimension_ids（BR5）', async () => {
+    const { onClose, onSubmittedType } = renderDialog();
+
+    fireEvent.click(screen.getByText('九型人格'));
+    fireEvent.click(screen.getByText('点击选择测评对象'));
+    fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
+
+    testTaskMutateMock.mockImplementation((_p: unknown, opts: { onSuccess: () => void }) => {
+      opts.onSuccess();
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+
+    await waitFor(() => expect(testTaskMutateMock).toHaveBeenCalledTimes(1));
+    expect(testTaskMutateMock).toHaveBeenCalledWith(
+      {
+        test_type: 'enneagram',
+        staff_id: 'u1',
+        staff_name: '张三',
+      },
+      expect.objectContaining({ onSuccess: expect.any(Function), onError: expect.any(Function) }),
+    );
+    expect(onSubmittedType).toHaveBeenCalledWith('enneagram');
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('TestCreateDialogErrCodes：ai_mgmt 提交错误码分桶 toast（1803/1804/1805/1305，specs §4.2.4/§5.1.5）', async () => {
+    const { onClose } = renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    fireEvent.click(screen.getByText('点击选择测评对象'));
+    fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
+
+    const { ApiError } = await import('@/lib/http-client');
+    // 1804/1805/1305 为固定原文，前端 i18n 分桶。
+    const cases: Array<{ err: Error; message: string }> = [
+      { err: new ApiError(1803, '子能力 AI 战略规划 无可用题目，请先在题库补充'), message: '子能力 AI 战略规划 无可用题目，请先在题库补充' },
+      { err: new ApiError(1804, 'backend'), message: '九型量表未就绪，请先在题库引入量表' },
+      { err: new ApiError(1805, 'backend'), message: '人员信息获取失败，请稍后重试' },
+      { err: new ApiError(1305, 'backend'), message: '人员或会话上游暂不可用，请稍后重试' },
+    ];
+    for (const c of cases) {
+      testTaskMutateMock.mockImplementation((_p: unknown, opts: { onError: (e: unknown) => void }) => {
+        opts.onError(c.err);
+      });
+      fireEvent.click(screen.getByRole('button', { name: '提交' }));
+      await waitFor(() => expect(toastError).toHaveBeenLastCalledWith(c.message));
+    }
+    // 失败留弹窗（BR5）
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('TestCreateDialogErrGeneric：未识别错误码走通用文案 toast（BR5）', async () => {
+    renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    fireEvent.click(screen.getByText('点击选择测评对象'));
+    fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
+
+    const { ApiError } = await import('@/lib/http-client');
+    testTaskMutateMock.mockImplementation((_p: unknown, opts: { onError: (e: unknown) => void }) => {
+      opts.onError(new ApiError(1500, 'backend'));
+    });
+    fireEvent.click(screen.getByRole('button', { name: '提交' }));
+    await waitFor(() => expect(toastError).toHaveBeenLastCalledWith('发起失败，请稍后重试'));
+  });
+
+  it('TestCreateDialogSessionMemory：类型选择会话级记忆，重开弹窗保持上次选择（BR1）', async () => {
+    const first = renderDialog();
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    await screen.findByLabelText('AI 战略规划');
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    // 对象为空直接关闭
+    await waitFor(() => expect(first.onClose).toHaveBeenCalledTimes(1));
+    cleanup();
+
+    // 同标签页内重开：保持 ai_mgmt（模块级内存变量）
+    renderDialog();
+    expect(await screen.findByLabelText('AI 战略规划')).toBeInTheDocument();
+  });
+
+  it('TestCreateDialogTestCancelConfirm：主动测试分支对象非空取消弹二次确认（BR4 同口径）', async () => {
+    const { onClose } = renderDialog();
+
+    fireEvent.click(screen.getByText('AI 管理能力'));
+    fireEvent.click(screen.getByText('点击选择测评对象'));
+    fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(await screen.findByText('已选择测评对象，确定放弃并关闭？')).toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '放弃并关闭' }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   });
 });

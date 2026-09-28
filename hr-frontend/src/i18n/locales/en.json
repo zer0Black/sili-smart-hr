@@ -674,7 +674,6 @@
       "typeConversation": "Conversation Analysis",
       "typeAiMgmt": "AI Management",
       "typeEnneagram": "Enneagram",
-      "typeDisabled": "This assessment type will be available in a future version",
       "targetLabel": "Target",
       "targetPlaceholder": "Select people to assess",
       "targetSearchPlaceholder": "Search by name",
@@ -699,10 +698,24 @@
       "cancel": "Cancel",
       "cancelConfirm": "People are selected. Discard and close?",
       "cancelConfirmOk": "Discard and close",
+      "singleTargetLabel": "Assessment Target",
+      "singleTargetPlaceholder": "Select a person to assess",
+      "singleTargetClear": "Clear {{name}}",
+      "singleTargetRequired": "Select a person to assess",
+      "dimsLabel": "Sub-capabilities",
+      "dimsRequired": "Select at least one sub-capability",
+      "scaleLabel": "Scale in Use",
+      "scaleLoading": "Loading…",
+      "scaleCount": "{{count}} questions",
+      "cancelTestConfirm": "A person is selected. Discard and close?",
       "toastCreated": "Assessment launched; the batch is queued",
+      "toastTestCreated": "Test launched; the task is pending",
       "toastGeneric": "Launch failed, please retry later",
       "toastPeriodInvalid": "Invalid period: the end date must be before today",
-      "toastStaffUnavailable": "Staff or conversation upstream is unavailable, please retry later"
+      "toastStaffUnavailable": "Staff or conversation upstream is unavailable, please retry later",
+      "toastDimEmpty": "No available questions for the sub-capability; add questions in the bank first",
+      "toastScaleNotReady": "Enneagram scale is not ready; import a scale in the bank first",
+      "toastStaffInvalid": "Failed to fetch person info, please retry later"
     },
     "failures": {
       "title": "Failure Details · {{batchNo}}",
@@ -716,7 +729,6 @@
       "close": "Close"
     },
     "testTask": {
-      "comingSoon": "Feature under construction",
       "table": {
         "title": "Test Tasks",
         "createAction": "Launch Assessment",
@@ -777,6 +789,26 @@
         "pageSize20": "20 / page",
         "pageSize50": "50 / page",
         "pageSizeLabel": "Page size"
+      },
+      "linkDialog": {
+        "title": "Answer Link",
+        "taskNo": "Task No.",
+        "staff": "Person",
+        "testType": "Assessment Type",
+        "generatedAt": "Generated At",
+        "linkLabel": "Answer Link",
+        "copy": "Copy",
+        "copySuccess": "Link copied to clipboard",
+        "copyFailed": "Copy failed; please copy the link manually",
+        "usedHint": "Used: the answer has been submitted",
+        "invalidHint": "Invalid: resend to generate a new link",
+        "footerHint": "The link becomes invalid once the person submits. For overdue tasks, click Resend in the list to generate a new link, then copy and distribute it manually",
+        "loading": "Loading…",
+        "loadError": "Failed to load link info, please retry",
+        "retry": "Retry",
+        "close": "Close",
+        "resendSuccess": "Answer link resent",
+        "resendFailed": "Resend failed, please retry later"
       }
     }
   },

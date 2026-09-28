@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { AnswerLinkDialog } from '@/features/assessment/components/answer-link-dialog';
 import { BatchTable } from '@/features/assessment/components/batch-table';
 import {
   CreateBatchDialog,
@@ -13,8 +14,11 @@ import { StatsCards } from '@/features/assessment/components/stats-cards';
 import { TestTaskTable } from '@/features/assessment/components/test-task-table';
 import { fetchBatchTargets } from '@/features/assessment/api';
 import { useBatchStats, useRefetchOnVisible } from '@/features/assessment/hooks';
-import { useTestTaskPollCounts } from '@/features/assessment/test-task-hooks';
-import type { TestType } from '@/features/assessment/test-task-types';
+import {
+  useResendTestTaskLink,
+  useTestTaskPollCounts,
+} from '@/features/assessment/test-task-hooks';
+import type { TestTaskLinkInfo, TestType } from '@/features/assessment/test-task-types';
 import type { BatchListItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
@@ -28,18 +32,37 @@ type PageTab = 'aiUsage' | TestType;
 export function AssessmentCenterPage() {
   const { t } = useTranslation('assessment');
 
-  // 页面状态机：两弹窗开关 + 预填值（筛选与分页在各表格组件内部自治）
+  // 页面状态机：弹窗开关 + 预填值（筛选与分页在各表格组件内部自治）
   const [createOpen, setCreateOpen] = useState(false);
   const [createPreset, setCreatePreset] = useState<CreateBatchPreset | null>(null);
   const [failureBatchId, setFailureBatchId] = useState<string | null>(null);
   // specs §4.2.3 提交成功后通知 BatchTable 重置筛选回第一页
   const [tableResetKey, setTableResetKey] = useState(0);
+  // 双测试任务 tab 各自的查询重置信号（specs §4.2.3：切 tab 并重置该 tab 查询回第一页）
+  const [testResetKeys, setTestResetKeys] = useState<Record<TestType, number>>({
+    ai_mgmt: 0,
+    enneagram: 0,
+  });
+  // 作答链接弹窗（specs §4.3）：taskId 驱动打开即拉；linkData 承接重发响应直显新链接
+  const [linkTaskId, setLinkTaskId] = useState<string | null>(null);
+  const [linkData, setLinkData] = useState<TestTaskLinkInfo | null>(null);
 
   // 双测试任务 tab 常驻挂载、隐藏非激活 tab，查询状态互不清空（specs §4.1.5）
   const [activeTab, setActiveTab] = useState<PageTab>('aiUsage');
 
   function onCreateSubmitted() {
     setTableResetKey((k) => k + 1);
+  }
+
+  // 发起成功（携类型）：切到对应 tab 并重置该 tab 查询回第一页（specs §4.2.3）
+  function onCreateSubmittedType(type: 'conversation' | 'ai_mgmt' | 'enneagram') {
+    if (type === 'conversation') {
+      setActiveTab('aiUsage');
+      onCreateSubmitted();
+      return;
+    }
+    setActiveTab(type);
+    setTestResetKeys((keys) => ({ ...keys, [type]: keys[type] + 1 }));
   }
 
   // 轮询总开关（specs §4.1.3）：stats 自驱动——数据存在进行中批次（已剔除停滞）
@@ -59,6 +82,21 @@ export function AssessmentCenterPage() {
   // 恢复即拉（specs §4.1.3）：refetchOnWindowFocus 全局关闭，切回标签页时
   // 显式拉一次统计与探针，恢复瞬间数据即时而非等下一个轮询间隔。
   useRefetchOnVisible([statsQ, testPollQ]);
+
+  // 重发作答链接（specs §4.1.3）：成功后直接以作答链接弹窗展示新链接
+  const resendMut = useResendTestTaskLink();
+  function onResendLink(taskId: string) {
+    resendMut.mutate(taskId, {
+      onSuccess: (data) => {
+        toast.success(t('testTask.linkDialog.resendSuccess'));
+        setLinkData(data);
+        setLinkTaskId(data.task_id);
+      },
+      onError: () => {
+        toast.error(t('testTask.linkDialog.resendFailed'));
+      },
+    });
+  }
 
   function openCreateDialog(preset: CreateBatchPreset | null) {
     setCreatePreset(preset);
@@ -121,16 +159,16 @@ export function AssessmentCenterPage() {
           <TestTaskTable
             testType={type}
             onCreateOpen={() => openCreateDialog(null)}
-            onLinkOpen={() => {
-              // T7 挂作答链接弹窗，本任务先占位提示
-              toast.info(t('testTask.comingSoon'));
+            onLinkOpen={(taskId) => {
+              // 打开即拉快照（specs §4.3.5）：清注入数据防上次重发链接串场
+              setLinkData(null);
+              setLinkTaskId(taskId);
             }}
-            onResend={() => {
-              toast.info(t('testTask.comingSoon'));
-            }}
+            onResend={(taskId) => onResendLink(taskId)}
             onCancel={() => {
               // 取消确认在组件内完成，页面级暂无后续动作
             }}
+            resetKey={testResetKeys[type]}
             polling={testPolling(testPollQ)[type]}
           />
         </div>
@@ -158,6 +196,16 @@ export function AssessmentCenterPage() {
           setCreatePreset(null);
         }}
         onSubmitted={onCreateSubmitted}
+        onSubmittedType={onCreateSubmittedType}
+      />
+      <AnswerLinkDialog
+        open={linkTaskId !== null}
+        taskId={linkTaskId}
+        linkData={linkData}
+        onClose={() => {
+          setLinkTaskId(null);
+          setLinkData(null);
+        }}
       />
       <FailureDetailDialog
         batchId={failureBatchId}
