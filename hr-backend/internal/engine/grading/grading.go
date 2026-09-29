@@ -41,9 +41,9 @@ type ResultRepo interface {
 	UpsertByTaskID(ctx context.Context, r *domain.AssessmentTestResult) error
 }
 
-// DimRepo 维度口径读取窄面。
+// DimRepo 维度口径读取窄面（Unscoped 含停用与软删行：快照口径直读）。
 type DimRepo interface {
-	ListEnabledFullByDataSource(ctx context.Context, dataSource string) ([]domain.Dimension, error)
+	ListFullByCodesUnscoped(ctx context.Context, codes []string) ([]domain.Dimension, error)
 }
 
 // ConfigRepo 周期配置读取窄面。
@@ -142,8 +142,8 @@ func (g *Grader) loadQuestions(ctx context.Context, task *domain.AssessmentTestT
 	return questions, nil
 }
 
-// runAIMgmt ai_mgmt 阅卷（specs §5.2.2 步骤3a/4a/5）：维度口径取 AI_MGMT 启用集 ∩
-// 任务快照 → LLM 评分 → 逐子能力落 active_test 行 → 自调聚合 → 推进 scored。
+// runAIMgmt ai_mgmt 阅卷（specs §5.2.2 步骤3a/4a/5）：维度口径取任务快照全字段
+// 直读（含停用维度）→ LLM 评分 → 逐子能力落 active_test 行 → 自调聚合 → 推进 scored。
 func (g *Grader) runAIMgmt(ctx context.Context, task *domain.AssessmentTestTask, questions []domain.Question, modelID string) error {
 	dims, err := g.taskDimensions(ctx, task)
 	if err != nil {
@@ -159,7 +159,7 @@ func (g *Grader) runAIMgmt(ctx context.Context, task *domain.AssessmentTestTask,
 		return err
 	}
 
-	rows, err := buildScoreRows(out, dims)
+	rows, err := buildScoreRows(out, dims, raw)
 	if err != nil {
 		return err
 	}
@@ -233,26 +233,26 @@ func (g *Grader) runEnneagram(ctx context.Context, task *domain.AssessmentTestTa
 	return nil
 }
 
-// taskDimensions AI_MGMT 子能力口径：启用集 ∩ 任务 dimension_codes_json 快照
-// （specs §5.2.2 步骤2c，04 §3.1 快照列语义）。
+// taskDimensions AI_MGMT 子能力口径：任务 dimension_codes_json 快照直读全字段
+// （含停用维度，specs §5.1.4 规则2 快照不可变、04 §3.1 阅卷按此圈定）。快照解析
+// 出 0 个维度属构造侧确定性错误，上抛交降级（防 0 行评分假 scored）。
 func (g *Grader) taskDimensions(ctx context.Context, task *domain.AssessmentTestTask) ([]domain.Dimension, error) {
 	var codes []string
 	if err := json.Unmarshal([]byte(task.DimensionCodesJSON), &codes); err != nil {
 		return nil, fmt.Errorf("grading: parse dimension_codes_json of task %d: %w", task.ID, err)
 	}
-	snapshot := make(map[string]bool, len(codes))
-	for _, c := range codes {
-		snapshot[c] = true
-	}
-	all, err := g.dimRepo.ListEnabledFullByDataSource(ctx, domain.SourceTest)
+	all, err := g.dimRepo.ListFullByCodesUnscoped(ctx, codes)
 	if err != nil {
 		return nil, fmt.Errorf("grading: load dimensions of task %d: %w", task.ID, err)
 	}
-	dims := make([]domain.Dimension, 0, len(codes))
+	dims := make([]domain.Dimension, 0, len(all))
 	for _, d := range all {
-		if d.ModuleCode == domain.ModuleAIMgmt && snapshot[d.Code] {
+		if d.ModuleCode == domain.ModuleAIMgmt {
 			dims = append(dims, d)
 		}
+	}
+	if len(dims) == 0 {
+		return nil, fmt.Errorf("grading: no AI_MGMT dimensions resolved from snapshot of task %d", task.ID)
 	}
 	return dims, nil
 }
@@ -330,7 +330,7 @@ func buildEvidence(dims []domain.Dimension) string {
 
 // buildScoreRows 校验收敛评分行（specs §5.2.2 步骤3a）：code 白名单 = 任务口径
 // 集合，多出丢弃、缺失补 insufficient 行；score 非 null 时须 0-100 整数。
-func buildScoreRows(out *scoreOutput, dims []domain.Dimension) ([]domain.DimensionScore, error) {
+func buildScoreRows(out *scoreOutput, dims []domain.Dimension, raw string) ([]domain.DimensionScore, error) {
 	byCode := make(map[string]scoreDimension, len(out.Dimensions))
 	for _, d := range out.Dimensions {
 		if _, ok := byCode[d.Code]; !ok {
@@ -345,7 +345,7 @@ func buildScoreRows(out *scoreOutput, dims []domain.Dimension) ([]domain.Dimensi
 			continue
 		}
 		if d.Score != nil && (d.Score.n < 0 || d.Score.n > 100) {
-			return nil, ErrSchemaInvalid
+			return nil, schemaErrWithExcerpt(raw)
 		}
 		row := domain.DimensionScore{
 			DimensionCode: dim.Code,

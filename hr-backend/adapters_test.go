@@ -45,6 +45,10 @@ func (f *fakeDimensionRepo) ListEnabledFullByDataSource(ctx context.Context, dat
 	return f.dims, nil
 }
 
+func (f *fakeDimensionRepo) ListFullByCodesUnscoped(_ context.Context, _ []string) ([]domain.Dimension, error) {
+	panic("not used")
+}
+
 func (f *fakeDimensionRepo) ListAll(ctx context.Context) ([]domain.Dimension, error) {
 	panic("not used")
 }

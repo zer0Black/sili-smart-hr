@@ -538,6 +538,48 @@ func TestRunIdempotentUpsert(t *testing.T) {
 	}
 }
 
+// TestRunDisabledDimensionStillScored 核心锚点（specs §5.1.4 规则2 快照不可变）：
+// 快照内维度在阅卷前被停用仍参与评分，不静默出列。
+func TestRunDisabledDimensionStillScored(t *testing.T) {
+	f := newFixture(t, seedAIMgmt)
+	f.db.Model(&domain.Dimension{}).Where("code = ?", "MGT_REVIEW").
+		Update("enabled", false)
+	f.llm.fn = func(call int) (string, error) { return aiMgmtScoreJSON(), nil }
+
+	if err := f.g.Run(context.Background(), f.task.ID); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	var n int64
+	f.db.Model(&domain.DimensionScore{}).Where("token_name = ?", "张敏").Count(&n)
+	if n != 2 {
+		t.Fatalf("停用维度任务评分行 %d, want 2（快照口径全量落分）", n)
+	}
+	if task := loadTask(t, f.db, f.task.ID); task.GradingStatus != domain.GradingStatusScored {
+		t.Fatalf("grading_status = %s, want scored", task.GradingStatus)
+	}
+}
+
+// TestRunEmptyDimensionSnapshotErrors 核心锚点：快照解析出 0 个 AI_MGMT 维度时
+// 报错上抛，不落 0 行评分假推 scored。
+func TestRunEmptyDimensionSnapshotErrors(t *testing.T) {
+	f := newFixture(t, seedAIMgmt)
+	f.db.Model(&domain.AssessmentTestTask{}).Where("id = ?", f.task.ID).
+		Update("dimension_codes_json", `[]`)
+	f.llm.fn = func(call int) (string, error) { return aiMgmtScoreJSON(), nil }
+
+	if err := f.g.Run(context.Background(), f.task.ID); err == nil {
+		t.Fatal("空快照应报错上抛")
+	}
+	var n int64
+	f.db.Model(&domain.DimensionScore{}).Count(&n)
+	if n != 0 {
+		t.Fatalf("评分行 %d, want 0", n)
+	}
+	if task := loadTask(t, f.db, f.task.ID); task.GradingStatus != domain.GradingStatusGrading {
+		t.Fatalf("grading_status = %s, want 停留 grading", task.GradingStatus)
+	}
+}
+
 // TestRunTaskNotFound 补充异常分支：任务不存在上抛交重试通道外由 handler 处置。
 func TestRunTaskNotFound(t *testing.T) {
 	f := newFixture(t, seedAIMgmt)

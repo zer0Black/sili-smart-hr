@@ -1,7 +1,7 @@
 package task
 
 // test_grade_test.go 契约测试：assessment:test-grade handler 与 NewMux 注册
-//（specs P2_TST_001 §5.2.1/§5.2.4/§5.2.5、03 §4.4/§4.5）。Grader 与仓储经窄
+// （specs P2_TST_001 §5.2.1/§5.2.4/§5.2.5、03 §4.4/§4.5）。Grader 与仓储经窄
 // 接口 fake 注入（本包不可 import grading：grading→pipeline→task 依赖链）；
 // asynq 重试元数据经 retryBudget 变量替换注入（asynq 无公开 API 构造带
 // metadata 的 ctx）。
@@ -134,7 +134,7 @@ func TestTestGradeHappyPath(t *testing.T) {
 }
 
 // TestTestGradeDegradeOnExhausted 核心锚点（BR3/BR4/BR5）：重试预算耗尽
-//（retried>=maxRetry）时吞掉 grader 错误走降级：handler 返 nil、DegradeTask
+// （retried>=maxRetry）时吞掉 grader 错误走降级：handler 返 nil、DegradeTask
 // 被调一次且 enneagram=true（仓储侧单事务落降级行并推任务行 degraded，
 // specs §5.2.5、04 §3.3 降级行形态）。
 func TestTestGradeDegradeOnExhausted(t *testing.T) {
@@ -175,7 +175,7 @@ func TestTestGradeErrorPropagatesBeforeExhausted(t *testing.T) {
 }
 
 // TestTestGradeDegradeFailsStillErrors 核心锚点：耗尽但降级路径失败时错误上抛
-//（保留下次执行/补偿再投递收敛，specs §5.2.5）。
+// （保留下次执行/补偿再投递收敛，specs §5.2.5）。
 func TestTestGradeDegradeFailsStillErrors(t *testing.T) {
 	withRetryBudget(t, 25, 25)
 	degradeErr := errors.New("db down")
@@ -198,7 +198,7 @@ func TestTestGradeTimeoutConst(t *testing.T) {
 }
 
 // TestNewMuxRegistersTestGrade 核心锚点：mux 已注册 TypeTestGrade 且路由可达
-//（NewMux 七参化新增任务类型）。
+// （NewMux 七参化新增任务类型）。
 func TestNewMuxRegistersTestGrade(t *testing.T) {
 	mux := NewMux(nil, nil, nil, nil, nil, nil, nil)
 	if h, pattern := mux.Handler(asynq.NewTask(TypeTestGrade, []byte(`{}`))); pattern != TypeTestGrade || h == nil {
@@ -207,7 +207,7 @@ func TestNewMuxRegistersTestGrade(t *testing.T) {
 }
 
 // TestNewMuxTestGradeTimeout 核心锚点（BR1）：注册 handler 挂 300s 任务级超时
-//（questionbank:generate 同款 deadline 行为断言）。
+// （questionbank:generate 同款 deadline 行为断言）。
 func TestNewMuxTestGradeTimeout(t *testing.T) {
 	var gotDeadline time.Time
 	var hasDeadline bool
@@ -284,7 +284,7 @@ func TestTestGradeNoMetadataDegrades(t *testing.T) {
 }
 
 // TestTestGradePayloadJSON 边界补充：payload json tag 与投递侧 schema 对齐
-//（03 §4.2，雪花 ID 十进制字符串）。
+// （03 §4.2，雪花 ID 十进制字符串）。
 func TestTestGradePayloadJSON(t *testing.T) {
 	raw := `{"task_id":"1790000000000000001"}`
 	var p TestGradePayload

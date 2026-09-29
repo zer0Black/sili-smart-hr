@@ -103,9 +103,9 @@ func mustCreate(t *testing.T, repo repository.AssessmentTestTaskRepository, task
 		QuestionIDsJSON: "[" + strings.Join(ids, ",") + "]", ScaleKey: "", DimensionCodesJSON: "[]",
 	}
 	link := domain.AssessmentTestLink{
-		TaskID: 0, // 事务内补齐
+		TaskID:     0, // 事务内补齐
 		TokenPlain: "plain-" + taskNo, TokenHash: "hash-" + taskNo,
-		Status: domain.LinkStatusValid,
+		Status:      domain.LinkStatusValid,
 		GeneratedAt: tUTC(2026, 9, 28, 8, 30), ExpiresAt: tUTC(2026, 10, 5, 8, 30),
 	}
 	if err := repo.CreateWithLink(context.Background(), &task, &link); err != nil {
@@ -223,7 +223,7 @@ func createRaw(db *gorm.DB, taskNo, idsJSON string) (domain.AssessmentTestTask, 
 	}
 	link := domain.AssessmentTestLink{
 		TokenPlain: "plain-" + taskNo, TokenHash: "hash-" + taskNo,
-		Status: domain.LinkStatusValid,
+		Status:      domain.LinkStatusValid,
 		GeneratedAt: tUTC(2026, 9, 28, 8, 30), ExpiresAt: tUTC(2026, 10, 5, 8, 30),
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
@@ -240,7 +240,7 @@ func createRaw(db *gorm.DB, taskNo, idsJSON string) (domain.AssessmentTestTask, 
 }
 
 // TestCreateWithLinkForeignQuestionFails 快照含不存在题目 ID 时引用计数 SQL 报错
-//（glebarez/sqlite 对缺失行的 UPDATE 静默 0 行，用唯一索引撞键复现 tx 内报错回滚）。
+// （glebarez/sqlite 对缺失行的 UPDATE 静默 0 行，用唯一索引撞键复现 tx 内报错回滚）。
 func TestCreateWithLinkForeignQuestionFails(t *testing.T) {
 	db, repo := newTestTaskRepo(t)
 	q := seedQ(t, db, "Q-AG-0001")
@@ -413,7 +413,7 @@ func TestReplaceLinkPendingTolerated(t *testing.T) {
 }
 
 // TestReplaceLinkTerminalRejected 终态守卫：completed/canceled 任务重发在锁内复核被拒
-//（ErrTaskNotSubmittable，不插新行），防 service 校验后并发推进终态仍落新 valid 链接。
+// （ErrTaskNotSubmittable，不插新行），防 service 校验后并发推进终态仍落新 valid 链接。
 func TestReplaceLinkTerminalRejected(t *testing.T) {
 	db, repo := newTestTaskRepo(t)
 	ctx := context.Background()
@@ -801,7 +801,8 @@ func TestListByFilterComposite(t *testing.T) {
 	}
 }
 
-// TestListByFilterNoLink 无链接行（防御形态）：link_status 空串不炸。
+// TestListByFilterNoLink 无链接行（防御形态）：link_status 空串不炸。零值分页
+// 参数经 ClampPageSize 缺省 10（03 A1 page_size 缺省口径单点在仓储层）。
 func TestListByFilterNoLink(t *testing.T) {
 	db, repo := newTestTaskRepo(t)
 	orphan := domain.AssessmentTestTask{

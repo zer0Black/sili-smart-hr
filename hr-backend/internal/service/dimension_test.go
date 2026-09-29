@@ -82,6 +82,10 @@ func (r *dimFakeRepo) ListEnabledFullByDataSource(_ context.Context, _ string) (
 	return nil, nil
 }
 
+func (r *dimFakeRepo) ListFullByCodesUnscoped(_ context.Context, _ []string) ([]domain.Dimension, error) {
+	return nil, nil
+}
+
 func (r *dimFakeRepo) CountEnabledByGroupCode(_ context.Context, _ string) (map[string]int, error) {
 	return nil, nil
 }

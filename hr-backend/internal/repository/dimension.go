@@ -38,6 +38,10 @@ type DimensionRepository interface {
 	// 评分口径快照的数据来源），WHERE enabled AND data_source=? AND deleted_at IS NULL，
 	// 按 code ASC 排序。
 	ListEnabledFullByDataSource(ctx context.Context, dataSource string) ([]domain.Dimension, error)
+	// ListFullByCodesUnscoped 按 code 集合取全字段维度（Unscoped 含停用与软删行），
+	// 阅卷快照口径直读：任务 dimension_codes_json 固化后维度停用/软删不回改评分集合
+	//（specs P2_TST_001 §5.1.4 规则2）。快照含未知 code 时静默跳过（维度被物理清理）。
+	ListFullByCodesUnscoped(ctx context.Context, codes []string) ([]domain.Dimension, error)
 	// CountEnabledByGroupCode 按分组码统计指定数据来源的启用未删维度数（计划卡轻量
 	// 计数，免拉 prompt/anchor 大字段），只投影 group_code 一列。
 	CountEnabledByGroupCode(ctx context.Context, dataSource string) (map[string]int, error)
@@ -192,6 +196,22 @@ func (r *dimensionRepository) ListEnabledFullByDataSource(ctx context.Context, d
 	var list []domain.Dimension
 	if err := r.db.WithContext(ctx).
 		Where("enabled = ? AND data_source = ? AND deleted_at IS NULL", true, dataSource).
+		Order("code ASC").
+		Find(&list).Error; err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// ListFullByCodesUnscoped 按 code 集合取全字段维度（Unscoped），接口注释见窄面声明。
+func (r *dimensionRepository) ListFullByCodesUnscoped(ctx context.Context, codes []string) ([]domain.Dimension, error) {
+	if len(codes) == 0 {
+		return nil, nil
+	}
+	var list []domain.Dimension
+	if err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("code IN ?", codes).
 		Order("code ASC").
 		Find(&list).Error; err != nil {
 		return nil, err

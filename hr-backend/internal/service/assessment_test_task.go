@@ -47,11 +47,11 @@ const taskNoRetryLimit = 3
 
 // ListTestTaskFilter 任务列表查询条件（03 A1）：test_type 必填二值，status/keyword 空跳过。
 type ListTestTaskFilter struct {
-	TestType  string
-	Status    string
-	Keyword   string
-	Page      int
-	PageSize  int
+	TestType string
+	Status   string
+	Keyword  string
+	Page     int
+	PageSize int
 }
 
 // TestTaskListDTO 列表行（03 A1 响应字段一一对应）。CreatedAt/CompletedAt 直出
@@ -85,13 +85,13 @@ type CreateTestTaskPayload struct {
 
 // CreateTestTaskResult B1 响应。AnswerURL 含令牌原文，供前端留存上下文（03 B1）。
 type CreateTestTaskResult struct {
-	ID         int64  `json:"id,string"`
-	TaskNo     string `json:"task_no"`
-	TestType   string `json:"test_type"`
-	StaffName  string `json:"staff_name"`
-	Status     string `json:"status"`
-	AnswerURL  string `json:"answer_url"`
-	CreatedAt  string `json:"created_at"`
+	ID        int64  `json:"id,string"`
+	TaskNo    string `json:"task_no"`
+	TestType  string `json:"test_type"`
+	StaffName string `json:"staff_name"`
+	Status    string `json:"status"`
+	AnswerURL string `json:"answer_url"`
+	CreatedAt string `json:"created_at"`
 }
 
 // TestScaleStatusDTO 九型量表就绪查询（03 B2）：未就绪 Ready=false 空串零值。
@@ -141,15 +141,15 @@ type AssessmentTestTaskService interface {
 }
 
 type assessmentTestTaskService struct {
-	taskRepo   repository.AssessmentTestTaskRepository
-	questionRepo repository.QuestionRepository
-	batchRepo  repository.QuestionBatchRepository
-	dimRepo    repository.DimensionRepository
-	staffs     userapiClient
-	secretRepo repository.IntegrationSecretRepository
-	encKey     []byte
+	taskRepo      repository.AssessmentTestTaskRepository
+	questionRepo  repository.QuestionRepository
+	batchRepo     repository.QuestionBatchRepository
+	dimRepo       repository.DimensionRepository
+	staffs        userapiClient
+	secretRepo    repository.IntegrationSecretRepository
+	encKey        []byte
 	gradeEnqueuer TestGradeEnqueuer
-	now        func() time.Time
+	now           func() time.Time
 }
 
 // NewAssessmentTestTaskService 构造主动测试 service。now 注入便于测试锚定
@@ -166,15 +166,15 @@ func NewAssessmentTestTaskService(
 	now func() time.Time,
 ) AssessmentTestTaskService {
 	return &assessmentTestTaskService{
-		taskRepo:     taskRepo,
-		questionRepo: questionRepo,
-		batchRepo:    batchRepo,
-		dimRepo:      dimRepo,
-		staffs:       staffs,
-		secretRepo:   secretRepo,
-		encKey:       encKey,
+		taskRepo:      taskRepo,
+		questionRepo:  questionRepo,
+		batchRepo:     batchRepo,
+		dimRepo:       dimRepo,
+		staffs:        staffs,
+		secretRepo:    secretRepo,
+		encKey:        encKey,
 		gradeEnqueuer: gradeEnqueuer,
-		now:          now,
+		now:           now,
 	}
 }
 
@@ -254,9 +254,9 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 
 	// ③+④ 组卷与快照序列化。
 	var (
-		questionIDs     []int64
-		dimensionCodes  []string
-		scaleKey        string
+		questionIDs    []int64
+		dimensionCodes []string
+		scaleKey       string
 	)
 	switch p.TestType {
 	case domain.TestTypeAIMgmt:
@@ -286,26 +286,19 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 		}
 		dimensionCodes = sel.Codes
 	default: // enneagram
-		batch, berr := s.batchRepo.FindLatestImportedBatch(ctx)
-		if berr != nil {
-			if errors.Is(berr, gorm.ErrRecordNotFound) {
-				slog.Warn("test task create scale not imported")
-				return nil, NewError(errcode.TestScaleNotReady)
-			}
-			return nil, fmt.Errorf("find latest imported batch: %w", berr)
-		}
-		questions, qerr := s.questionRepo.ListActiveByScaleKey(ctx, batch.ScaleKey)
-		if qerr != nil {
-			return nil, fmt.Errorf("list active scale questions: %w", qerr)
+		var questions []domain.Question
+		var serr error
+		scaleKey, questions, serr = s.resolveScale(ctx)
+		if serr != nil {
+			return nil, serr
 		}
 		if len(questions) == 0 {
-			slog.Warn("test task create scale questions empty", "scale_key", batch.ScaleKey)
+			slog.Warn("test task create scale not ready")
 			return nil, NewError(errcode.TestScaleNotReady)
 		}
 		for i := range questions {
 			questionIDs = append(questionIDs, questions[i].ID)
 		}
-		scaleKey = batch.ScaleKey
 	}
 	idsJSON, err := marshalQuestionIDs(questionIDs)
 	if err != nil {
@@ -439,10 +432,13 @@ func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, 
 	if err != nil {
 		return NewError(errcode.TestStaffInvalid)
 	}
-	const pageSize = 100
+	// 翻页拉取上限（与 pipeline.fetchAllStaffNames 同范式）：staffListMaxPages
+	// 页防无界翻页，超出按对象无效处置。
+	const staffPageSize = 100
+	const staffListMaxPages = 100
 	fetched := 0
-	for page := 1; page <= 100; page++ {
-		staffs, total, err := s.staffs.ListStaffs(ctx, secret, staffName, page, pageSize)
+	for page := 1; page <= staffListMaxPages; page++ {
+		staffs, total, err := s.staffs.ListStaffs(ctx, secret, staffName, page, staffPageSize)
 		if err != nil {
 			return NewError(errcode.TestStaffInvalid)
 		}
@@ -452,7 +448,7 @@ func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, 
 			}
 		}
 		fetched += len(staffs)
-		if len(staffs) < pageSize || len(staffs) == 0 {
+		if len(staffs) < staffPageSize || len(staffs) == 0 {
 			return NewError(errcode.TestStaffInvalid)
 		}
 		if total > 0 && int64(fetched) >= total {
@@ -462,31 +458,44 @@ func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, 
 	return NewError(errcode.TestStaffInvalid)
 }
 
-// ScaleStatus 量表就绪查询：FindLatestImportedBatch + ListActiveByScaleKey 计数，
-// 未就绪 Ready=false 空串零值，弹窗打开不阻断（03 B2）。
+// resolveScale 组卷量表解析（01 §4.2.4 规则2）：自最新引入批次向下迭代，取首个
+// 存在启用题的量表；全部停用或未引入返回空 scaleKey + 空 questions，调用方据此
+// 映射 1804（两套并存取最新就绪的一套，与 03 B2 主句同源）。
+func (s *assessmentTestTaskService) resolveScale(ctx context.Context) (string, []domain.Question, error) {
+	batches, err := s.batchRepo.ListImportedByNewest(ctx)
+	if err != nil {
+		return "", nil, fmt.Errorf("list imported batches: %w", err)
+	}
+	for _, b := range batches {
+		questions, qerr := s.questionRepo.ListActiveByScaleKey(ctx, b.ScaleKey)
+		if qerr != nil {
+			return "", nil, fmt.Errorf("list active scale questions: %w", qerr)
+		}
+		if len(questions) > 0 {
+			return b.ScaleKey, questions, nil
+		}
+	}
+	return "", nil, nil
+}
+
+// ScaleStatus 量表就绪查询：resolveScale 同口径判定，未就绪 Ready=false 空串
+// 零值，弹窗打开不阻断（03 B2）。
 func (s *assessmentTestTaskService) ScaleStatus(ctx context.Context) (*TestScaleStatusDTO, error) {
 	notReady := &TestScaleStatusDTO{}
-	batch, err := s.batchRepo.FindLatestImportedBatch(ctx)
+	scaleKey, questions, err := s.resolveScale(ctx)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return notReady, nil
-		}
-		return nil, fmt.Errorf("find latest imported batch: %w", err)
+		return nil, err
 	}
-	questions, qerr := s.questionRepo.ListActiveByScaleKey(ctx, batch.ScaleKey)
-	if qerr != nil {
-		return nil, fmt.Errorf("list active scale questions: %w", qerr)
-	}
-	if len(questions) == 0 {
+	if scaleKey == "" {
 		return notReady, nil
 	}
 	name := ""
-	if tpl, ok := scaledata.FindByKey(batch.ScaleKey); ok {
+	if tpl, ok := scaledata.FindByKey(scaleKey); ok {
 		name = tpl.Name
 	}
 	return &TestScaleStatusDTO{
 		Ready:               true,
-		ScaleKey:            batch.ScaleKey,
+		ScaleKey:            scaleKey,
 		ScaleName:           name,
 		ActiveQuestionCount: len(questions),
 	}, nil
@@ -541,7 +550,7 @@ func (s *assessmentTestTaskService) Resend(ctx context.Context, taskID int64) (*
 }
 
 // Cancel 取消任务：repo CancelTask 条件更新，affected=0 按当前状态区分
-//（查无 1801、completed/canceled 1802，specs §4.1.4 规则2）。
+// （查无 1801、completed/canceled 1802，specs §4.1.4 规则2）。
 func (s *assessmentTestTaskService) Cancel(ctx context.Context, taskID int64) (*TestTaskCancelDTO, error) {
 	task, err := s.loadTask(ctx, taskID)
 	if err != nil {

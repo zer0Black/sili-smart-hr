@@ -24,11 +24,11 @@ var ErrTaskNotSubmittable = errors.New("assessment test task not submittable")
 
 // TestTaskFilter 任务列表筛选条件：TestType 必填（tab 即类型），Status/Keyword 空跳过。
 type TestTaskFilter struct {
-	TestType  string
-	Status    string
-	Keyword   string
-	Page      int
-	PageSize  int
+	TestType string
+	Status   string
+	Keyword  string
+	Page     int
+	PageSize int
 }
 
 // TestTaskRow 列表行：任务行 + 当前链接状态（该任务最新 generated_at 链接行的状态）。
@@ -105,7 +105,7 @@ func (r *assessmentTestTaskRepository) ListByFilter(ctx context.Context, f TestT
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	page, pageSize := ClampPage(f.Page, f.PageSize)
+	page, pageSize := ClampPageSize(f.Page, f.PageSize, 10)
 	var tasks []domain.AssessmentTestTask
 	if err := query.
 		Order("created_at DESC").
@@ -321,7 +321,7 @@ func (r *assessmentTestTaskRepository) CountActiveByType(ctx context.Context) (i
 }
 
 // ExpirePending 扫描 pending 且当前 valid 链接到期的任务，逐任务条件更新守卫推进
-//（affected=0 即并发已推进/状态已变，幂等跳过）；tick 只扫 pending，in_progress
+// （affected=0 即并发已推进/状态已变，幂等跳过）；tick 只扫 pending，in_progress
 // 天然豁免（specs §5.3.4 规则1/3）。候选集经子查询圈定走 idx_status_expires 前缀。
 func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now time.Time) (int64, error) {
 	sub := r.db.Model(&domain.AssessmentTestLink{}).

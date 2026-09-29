@@ -183,10 +183,10 @@ func TestFindPendingResubmitBatch_Empty(t *testing.T) {
 	}
 }
 
-// TestFindLatestImportedBatch 最新引入量批判定（specs TST 03 B2）：IMPORT 且 CLOSED
-// 批次按 created_at DESC 取首行，两批并存返回较新者；非 IMPORT（GENERATE/RESUBMIT）
-// 与非 CLOSED（PENDING/VOIDED）批次不参与判定。
-func TestFindLatestImportedBatch(t *testing.T) {
+// TestListImportedByNewest 引入量批判定（specs TST 03 B2、01 §4.2.4 规则2）：
+// IMPORT 且 CLOSED 批次按 created_at DESC 全量返回（最新在前），非 IMPORT
+//（GENERATE/RESUBMIT）与非 CLOSED（PENDING/VOIDED）批次不参与判定。
+func TestListImportedByNewest(t *testing.T) {
 	db := newQBatchTestDB(t)
 	old := seedBatch(t, db, "#S0920", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusClosed, 144)
 	latest := seedBatch(t, db, "#S0925", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusClosed, 36)
@@ -198,28 +198,35 @@ func TestFindLatestImportedBatch(t *testing.T) {
 	db.Model(&domain.QuestionBatch{}).Where("id = ?", latest.ID).Update("created_at", time.Now())
 
 	repo := repository.NewQuestionBatchRepository(db)
-	got, err := repo.FindLatestImportedBatch(context.Background())
+	got, err := repo.ListImportedByNewest(context.Background())
 	if err != nil {
-		t.Fatalf("FindLatestImportedBatch: %v", err)
+		t.Fatalf("ListImportedByNewest: %v", err)
 	}
-	if got.ID != latest.ID || got.BatchNo != "#S0925" {
-		t.Fatalf("want latest batch %s, got %+v", latest.BatchNo, got)
+	if len(got) != 2 {
+		t.Fatalf("want 2 imported closed batches, got %d", len(got))
 	}
-	if got.BatchType != domain.QuestionBatchTypeImport || got.Status != domain.QuestionBatchStatusClosed {
-		t.Fatalf("want IMPORT/CLOSED, got %s/%s", got.BatchType, got.Status)
+	if got[0].ID != latest.ID || got[0].BatchNo != "#S0925" {
+		t.Fatalf("want newest first %s, got %+v", latest.BatchNo, got[0])
+	}
+	if got[1].ID != old.ID {
+		t.Fatalf("want older second, got %+v", got[1])
 	}
 }
 
-// TestFindLatestImportedBatch_Empty 无 IMPORT CLOSED 批次返回 ErrRecordNotFound
-//（量表未引入的判定哨兵，服务层映射 1804）。
-func TestFindLatestImportedBatch_Empty(t *testing.T) {
+// TestListImportedByNewest_Empty 无 IMPORT CLOSED 批次返回空切片（量表未引入，
+// 调用方按空列表映射 1804）。
+func TestListImportedByNewest_Empty(t *testing.T) {
 	db := newQBatchTestDB(t)
 	seedBatch(t, db, "#G0925", domain.QuestionSourceAI, domain.QuestionBatchTypeGenerate, domain.QuestionBatchStatusClosed, 2)
 	seedBatch(t, db, "#S0926", domain.QuestionSourceScale, domain.QuestionBatchTypeImport, domain.QuestionBatchStatusVoided, 144)
 
 	repo := repository.NewQuestionBatchRepository(db)
-	if _, err := repo.FindLatestImportedBatch(context.Background()); err != gorm.ErrRecordNotFound {
-		t.Fatalf("no imported closed batch want ErrRecordNotFound, got %v", err)
+	got, err := repo.ListImportedByNewest(context.Background())
+	if err != nil {
+		t.Fatalf("ListImportedByNewest: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("no imported closed batch want empty, got %d", len(got))
 	}
 }
 

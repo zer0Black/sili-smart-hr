@@ -77,9 +77,14 @@ func NewTestGradeHandler(grader TestGrader, degrader TerminalDegrader, results T
 		}
 
 		if err := grader.Run(ctx, taskID); err != nil {
-			// ERROR 记任务号与错误摘要（specs §5.2.5 异常表）
+			// ERROR 记任务号与错误摘要（specs §5.2.5 异常表）；任务行读取失败
+			// 时退记 task_id，不因日志增强反向阻断重试。
+			taskNo := ""
+			if t2, gerr := degrader.GetByID(ctx, taskID); gerr == nil && t2 != nil {
+				taskNo = t2.TaskNo
+			}
 			slog.Error("test grade run failed, will retry",
-				"task_id", taskID, "err", err)
+				"task_id", taskID, "task_no", taskNo, "err", err)
 			retried, maxRetry := retryBudget(ctx)
 			if retried < maxRetry {
 				return err

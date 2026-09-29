@@ -120,6 +120,9 @@ func (r *qFakeDimRepo) UpdateActivitySetting(_ context.Context, _, _ int) error 
 func (r *qFakeDimRepo) ListEnabledFullByDataSource(_ context.Context, _ string) ([]domain.Dimension, error) {
 	return nil, nil
 }
+func (r *qFakeDimRepo) ListFullByCodesUnscoped(_ context.Context, _ []string) ([]domain.Dimension, error) {
+	return nil, nil
+}
 func (r *qFakeDimRepo) CountEnabledByGroupCode(_ context.Context, _ string) (map[string]int, error) {
 	return nil, nil
 }

@@ -23,21 +23,12 @@ func NewAssessmentTestTaskHandler(svc service.AssessmentTestTaskService) *Assess
 	return &AssessmentTestTaskHandler{svc: svc}
 }
 
-// List 处理 GET /api/assessment/test-tasks。page 缺省 1、page_size 缺省 10（≤0 或
-// 非法兜底），page_size >100 钳 100；test_type 必填与 status 枚举校验在 service 层
-//（03 A1：缺省与非法统一 1400）。
+// List 处理 GET /api/assessment/test-tasks。page/page_size 缺省与钳制（缺省 10、
+// 上限 100）由 repository.ClampPageSize 统一收口；test_type 必填与 status 枚举
+// 校验在 service 层（03 A1：缺省与非法统一 1400）。
 func (h *AssessmentTestTaskHandler) List(c *gin.Context) {
-	page, err := strconv.Atoi(c.Query("page"))
-	if err != nil || page <= 0 {
-		page = 1
-	}
-	pageSize, err := strconv.Atoi(c.Query("page_size"))
-	if err != nil || pageSize <= 0 {
-		pageSize = 10
-	}
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	page, _ := strconv.Atoi(c.Query("page"))
+	pageSize, _ := strconv.Atoi(c.Query("page_size"))
 	list, total, err := h.svc.List(c.Request.Context(), service.ListTestTaskFilter{
 		TestType: c.Query("test_type"),
 		Status:   c.Query("status"),

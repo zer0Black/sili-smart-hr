@@ -51,6 +51,21 @@ func TestParseScoreOutputRejectsInvalid(t *testing.T) {
 	}
 }
 
+// TestParseScoreOutputExcerptCarried 补充（specs §5.2.5 排障日志）：解析失败错误
+// wrap 原始输出截断摘要且 errors.Is 哨兵仍命中；长输出截到 200 rune。
+func TestParseScoreOutputExcerptCarried(t *testing.T) {
+	err := func() error {
+		_, err := parseScoreOutput("这不是 JSON 但很长 " + strings.Repeat("abc ", 100))
+		return err
+	}()
+	if err == nil || !strings.Contains(err.Error(), "output excerpt=") {
+		t.Fatalf("解析失败错误应携输出摘要, got %v", err)
+	}
+	if !errors.Is(err, ErrSchemaInvalid) {
+		t.Fatalf("摘要 wrap 不应破坏哨兵判定, got %v", err)
+	}
+}
+
 // TestParseScoreOutputFloatIntegralForm 补充：78.0 浮点整型形态收敛 78
 // （evaluator scoreNumber 同口径）。
 func TestParseScoreOutputFloatIntegralForm(t *testing.T) {

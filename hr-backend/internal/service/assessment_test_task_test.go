@@ -45,29 +45,29 @@ type fakeTSTRepo struct {
 	createErr error
 	// createErrFirst 首次 CreateWithLink 注入错误（模拟并发撞 uk_task_no 后重试成功）
 	createErrFirst error
-	nextNo    string
-	nextNoErr error
+	nextNo         string
+	nextNoErr      error
 	// nextNoSeq 非空时按调用次序返回（模拟重取序号），nextNo 作首值
-	nextNoSeq []string
-	current   *domain.AssessmentTestLink
-	currentErr error
-	replaceErr    error
+	nextNoSeq      []string
+	current        *domain.AssessmentTestLink
+	currentErr     error
+	replaceErr     error
 	cancelAffected int64
-	cancelErr     error
+	cancelErr      error
 	activeAI       int64
 	activeEnne     int64
 	countErr       error
-	startErr        error
-	startAffected   bool // MarkSessionStarted 是否实际推进（模拟条件更新 affected>0）
-	completeErr     error
-	completeStatus  string // CompleteTask 后任务的模拟落库状态（空串表示未推进）
+	startErr       error
+	startAffected  bool // MarkSessionStarted 是否实际推进（模拟条件更新 affected>0）
+	completeErr    error
+	completeStatus string // CompleteTask 后任务的模拟落库状态（空串表示未推进）
 
-	listCalled   bool
-	gotFilter    repository.TestTaskFilter
-	createCalled bool
-	createCalls  int
-	createdTask  *domain.AssessmentTestTask
-	createdLink  *domain.AssessmentTestLink
+	listCalled    bool
+	gotFilter     repository.TestTaskFilter
+	createCalled  bool
+	createCalls   int
+	createdTask   *domain.AssessmentTestTask
+	createdLink   *domain.AssessmentTestLink
 	gotNextPrefix string
 	replaceTaskID int64
 	replacedLink  *domain.AssessmentTestLink
@@ -143,6 +143,7 @@ func (f *fakeTSTRepo) CancelTask(_ context.Context, taskID int64) (int64, error)
 	}
 	return f.cancelAffected, nil
 }
+
 // MarkSessionStarted 模拟 WHERE status='pending' 条件更新：任务存在且 pending 时
 // 推进 in_progress 置 startAffected，其余（in_progress/completed/查无）幂等返回 nil。
 func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) error {
@@ -188,8 +189,8 @@ var _ repository.AssessmentTestTaskRepository = (*fakeTSTRepo)(nil)
 
 // fakeGradeEnqueuer 是 service.TestGradeEnqueuer 的假实现，承载投递成败与探针。
 type fakeGradeEnqueuer struct {
-	err   error
-	calls int
+	err       error
+	calls     int
 	gotTaskID int64
 }
 
@@ -204,9 +205,10 @@ var _ service.TestGradeEnqueuer = (*fakeGradeEnqueuer)(nil)
 // fakeTSTQuestionRepo 是 repository.QuestionRepository 的测试假实现，
 // ListActiveByDimensionIDs / ListActiveByScaleKey 承载组卷取题行为。
 type fakeTSTQuestionRepo struct {
-	byDims    map[int64][]domain.Question
-	byDimsErr error
-	byScale   []domain.Question
+	byDims     map[int64][]domain.Question
+	byDimsErr  error
+	byScale    []domain.Question
+	byScaleMap map[string][]domain.Question // 非空时按 scale_key 区分返回（回退语义测试用）
 	byScaleErr error
 
 	gotDimIDs   []int64
@@ -244,6 +246,9 @@ func (f *fakeTSTQuestionRepo) ListActiveByScaleKey(_ context.Context, scaleKey s
 	if f.byScaleErr != nil {
 		return nil, f.byScaleErr
 	}
+	if f.byScaleMap != nil {
+		return f.byScaleMap[scaleKey], nil
+	}
 	return f.byScale, nil
 }
 func (f *fakeTSTQuestionRepo) ListByIDsUnscoped(_ context.Context, _ []int64) ([]domain.Question, error) {
@@ -256,13 +261,15 @@ func (f *fakeTSTQuestionRepo) IncrementReferenceCounts(_ context.Context, _ *gor
 var _ repository.QuestionRepository = (*fakeTSTQuestionRepo)(nil)
 
 // fakeTSTBatchRepo 是 repository.QuestionBatchRepository 的测试假实现，
-// 仅 FindLatestImportedBatch 有行为（最新引入量批判定）。
+// 仅 ListImportedByNewest 有行为（引入量批判定，降序）。
 type fakeTSTBatchRepo struct {
-	imported    *domain.QuestionBatch
+	imported    []domain.QuestionBatch
 	importedErr error
 }
 
-func (f *fakeTSTBatchRepo) ListPending(_ context.Context) ([]domain.QuestionBatch, error) { return nil, nil }
+func (f *fakeTSTBatchRepo) ListPending(_ context.Context) ([]domain.QuestionBatch, error) {
+	return nil, nil
+}
 func (f *fakeTSTBatchRepo) FindByID(_ context.Context, _ int64) (*domain.QuestionBatch, error) {
 	return nil, nil
 }
@@ -285,7 +292,7 @@ func (f *fakeTSTBatchRepo) VoidBatch(_ context.Context, _ int64) error { return 
 func (f *fakeTSTBatchRepo) ResubmitToBatch(_ context.Context, _ *domain.Question, _ map[string]any) (*domain.QuestionBatch, error) {
 	return nil, nil
 }
-func (f *fakeTSTBatchRepo) FindLatestImportedBatch(_ context.Context) (*domain.QuestionBatch, error) {
+func (f *fakeTSTBatchRepo) ListImportedByNewest(_ context.Context) ([]domain.QuestionBatch, error) {
 	return f.imported, f.importedErr
 }
 
@@ -369,7 +376,7 @@ func wantServiceErr(t *testing.T, err error, want int) {
 }
 
 // TestCreateTaskNoConflictRetry 撞 uk_task_no 并发重号：首试撞键后重取序号重试成功
-//（04 §3.1 索引说明「撞键重取序号重试」）。
+// （04 §3.1 索引说明「撞键重取序号重试」）。
 func TestCreateTaskNoConflictRetry(t *testing.T) {
 	taskRepo, _, _, _, _, svc := aiMgmtHappyEnv(t)
 	taskRepo.nextNoSeq = []string{"T202609280001", "T202609280002"}
@@ -561,7 +568,7 @@ func TestCreateTSTValidation(t *testing.T) {
 }
 
 // TestCreateDimensionNotEnabled：dimension_ids 含停用/非 AI_MGMT/不存在/非数字项返 1400
-//（勾选范围限当前启用 AI_MGMT 子能力，specs §4.2.2 A）。
+// （勾选范围限当前启用 AI_MGMT 子能力，specs §4.2.2 A）。
 func TestCreateDimensionNotEnabled(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -586,7 +593,7 @@ func TestCreateDimensionNotEnabled(t *testing.T) {
 }
 
 // TestCreateDimensionEmpty：勾选维度中 104 无启用题返 1803 且 Msg 携维度名
-//（specs §4.2.4 规则1「子能力 X 无可用题目，请先在题库补充」）。
+// （specs §4.2.4 规则1「子能力 X 无可用题目，请先在题库补充」）。
 func TestCreateDimensionEmpty(t *testing.T) {
 	taskRepo, _, _, _, _, svc := aiMgmtHappyEnv(t)
 
@@ -687,11 +694,11 @@ func (f *pagedUserapiClient) ListStaffs(_ context.Context, _, _ string, page, _ 
 }
 
 // TestCreateEnneagramScaleNotReady：无 IMPORT 批次或量表启用题为空返 1804，任务不创建
-//（specs §4.2.4 规则2）。
+// （specs §4.2.4 规则2）。
 func TestCreateEnneagramScaleNotReady(t *testing.T) {
 	t.Run("未引入", func(t *testing.T) {
 		taskRepo, _, bRepo, _, _, svc := aiMgmtHappyEnv(t)
-		bRepo.importedErr = gorm.ErrRecordNotFound
+		bRepo.imported = nil
 		_, err := svc.Create(context.Background(), service.CreateTestTaskPayload{
 			TestType: domain.TestTypeEnneagram, StaffID: "u1", StaffName: "张敏",
 		})
@@ -702,7 +709,7 @@ func TestCreateEnneagramScaleNotReady(t *testing.T) {
 	})
 	t.Run("全部停用", func(t *testing.T) {
 		taskRepo, _, bRepo, _, _, svc := aiMgmtHappyEnv(t)
-		bRepo.imported = &domain.QuestionBatch{ScaleKey: domain.ScaleKeyRisoHudson}
+		bRepo.imported = []domain.QuestionBatch{{ScaleKey: domain.ScaleKeyRisoHudson}}
 		_, err := svc.Create(context.Background(), service.CreateTestTaskPayload{
 			TestType: domain.TestTypeEnneagram, StaffID: "u1", StaffName: "张敏",
 		})
@@ -718,7 +725,7 @@ func TestCreateEnneagramScaleNotReady(t *testing.T) {
 func TestCreateEnneagramHappyPath(t *testing.T) {
 	taskRepo := &fakeTSTRepo{nextNo: "E202609280001"}
 	qRepo := &fakeTSTQuestionRepo{byScale: scaleQuestions()}
-	bRepo := &fakeTSTBatchRepo{imported: &domain.QuestionBatch{ScaleKey: domain.ScaleKeyRisoHudson}}
+	bRepo := &fakeTSTBatchRepo{imported: []domain.QuestionBatch{{ScaleKey: domain.ScaleKeyRisoHudson}}}
 	dimRepo := &fakeDimRepo{dims: aiMgmtEnabledDims()}
 	ua := &fakeUserapiClient{staffs: []userapi.Staff{{StaffID: "u1", StaffName: "张敏"}}}
 	svc := newTSTSvc(t, taskRepo, qRepo, bRepo, dimRepo, ua, tstFixedNow)
@@ -1005,7 +1012,7 @@ func TestLink(t *testing.T) {
 }
 
 // TestList：枚举校验（test_type 必填二值、status 可空五值）与 DTO 组装
-//（created_at/completed_at 直出 yyyy-MM-dd HH:mm，未完成 completed_at 为 nil）。
+// （created_at/completed_at 直出 yyyy-MM-dd HH:mm，未完成 completed_at 为 nil）。
 func TestList(t *testing.T) {
 	t.Run("组装", func(t *testing.T) {
 		completedAt := tstFixedNow().Add(2 * time.Hour)
@@ -1090,12 +1097,34 @@ func TestPollCounts(t *testing.T) {
 	}
 }
 
+// TestScaleStatusFallbackLatestDisabled：最新引入量表启用题为空时回退较早引入
+// 且就绪的量表（01 §4.2.4 规则2：未引入或全部停用才 1804）。
+func TestScaleStatusFallbackLatestDisabled(t *testing.T) {
+	qRepo := &fakeTSTQuestionRepo{byScaleMap: map[string][]domain.Question{
+		domain.ScaleKeyRisoHudson: {}, // 最新引入的一套全部停用
+		domain.ScaleKeyEssence:    scaleQuestions(),
+	}}
+	bRepo := &fakeTSTBatchRepo{imported: []domain.QuestionBatch{
+		{ScaleKey: domain.ScaleKeyRisoHudson}, // created_at 降序在前 = 最新
+		{ScaleKey: domain.ScaleKeyEssence},
+	}}
+	svc := newTSTSvc(t, &fakeTSTRepo{}, qRepo, bRepo, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+	dto, err := svc.ScaleStatus(context.Background())
+	if err != nil {
+		t.Fatalf("ScaleStatus: %v", err)
+	}
+	if !dto.Ready || dto.ScaleKey != domain.ScaleKeyEssence {
+		t.Errorf("dto = %+v, want 就绪回退 Essence 套", dto)
+	}
+}
+
 // TestScaleStatus：就绪返量表信息与启用题数；未引入/全部停用返 Ready=false 空串零值，
 // 弹窗打开不阻断（03 B2）。
 func TestScaleStatus(t *testing.T) {
 	t.Run("就绪", func(t *testing.T) {
 		qRepo := &fakeTSTQuestionRepo{byScale: scaleQuestions()}
-		bRepo := &fakeTSTBatchRepo{imported: &domain.QuestionBatch{ScaleKey: domain.ScaleKeyRisoHudson}}
+		bRepo := &fakeTSTBatchRepo{imported: []domain.QuestionBatch{{ScaleKey: domain.ScaleKeyRisoHudson}}}
 		svc := newTSTSvc(t, &fakeTSTRepo{}, qRepo, bRepo, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
 
 		dto, err := svc.ScaleStatus(context.Background())
@@ -1110,7 +1139,7 @@ func TestScaleStatus(t *testing.T) {
 		}
 	})
 	t.Run("未引入", func(t *testing.T) {
-		bRepo := &fakeTSTBatchRepo{importedErr: gorm.ErrRecordNotFound}
+		bRepo := &fakeTSTBatchRepo{}
 		svc := newTSTSvc(t, &fakeTSTRepo{}, &fakeTSTQuestionRepo{}, bRepo, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
 
 		dto, err := svc.ScaleStatus(context.Background())
@@ -1122,7 +1151,7 @@ func TestScaleStatus(t *testing.T) {
 		}
 	})
 	t.Run("全部停用", func(t *testing.T) {
-		bRepo := &fakeTSTBatchRepo{imported: &domain.QuestionBatch{ScaleKey: domain.ScaleKeyEssence}}
+		bRepo := &fakeTSTBatchRepo{imported: []domain.QuestionBatch{{ScaleKey: domain.ScaleKeyEssence}}}
 		svc := newTSTSvc(t, &fakeTSTRepo{}, &fakeTSTQuestionRepo{}, bRepo, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
 
 		dto, err := svc.ScaleStatus(context.Background())
@@ -1136,7 +1165,7 @@ func TestScaleStatus(t *testing.T) {
 }
 
 // TestCreateDimensionIDNormalizes：dimension_ids 顺序打乱时快照编码仍按维度表 code ASC 序落
-//（维度表 ListEnabledFullByDataSource 排序为锚）。
+// （维度表 ListEnabledFullByDataSource 排序为锚）。
 func TestCreateDimensionIDNormalizes(t *testing.T) {
 	taskRepo, _, _, _, _, svc := aiMgmtHappyEnv(t)
 
@@ -1205,7 +1234,7 @@ func TestServiceCompleteTaskEnqueueFail(t *testing.T) {
 }
 
 // TestServiceCompleteTaskRepoErr：repo 层错误映射：ErrTaskNotSubmittable → 1802
-//（specs 03 §5 状态不允许），仓储错误包装上抛；ErrTaskNotSubmittable 不触发投递。
+// （specs 03 §5 状态不允许），仓储错误包装上抛；ErrTaskNotSubmittable 不触发投递。
 func TestServiceCompleteTaskRepoErr(t *testing.T) {
 	t.Run("哨兵映射 1802", func(t *testing.T) {
 		taskRepo := &fakeTSTRepo{completeErr: repository.ErrTaskNotSubmittable}

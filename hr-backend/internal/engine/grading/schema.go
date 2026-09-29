@@ -15,7 +15,22 @@ import (
 )
 
 // ErrSchemaInvalid 阅卷输出未通过 schema 校验（specs §5.2.5：视同调用失败进重试）。
+// 解析路径 wrap 本哨兵时携带 LLM 原始输出截断摘要（specs §5.2.5 排障日志），
+// errors.Is 仍可命中。
 var ErrSchemaInvalid = errors.New("grading: output schema invalid")
+
+// schemaExcerptLen 摘要截断长度（rune 计）：区分解析失败原因即可，不承载全文。
+const schemaExcerptLen = 200
+
+// schemaErrWithExcerpt 哨兵 wrap 截断摘要（多行与首尾空白压成单行防日志膨胀）。
+func schemaErrWithExcerpt(raw string) error {
+	excerpt := strings.Join(strings.Fields(raw), " ")
+	r := []rune(excerpt)
+	if len(r) > schemaExcerptLen {
+		excerpt = string(r[:schemaExcerptLen]) + "…"
+	}
+	return fmt.Errorf("%w: output excerpt=%q", ErrSchemaInvalid, excerpt)
+}
 
 // distributionTolerance 分布总和容差（04 §3.3：100±2 闭区间）。
 const distributionTolerance = 2.0
@@ -106,11 +121,12 @@ func (t *typeNumber) UnmarshalJSON(b []byte) error {
 }
 
 // parseScoreOutput 宽容解析 ai_mgmt 输出：剥围栏后 Unmarshal，失败截取首个含
-// dimensions 键的顶层平衡 JSON 对象重试，仍失败或无 dimensions 键判 ErrSchemaInvalid。
+// dimensions 键的顶层平衡 JSON 对象重试，仍失败或无 dimensions 键判 ErrSchemaInvalid
+//（wrap 原始输出摘要）。
 func parseScoreOutput(raw string) (*scoreOutput, error) {
 	var out scoreOutput
 	if err := firstJSONObject(raw, &out, func() bool { return out.Dimensions != nil }); err != nil {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 	return &out, nil
 }
@@ -121,25 +137,25 @@ func parseScoreOutput(raw string) (*scoreOutput, error) {
 func parseEnneagramOutput(raw string) (*enneagramOutput, error) {
 	var doc enneagramDoc
 	if err := firstJSONObject(raw, &doc, func() bool { return doc.MainType.s != "" }); err != nil {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 
 	main := doc.MainType.s
 	wing := doc.WingType.s
 	if !validTypeCode(main) {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 	if wing == "0" {
 		wing = "" // 无显著翼型归一空串（04 §3.3 落库形态）
 	}
 	if wing != "" && !validTypeCode(wing) {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 	if !validDistribution(doc.Distribution) {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 	if strings.TrimSpace(doc.Rationale) == "" {
-		return nil, ErrSchemaInvalid
+		return nil, schemaErrWithExcerpt(raw)
 	}
 	return &enneagramOutput{
 		MainType:     main,

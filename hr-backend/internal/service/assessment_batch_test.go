@@ -40,8 +40,8 @@ type fakeBatchRepo struct {
 	idsBetweenErr   error
 	countSuccess    int64
 	countSuccessErr error
-	runningBatches []repository.RunningBatch
-	listRunningErr      error
+	runningBatches  []repository.RunningBatch
+	listRunningErr  error
 
 	lastFilter            repository.BatchFilter
 	failedListGotID       int64
@@ -128,6 +128,9 @@ func (f *fakeDimRepo) GetActivitySetting(_ context.Context) (*domain.DimensionSe
 func (f *fakeDimRepo) UpdateActivitySetting(_ context.Context, _, _ int) error { return nil }
 func (f *fakeDimRepo) ListEnabledFullByDataSource(_ context.Context, dataSource string) ([]domain.Dimension, error) {
 	f.gotDataSource = dataSource
+	return f.dims, f.err
+}
+func (f *fakeDimRepo) ListFullByCodesUnscoped(_ context.Context, _ []string) ([]domain.Dimension, error) {
 	return f.dims, f.err
 }
 func (f *fakeDimRepo) CountEnabledByGroupCode(_ context.Context, dataSource string) (map[string]int, error) {
@@ -392,9 +395,9 @@ func TestStatsWindow(t *testing.T) {
 		{TriggeredAt: time.Date(2026, 8, 30, 23, 0, 0, 0, time.Local), TriggerType: domain.BatchTriggerScheduled},
 	}
 	batchRepo := &fakeBatchRepo{
-		countInRange:      2,
-		countSuccess:      96,
-		runningBatches:    runningBatches,
+		countInRange:   2,
+		countSuccess:   96,
+		runningBatches: runningBatches,
 	}
 	svc := newBatchSvc(batchRepo, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}})
 
