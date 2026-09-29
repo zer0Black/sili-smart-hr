@@ -22,11 +22,11 @@ type TestExpireRunner interface {
 }
 
 // NewTestExpireTickHandler 构造逾期 tick handler：无 payload，调
-// ExpirePending(ctx, time.Now())，推进条数记 INFO，err 透传交 Asynq 任务级
-// 重试（specs §5.3.5：下个 tick 自然补偿）。
+// ExpirePending(ctx, time.Now().UTC())（比较口径与 expires_at 落库 UTC 一致），
+// 推进条数记 INFO，err 透传交 Asynq 任务级重试（specs §5.3.5：下个 tick 自然补偿）。
 func NewTestExpireTickHandler(runner TestExpireRunner) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
-		n, err := runner.ExpirePending(ctx, time.Now())
+		n, err := runner.ExpirePending(ctx, time.Now().UTC())
 		if err != nil {
 			return err
 		}

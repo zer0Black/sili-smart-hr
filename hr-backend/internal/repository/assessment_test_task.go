@@ -15,6 +15,7 @@ import (
 	"sili-smart-hr/backend/internal/pkg/likeescape"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ErrTaskNotSubmittable 提交守卫拒绝：任务非 pending/in_progress（已 completed 幂等
@@ -53,8 +54,9 @@ type AssessmentTestTaskRepository interface {
 	NextTaskNo(ctx context.Context, prefix string, now time.Time) (string, error)
 	// CurrentLink 取任务最新 generated_at 链接行，无行返 (nil, nil)。
 	CurrentLink(ctx context.Context, taskID int64) (*domain.AssessmentTestLink, error)
-	// ReplaceLink 重发事务三步：任务 expired 条件更新回 pending（pending 重发
-	// affected=0 容忍跳过）+ 旧行 valid 条件更新置 invalid + 插新行 valid（specs §6.2）。
+	// ReplaceLink 重发事务：任务行 FOR UPDATE 锁内复核 pending/expired 后作废旧
+	// valid 链接并插新行（specs §4.1.4 规则1、§6.2），非可重发态返
+	// ErrTaskNotSubmittable。
 	ReplaceLink(ctx context.Context, taskID int64, newLink *domain.AssessmentTestLink) error
 	// CancelTask 事务：任务条件更新（pending/in_progress/expired 集合）置 canceled +
 	// 当前 valid 链接置 invalid。返回 affected，0 映射状态非法（specs §4.1.4 规则2）。
@@ -67,12 +69,9 @@ type AssessmentTestTaskRepository interface {
 	// ExpirePending 扫描 pending 且当前 valid 链接 expires_at < now 的任务批量推进
 	// expired + 链接 invalid，条件更新守卫幂等，返回推进条数（specs §5.3.2/§5.3.4）。
 	ExpirePending(ctx context.Context, now time.Time) (int64, error)
-	// CompleteTask 提交事务三步 + enqueue 同事务（specs §5.2.2 步骤1）：任务条件更新
-	//（pending/in_progress）置 completed + completed_at → 当前 valid 链接置 used +
-	// used_at → grading_status waiting→grading → enqueue(tx) 投递阅卷，报错整体回滚
-	//（不存在提交成功但阅卷未投递的中间态，specs §5.2.5）。已 completed/canceled/
-	// expired 或不存在时 affected=0：completed 幂等返回 nil（不重触 enqueue），其余返
-	// ErrTaskNotSubmittable。pending 直达 completed 为 03 §1.6 声明的防御性放行。
+	// CompleteTask 提交事务三步 + enqueue 同事务，报错整体回滚（specs §5.2.2
+	// 步骤1）。completed 幂等返 nil，其余 affected=0 返 ErrTaskNotSubmittable；
+	// pending 直达 completed 为 03 §1.6 声明的防御性放行。
 	CompleteTask(ctx context.Context, taskID int64, enqueue func(tx *gorm.DB) error, now time.Time) error
 	// MarkGradingTerminal grading→scored/degraded 条件更新（specs §6.2 阅卷状态机），
 	// WHERE grading_status='grading' 守卫：已终态/在途前幂等返回 nil，不回退已终态。
@@ -158,11 +157,15 @@ func (r *assessmentTestTaskRepository) GetByID(ctx context.Context, id int64) (*
 
 // CreateWithLink 三步同事务（specs §5.1.4 规则3）：任务行 → 链接行（回填 task_id）
 // → 题目引用计数 +1（题目 ID 从 question_ids_json 解析，走同一 tx 通道）。
+// 首写时间显式 UTC（session_feature 范式）：autoCreate/autoUpdate 回调填本地时区
+// 会让同列混存两种偏移串。
 func (r *assessmentTestTaskRepository) CreateWithLink(ctx context.Context, task *domain.AssessmentTestTask, link *domain.AssessmentTestLink) error {
 	questionIDs, err := parseQuestionIDs(task.QuestionIDsJSON)
 	if err != nil {
 		return err
 	}
+	task.CreatedAt, task.UpdatedAt = utcNow(), utcNow()
+	link.CreatedAt, link.UpdatedAt = utcNow(), utcNow()
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(task).Error; err != nil {
 			return err
@@ -188,11 +191,9 @@ func parseQuestionIDs(s string) ([]int64, error) {
 	return ids, nil
 }
 
-// NextTaskNo 同前缀同日期取最大序号递增；无行归 1。序号列定宽 4 位，
-// 超 9999 时格式退化为 5 位（uk_task_no 仍保唯一，任务号只是人工引用锚点）。
-// 日期按本地时区日界（与列表 created_at 直出 Local() 口径一致，防东八区
-// 0-8 点任务号日期与发起时间分属两天）；Unscoped 含全部行：本表无软删除，
-// 语义为已建任务全量（canceled 亦占号防复用）。
+// NextTaskNo 同前缀同日期取最大序号递增；无行归 1。序号列定宽 4 位，超 9999
+// 退化为 5 位（uk_task_no 仍保唯一）。日期按本地时区日界（防东八区 0-8 点任务号
+// 日期与发起时间分属两天）；Unscoped 语义为已建任务全量（canceled 亦占号防复用）。
 func (r *assessmentTestTaskRepository) NextTaskNo(ctx context.Context, prefix string, now time.Time) (string, error) {
 	dayKey := now.Local().Format("20060102")
 	fullPrefix := prefix + dayKey
@@ -230,11 +231,26 @@ func (r *assessmentTestTaskRepository) CurrentLink(ctx context.Context, taskID i
 	return &link, nil
 }
 
-// ReplaceLink 三步事务（specs §4.1.4 规则1、§6.2 已逾期→待作答）：
-// expired→pending 条件更新守卫（pending 重发 affected=0 容忍，无状态推进）；
-// 旧行 valid→invalid 条件更新防并发双重发；新行 valid 插入。
+// ReplaceLink 三步事务（specs §4.1.4 规则1、§6.2 已逾期→待作答）：事务内先对
+// 任务行 FOR UPDATE 加锁串行化并发重发与状态推进（04 §3.2 并发守卫；SQLite
+// 忽略锁子句，靠写锁天然串行）→ 锁内复核状态（非 pending/expired 返
+// ErrTaskNotSubmittable）→ expired 条件更新回 pending + 旧行 valid 置 invalid +
+// 插新行 valid。
 func (r *assessmentTestTaskRepository) ReplaceLink(ctx context.Context, taskID int64, newLink *domain.AssessmentTestLink) error {
+	newLink.CreatedAt, newLink.UpdatedAt = utcNow(), utcNow()
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var locked domain.AssessmentTestTask
+		if err := tx.Clauses(clause.Locking{Strength: clause.LockingStrengthUpdate}).
+			Where("id = ?", taskID).
+			First(&locked).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTaskNotSubmittable
+			}
+			return err
+		}
+		if locked.Status != domain.TestTaskStatusPending && locked.Status != domain.TestTaskStatusExpired {
+			return ErrTaskNotSubmittable
+		}
 		if err := tx.Model(&domain.AssessmentTestTask{}).
 			Where("id = ? AND status = ?", taskID, domain.TestTaskStatusExpired).
 			Update("status", domain.TestTaskStatusPending).Error; err != nil {
@@ -344,14 +360,12 @@ func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now ti
 	return advanced, nil
 }
 
-// CompleteTask 四步同事务（specs §5.2.2 步骤1、§5.2.5）：提交三步（任务 completed、
-// 链接 used、阅卷轴 waiting→grading）+ enqueue 在事务闭包内投递，报错整体回滚，
-// 不存在提交成功但阅卷未投递的中间态。affected=0 时重读任务区分幂等与状态错：
-// completed 幂等返回 nil（不重触 enqueue、used_at 不被改写）；canceled/expired/
-// 不存在返回 ErrTaskNotSubmittable。map Updates 不触发 autoUpdateTime，updated_at
-// 显式随 now 写入。
+// CompleteTask 四步同事务（specs §5.2.2 步骤1）：三步推进 + enqueue 在事务闭包
+// 内投递。affected=0 时重读任务：completed 幂等返回 nil（不重触 enqueue）。
+// map Updates 不触发 autoUpdateTime，updated_at 显式随 now 写入（UTC 口径）。
 func (r *assessmentTestTaskRepository) CompleteTask(ctx context.Context, taskID int64, enqueue func(tx *gorm.DB) error, now time.Time) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now = now.UTC()
 		res := tx.Model(&domain.AssessmentTestTask{}).
 			Where("id = ? AND status IN ?", taskID, []string{
 				domain.TestTaskStatusPending,

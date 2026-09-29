@@ -36,7 +36,12 @@ import {
 } from '@/components/ui/table';
 import { useRefetchOnVisible } from '@/features/assessment/hooks';
 import { useCancelTestTask, useTestTasks } from '@/features/assessment/test-task-hooks';
-import type { TestTaskListItem, TestTaskStatus, TestType } from '@/features/assessment/test-task-types';
+import {
+  linkStatusVariant,
+  type TestTaskListItem,
+  type TestTaskStatus,
+  type TestType,
+} from '@/features/assessment/test-task-types';
 import { cn } from '@/lib/utils';
 
 export interface TestTaskTableProps {
@@ -48,8 +53,8 @@ export interface TestTaskTableProps {
   onLinkOpen: (taskId: string) => void;
   /** 重发作答链接（specs §4.1.3：仅已逾期可见）。 */
   onResend: (taskId: string) => void;
-  /** 取消任务（specs §4.1.3：二次确认在本组件内完成）。 */
-  onCancel: (taskId: string) => void;
+  /** 重发请求进行中：行内按钮 loading 至接口响应（specs §4.1.3）。 */
+  resendPending?: boolean;
   /** 外部重置信号：值变化时清空筛选并回第一页（发起成功重置入口，specs §4.2.3）。 */
   resetKey?: number;
   /** 轮询开关：当前类型存在未终态任务时由父级 poll-counts 探针驱动（specs §4.1.3）。 */
@@ -71,13 +76,6 @@ function statusVariant(status: TestTaskListItem['status']): 'default' | 'seconda
   return 'default';
 }
 
-/** 链接状态标签变体：valid 主色、used 中性、invalid 警示。 */
-function linkStatusVariant(status: TestTaskListItem['link_status']): 'default' | 'secondary' | 'destructive' {
-  if (status === 'valid') return 'default';
-  if (status === 'used') return 'secondary';
-  return 'destructive';
-}
-
 /** 阅卷状态标签变体：scored 成功、degraded 警示、waiting/grading 中性。 */
 function gradingVariant(status: TestTaskListItem['grading_status']): 'default' | 'secondary' | 'destructive' {
   if (status === 'scored') return 'secondary';
@@ -91,7 +89,7 @@ export function TestTaskTable({
   onCreateOpen,
   onLinkOpen,
   onResend,
-  onCancel,
+  resendPending,
   resetKey,
   polling,
 }: TestTaskTableProps): JSX.Element {
@@ -172,7 +170,6 @@ export function TestTaskTable({
       onSuccess: () => setCancelTarget(null),
       onError: () => setCancelTarget(null),
     });
-    onCancel(item.id);
   }
 
   return (
@@ -281,7 +278,7 @@ export function TestTaskTable({
                         <Button
                           variant="link"
                           size="sm"
-                          disabled={false}
+                          disabled={resendPending}
                           onClick={() => onResend(item.id)}
                         >
                           {t('testTask.table.actionResend')}

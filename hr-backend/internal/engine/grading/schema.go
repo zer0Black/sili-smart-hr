@@ -108,54 +108,20 @@ func (t *typeNumber) UnmarshalJSON(b []byte) error {
 // parseScoreOutput 宽容解析 ai_mgmt 输出：剥围栏后 Unmarshal，失败截取首个含
 // dimensions 键的顶层平衡 JSON 对象重试，仍失败或无 dimensions 键判 ErrSchemaInvalid。
 func parseScoreOutput(raw string) (*scoreOutput, error) {
-	body := extractor.StripFences(strings.TrimSpace(raw))
 	var out scoreOutput
-	if err := json.Unmarshal([]byte(body), &out); err != nil {
-		if trimmed := firstScoreObject(body); trimmed != "" {
-			body = trimmed
-			err = json.Unmarshal([]byte(body), &out)
-		}
-		if err != nil {
-			return nil, ErrSchemaInvalid
-		}
-	}
-	if out.Dimensions == nil {
+	if err := firstJSONObject(raw, &out, func() bool { return out.Dimensions != nil }); err != nil {
 		return nil, ErrSchemaInvalid
 	}
 	return &out, nil
-}
-
-// firstScoreObject 截取首个含 dimensions 键的顶层平衡 JSON 对象（防前导示例劫持）。
-func firstScoreObject(s string) string {
-	from := 0
-	for from < len(s) {
-		cand := extractor.FirstBalancedJSONObject(s[from:])
-		if cand == "" {
-			return ""
-		}
-		var probe scoreOutput
-		if json.Unmarshal([]byte(cand), &probe) == nil && probe.Dimensions != nil {
-			return cand
-		}
-		from += strings.Index(s[from:], cand) + len(cand)
-	}
-	return ""
 }
 
 // parseEnneagramOutput 宽容解析判型输出并校验：main_type 1-9、wing_type 1-9 或
 // 空（无显著翼型）、distribution 恰九键各项 0-100、总和 100±2 闭区间。
 // main_type/wing_type 收敛为数字串（0 形态的翼型转空串），rationale 不可缺失。
 func parseEnneagramOutput(raw string) (*enneagramOutput, error) {
-	body := extractor.StripFences(strings.TrimSpace(raw))
 	var doc enneagramDoc
-	if err := json.Unmarshal([]byte(body), &doc); err != nil {
-		if trimmed := firstEnneagramObject(body); trimmed != "" {
-			body = trimmed
-			err = json.Unmarshal([]byte(body), &doc)
-		}
-		if err != nil {
-			return nil, ErrSchemaInvalid
-		}
+	if err := firstJSONObject(raw, &doc, func() bool { return doc.MainType.s != "" }); err != nil {
+		return nil, ErrSchemaInvalid
 	}
 
 	main := doc.MainType.s
@@ -191,21 +157,26 @@ type enneagramDoc struct {
 	Rationale    string             `json:"rationale"`
 }
 
-// firstEnneagramObject 截取首个含 main_type 键的顶层平衡 JSON 对象。
-func firstEnneagramObject(s string) string {
-	from := 0
-	for from < len(s) {
-		cand := extractor.FirstBalancedJSONObject(s[from:])
-		if cand == "" {
-			return ""
-		}
-		var probe enneagramDoc
-		if json.Unmarshal([]byte(cand), &probe) == nil && probe.MainType.s != "" {
-			return cand
-		}
-		from += strings.Index(s[from:], cand) + len(cand)
+// firstJSONObject 宽容解析骨架（evaluator 范式收敛）：剥围栏后 Unmarshal，
+// 失败逐个截取顶层平衡 JSON 对象重试（防前导示例劫持）。probe 在候选解码成功
+// 且判键命中时放行（判键随解码结果写入 out，闭包读取）。
+func firstJSONObject[T any](raw string, out *T, probe func() bool) error {
+	body := extractor.StripFences(strings.TrimSpace(raw))
+	if err := json.Unmarshal([]byte(body), out); err == nil && probe() {
+		return nil
 	}
-	return ""
+	from := 0
+	for from < len(body) {
+		cand := extractor.FirstBalancedJSONObject(body[from:])
+		if cand == "" {
+			break
+		}
+		if json.Unmarshal([]byte(cand), out) == nil && probe() {
+			return nil
+		}
+		from += strings.Index(body[from:], cand) + len(cand)
+	}
+	return ErrSchemaInvalid
 }
 
 // validTypeCode 1-9 数字串判定。

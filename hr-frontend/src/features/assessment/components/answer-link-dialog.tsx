@@ -1,9 +1,9 @@
 // 作答链接弹窗（specs P2_TST_001 §4.3）：任务元信息 + 链接全文与复制 + 状态提示。
 // 打开即拉、不轮询（§4.3.5 快照口径）；非 valid 置灰复制并提示处置方式（§4.3.4 规则1）。
-// 重发入口在任务行操作列（§4.3.4 约束说明）：外部经 linkData 直接喂重发响应展示新链接（§4.1.3）。
-import { useEffect, useState } from 'react';
-import type { JSX } from 'react';
+// 重发入口在任务行操作列（§4.3.4 约束说明）：父层以 linkData 直接喂重发响应展示
+// 新链接（§4.1.3），本组件完全受控只渲染 props。
 import { useTranslation } from 'react-i18next';
+import type { JSX } from 'react';
 import { toast } from 'sonner';
 import { Copy } from 'lucide-react';
 
@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useTestTaskLink } from '@/features/assessment/test-task-hooks';
-import type { TestTaskLinkInfo } from '@/features/assessment/test-task-types';
+import { linkStatusVariant, type TestTaskLinkInfo } from '@/features/assessment/test-task-types';
 import { cn } from '@/lib/utils';
 
 export interface AnswerLinkDialogProps {
@@ -28,13 +28,6 @@ export interface AnswerLinkDialogProps {
   linkData?: TestTaskLinkInfo | null;
 }
 
-/** 链接状态标签变体：valid 主色、used 中性、invalid 警示。 */
-function linkVariant(status: TestTaskLinkInfo['link_status']): 'default' | 'secondary' | 'destructive' {
-  if (status === 'valid') return 'default';
-  if (status === 'used') return 'secondary';
-  return 'destructive';
-}
-
 export function AnswerLinkDialog({
   open,
   taskId,
@@ -42,21 +35,8 @@ export function AnswerLinkDialog({
   linkData = null,
 }: AnswerLinkDialogProps): JSX.Element {
   const { t } = useTranslation('assessment');
-  // 外部注入优先（重发新链接即时展示），否则消费查询数据
-  const [override, setOverride] = useState<TestTaskLinkInfo | null>(null);
-
-  useEffect(() => {
-    // 弹窗关闭即丢弃注入数据；taskId 变化（换行打开）同样重置
-    if (!open) setOverride(null);
-  }, [open, taskId]);
-
   const linkQ = useTestTaskLink(open ? taskId : null);
-  const info = override ?? linkData ?? linkQ.data;
-
-  // 注入数据随 prop 到达即接管（覆盖旧快照）
-  useEffect(() => {
-    if (linkData) setOverride(linkData);
-  }, [linkData]);
+  const info = linkData ?? linkQ.data;
 
   async function handleCopy() {
     if (!info || info.link_status !== 'valid') return;
@@ -122,7 +102,7 @@ export function AnswerLinkDialog({
                   {t('testTask.linkDialog.linkLabel')}
                 </span>
                 <div className="flex items-center gap-2">
-                  <Badge variant={linkVariant(info.link_status)}>
+                  <Badge variant={linkStatusVariant(info.link_status)}>
                     {t(`testTask.table.linkStatus.${info.link_status}`)}
                   </Badge>
                   <Button
@@ -165,6 +145,16 @@ export function AnswerLinkDialog({
         ) : null}
 
         <DialogFooter>
+          {/* 页脚复制链接（§4.3.3 第二入口）与关闭并列 */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleCopy()}
+            disabled={!info || info.link_status !== 'valid'}
+          >
+            <Copy className="size-4" />
+            {t('testTask.linkDialog.copyLink')}
+          </Button>
           <Button type="button" variant="outline" onClick={onClose}>
             {t('testTask.linkDialog.close')}
           </Button>

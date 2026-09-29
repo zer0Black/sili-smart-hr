@@ -1,8 +1,9 @@
 // 发起评测弹窗（specs §4.2 / P2_TST_001 §4.2.2-§4.2.5）：三类型卡片可选 + 三分支表单。
-// conversation 保持 F6 批次表单；ai_mgmt/enneagram 为主动测试单人定向发起（决策 12）。
-// 类型选择会话级记忆（模块级变量，刷新回 conversation，P2_TST_001 §4.2.2 A）。
-// 取消二次确认在测评对象非空时触发（三分支同口径）；提交进行中禁止关闭（§4.2.3）。
-import { useEffect, useMemo, useRef, useState } from 'react';
+// conversation 保持 F6 批次表单；ai_mgmt/enneagram 为主动测试单人定向发起（决策 12，
+// 表单实现拆在 TestTaskForm 子组件）。类型选择会话级记忆（模块级变量，刷新回
+// conversation，P2_TST_001 §4.2.2 A）。取消二次确认在测评对象非空时触发（三分支
+// 同口径）；提交进行中禁止关闭（§4.2.3）。
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX } from 'react';
 import { zodResolver } from '@hookform/resolvers/zod';
 import dayjs from 'dayjs';
@@ -35,10 +36,13 @@ import {
   StaffMultiSelect,
   type StaffSelectValue,
 } from '@/features/assessment/components/staff-multi-select';
-import { StaffSingleSelect } from '@/features/assessment/components/staff-single-select';
+import {
+  TestTaskForm,
+  type TestTaskFormHandle,
+  type TestTaskFormValues,
+} from '@/features/assessment/components/test-task-form';
 import { useBatchPlan, useCreateBatch } from '@/features/assessment/hooks';
-import { useCreateTestTask, useScaleStatus } from '@/features/assessment/test-task-hooks';
-import { useEnabledAiMgmtDimensions } from '@/features/question-bank/dimension-options';
+import { useCreateTestTask } from '@/features/assessment/test-task-hooks';
 import { previousPeriodRange } from '@/features/assessment/period-default';
 import { ErrCode } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
@@ -72,12 +76,6 @@ interface FormValues {
   periodEnd: string;
 }
 
-/** 主动测试分支表单：单人对象 + 子能力集合（enneagram 不消费）。 */
-interface TestFormValues {
-  staff: { staff_id: string; staff_name: string } | null;
-  dimensionIds: string[];
-}
-
 // 会话级记忆（P2_TST_001 §4.2.2 A 默认值列）：模块级内存变量，同标签页弹窗重开保持
 // 上次选择，刷新即重置回 conversation。
 let lastTestType: DialogTestType = 'conversation';
@@ -98,8 +96,6 @@ export function CreateBatchDialog({
   const planQ = useBatchPlan();
   const createMut = useCreateBatch();
   const createTestMut = useCreateTestTask();
-  const dims = useEnabledAiMgmtDimensions();
-  const scaleQ = useScaleStatus();
   const [confirmOpen, setConfirmOpen] = useState(false);
   // 打开时从会话记忆初始化；关闭后再开保持 lastTestType（会话语义在模块级变量）
   const [activeType, setActiveType] = useState<DialogTestType>(lastTestType);
@@ -109,6 +105,11 @@ export function CreateBatchDialog({
   const targetAnchorRef = useRef<HTMLDivElement>(null);
   // 本轮 open 是否已回填：plan 晚到不重置用户已改的表单
   const filledRef = useRef(false);
+  // 主动测试子表单控制面（staff 读取与提交）
+  const testFormRef = useRef<TestTaskFormHandle | null>(null);
+  const onTestFormReady = useCallback((h: TestTaskFormHandle) => {
+    testFormRef.current = h;
+  }, []);
 
   const isTest = activeType !== 'conversation';
 
@@ -154,63 +155,15 @@ export function CreateBatchDialog({
     formState: { errors },
   } = form;
 
-  // 子能力至少一项校验仅 ai_mgmt 适用（specs §4.2.2 B：九型表单无子能力字段）
-  const testSchema = useMemo(
-    () =>
-      z.object({
-        staff: z
-          .object({ staff_id: z.string(), staff_name: z.string() })
-          .nullable()
-          .refine((v) => v !== null, { message: t('create.singleTargetRequired') }),
-        dimensionIds:
-          activeType === 'ai_mgmt'
-            ? z.array(z.string()).refine((v) => v.length > 0, {
-                message: t('create.dimsRequired'),
-              })
-            : z.array(z.string()),
-      }),
-    [t, activeType],
-  );
-
-  const testForm = useForm<TestFormValues>({
-    resolver: zodResolver(testSchema),
-    defaultValues: { staff: null, dimensionIds: [] },
-  });
-  const {
-    control: testControl,
-    handleSubmit: testHandleSubmit,
-    reset: testReset,
-    setValue,
-    getValues: testGetValues,
-    formState: { errors: testErrors },
-  } = testForm;
-
-  // 维度启用集合到达时按「全选启用项」对齐默认值（§4.2.2 A 默认全选；用户已手动
-  // 改动过则保留用户选择）。切换分支重开表单时同样走这里初始化。
-  const dimsTouchedRef = useRef(false);
-  useEffect(() => {
-    if (activeType !== 'ai_mgmt') {
-      dimsTouchedRef.current = false;
-      return;
-    }
-    if (dimsTouchedRef.current) return;
-    const current = testGetValues().dimensionIds;
-    // 初始化或维度集合变化且用户未改动时同步全选
-    const allIds = dims.map((d) => d.id);
-    if (current.length === 0 || current.every((id) => allIds.includes(id))) {
-      if (current.length !== allIds.length) {
-        setValue('dimensionIds', allIds, { shouldDirty: false });
-      }
-    }
-  }, [activeType, dims, setValue, testGetValues]);
+  // 类型切换信号：每次切换递增，TestTaskForm 值变化时清空表单（§4.2.5）
+  const [testResetSignal, setTestResetSignal] = useState(0);
 
   // 类型切换：表单区整体切换，已填内容丢弃（P2_TST_001 §4.2.5）
   function switchType(next: DialogTestType) {
     if (next === activeType) return;
     setActiveType(next);
     lastTestType = next;
-    testReset({ staff: null, dimensionIds: [] });
-    dimsTouchedRef.current = false;
+    setTestResetSignal((k) => k + 1);
     reset({
       target: { mode: 'specified', staffs: [] },
       periodStart: '',
@@ -229,10 +182,11 @@ export function CreateBatchDialog({
     }
     if (filledRef.current) return;
     if (isTest) {
-      // 主动测试分支无回填语义：preset 只服务 conversation 批次链路
+      // 主动测试分支无回填语义：preset 只服务 conversation 批次链路；焦点锚点
+      // 在 TestTaskForm 的 staff 区块（staffAnchorRef 经控制面透出）
       filledRef.current = true;
       const tmr = setTimeout(() => {
-        const btn = targetAnchorRef.current?.querySelector('button');
+        const btn = testFormRef.current?.staffAnchorRef.current?.querySelector('button');
         btn?.focus();
       }, 0);
       return () => clearTimeout(tmr);
@@ -277,7 +231,7 @@ export function CreateBatchDialog({
 
   /** 对象非空判定（取消二次确认触发口径，三分支同）：conversation 看名单，主动测试看单人。 */
   function staffsSelected(): boolean {
-    if (isTest) return testGetValues().staff !== null;
+    if (isTest) return testFormRef.current?.getValues().staff != null;
     const v = form.getValues().target;
     return v.mode === 'all' || v.staffs.length > 0;
   }
@@ -346,11 +300,11 @@ export function CreateBatchDialog({
     );
   };
 
-  const onTestSubmit = (values: TestFormValues) => {
+  const onTestSubmit = (values: TestTaskFormValues) => {
     if (!values.staff) return;
     createTestMut.mutate(
       {
-        // 分支守卫：testForm 仅在主动测试分支渲染提交
+        // 分支守卫：TestTaskForm 仅在主动测试分支渲染提交
         test_type: activeType === 'enneagram' ? 'enneagram' : 'ai_mgmt',
         staff_id: values.staff.staff_id,
         staff_name: values.staff.staff_name,
@@ -389,7 +343,15 @@ export function CreateBatchDialog({
             <DialogTitle>{t('create.title')}</DialogTitle>
           </DialogHeader>
           <form
-            onSubmit={isTest ? testHandleSubmit(onTestSubmit) : handleSubmit(onSubmit)}
+            onSubmit={(e) => {
+              // 主动测试分支经子表单校验后提交；conversation 走本表单
+              if (isTest) {
+                e.preventDefault();
+                testFormRef.current?.submit(onTestSubmit)(e);
+                return;
+              }
+              void handleSubmit(onSubmit)(e);
+            }}
             className="flex flex-col gap-4"
           >
             <div className="flex flex-col gap-2">
@@ -416,85 +378,11 @@ export function CreateBatchDialog({
             </div>
 
             {isTest ? (
-              <>
-                <div className="flex flex-col gap-2" ref={targetAnchorRef}>
-                  <Label>{t('create.singleTargetLabel')}</Label>
-                  <Controller
-                    control={testControl}
-                    name="staff"
-                    render={({ field }) => (
-                      <StaffSingleSelect value={field.value} onChange={field.onChange} />
-                    )}
-                  />
-                  {testErrors.staff && (
-                    <p className="text-destructive text-sm">{testErrors.staff.message}</p>
-                  )}
-                </div>
-
-                {activeType === 'ai_mgmt' && (
-                  <div className="flex flex-col gap-2">
-                    <Label>{t('create.dimsLabel')}</Label>
-                    <Controller
-                      control={testControl}
-                      name="dimensionIds"
-                      render={({ field }) => (
-                        <div className="grid grid-cols-2 gap-2">
-                          {dims.map((d) => {
-                            const checked = field.value.includes(d.id);
-                            return (
-                              <label
-                                key={d.id}
-                                className="hover:bg-accent flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  aria-label={d.name}
-                                  onChange={(e) => {
-                                    dimsTouchedRef.current = true;
-                                    const next = e.target.checked
-                                      ? [...field.value, d.id]
-                                      : field.value.filter((id) => id !== d.id);
-                                    field.onChange(next);
-                                  }}
-                                />
-                                {d.name}
-                              </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    />
-                    {testErrors.dimensionIds && (
-                      <p className="text-destructive text-sm">
-                        {testErrors.dimensionIds.message}
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {activeType === 'enneagram' && (
-                  <div className="flex flex-col gap-2">
-                    <Label>{t('create.scaleLabel')}</Label>
-                    {scaleQ.isLoading ? (
-                      <p className="text-muted-foreground text-sm">{t('create.scaleLoading')}</p>
-                    ) : scaleQ.data?.ready ? (
-                      <p className="text-sm">
-                        {scaleQ.data.scale_name}
-                        <span className="text-muted-foreground">
-                          {' '}
-                          {t('create.scaleCount', { count: scaleQ.data.active_question_count })}
-                        </span>
-                      </p>
-                    ) : (
-                      // 未就绪提示不阻断：提交时报 1804（B2 口径）
-                      <p className="text-muted-foreground text-sm">
-                        {t('create.toastScaleNotReady')}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </>
+              <TestTaskForm
+                activeType={activeType === 'enneagram' ? 'enneagram' : 'ai_mgmt'}
+                resetSignal={testResetSignal}
+                onReady={onTestFormReady}
+              />
             ) : (
               <>
                 <div className="flex flex-col gap-2" ref={targetAnchorRef}>

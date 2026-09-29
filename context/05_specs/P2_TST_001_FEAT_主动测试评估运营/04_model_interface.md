@@ -69,9 +69,10 @@ erDiagram
         varchar grading_status
         text question_ids_json
         varchar scale_key
-        varchar dimension_codes_json
+        text dimension_codes_json
         datetime completed_at
         datetime created_at
+        datetime updated_at
     }
     assessment_test_links {
         bigint id PK
@@ -82,6 +83,8 @@ erDiagram
         datetime generated_at
         datetime expires_at
         datetime used_at
+        datetime created_at
+        datetime updated_at
     }
     assessment_test_results {
         bigint id PK
@@ -93,6 +96,8 @@ erDiagram
         varchar model_name
         varchar prompt_version
         varchar grading_status
+        datetime created_at
+        datetime updated_at
     }
 ```
 

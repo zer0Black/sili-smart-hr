@@ -19,6 +19,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 	"testing"
@@ -42,8 +43,12 @@ type fakeTSTRepo struct {
 	byID      *domain.AssessmentTestTask
 	byIDErr   error
 	createErr error
+	// createErrFirst 首次 CreateWithLink 注入错误（模拟并发撞 uk_task_no 后重试成功）
+	createErrFirst error
 	nextNo    string
 	nextNoErr error
+	// nextNoSeq 非空时按调用次序返回（模拟重取序号），nextNo 作首值
+	nextNoSeq []string
 	current   *domain.AssessmentTestLink
 	currentErr error
 	replaceErr    error
@@ -86,6 +91,10 @@ func (f *fakeTSTRepo) CreateWithLink(_ context.Context, task *domain.AssessmentT
 	if f.createErr != nil {
 		return f.createErr
 	}
+	if f.createErrFirst != nil && f.createCalls == 1 {
+		f.createdTask = nil
+		return f.createErrFirst
+	}
 	if task.ID == 0 {
 		task.ID = 9001 // 模拟 GORM 雪花 Create 回调
 	}
@@ -98,6 +107,13 @@ func (f *fakeTSTRepo) NextTaskNo(_ context.Context, prefix string, now time.Time
 	f.gotNextPrefix = prefix
 	if f.nextNoErr != nil {
 		return "", f.nextNoErr
+	}
+	if len(f.nextNoSeq) > 0 {
+		idx := f.createCalls // 第 N 次取号（0 基）
+		if idx >= len(f.nextNoSeq) {
+			idx = len(f.nextNoSeq) - 1
+		}
+		return f.nextNoSeq[idx], nil
 	}
 	return f.nextNo, nil
 }
@@ -349,6 +365,49 @@ func wantServiceErr(t *testing.T, err error, want int) {
 	}
 	if serr.Code != want {
 		t.Errorf("code = %d, want %d", serr.Code, want)
+	}
+}
+
+// TestCreateTaskNoConflictRetry 撞 uk_task_no 并发重号：首试撞键后重取序号重试成功
+//（04 §3.1 索引说明「撞键重取序号重试」）。
+func TestCreateTaskNoConflictRetry(t *testing.T) {
+	taskRepo, _, _, _, _, svc := aiMgmtHappyEnv(t)
+	taskRepo.nextNoSeq = []string{"T202609280001", "T202609280002"}
+	taskRepo.createErrFirst = fmt.Errorf("wrap: %w", gorm.ErrDuplicatedKey)
+
+	res, err := svc.Create(context.Background(), service.CreateTestTaskPayload{
+		TestType:     domain.TestTypeAIMgmt,
+		StaffID:      "u1",
+		StaffName:    "张敏",
+		DimensionIDs: []string{"101", "102"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if res.TaskNo != "T202609280002" {
+		t.Errorf("TaskNo = %q, want 重试后取新序号 T202609280002", res.TaskNo)
+	}
+	if taskRepo.createCalls != 2 {
+		t.Errorf("createCalls = %d, want 2（撞键重试一次）", taskRepo.createCalls)
+	}
+}
+
+// TestCreateTaskNoConflictExhausted 撞键重试耗尽：报内部错误不落库（连续撞键视为异常）。
+func TestCreateTaskNoConflictExhausted(t *testing.T) {
+	taskRepo, _, _, _, _, svc := aiMgmtHappyEnv(t)
+	taskRepo.createErr = fmt.Errorf("wrap: %w", gorm.ErrDuplicatedKey)
+
+	_, err := svc.Create(context.Background(), service.CreateTestTaskPayload{
+		TestType:     domain.TestTypeAIMgmt,
+		StaffID:      "u1",
+		StaffName:    "张敏",
+		DimensionIDs: []string{"101", "102"},
+	})
+	if err == nil {
+		t.Fatal("连续撞键 want error, got nil")
+	}
+	if taskRepo.createCalls != 3 {
+		t.Errorf("createCalls = %d, want 3（taskNoRetryLimit 次后放弃）", taskRepo.createCalls)
 	}
 }
 
@@ -818,6 +877,17 @@ func TestResendPendingKeepsStatus(t *testing.T) {
 	if dto.LinkStatus != domain.LinkStatusValid {
 		t.Errorf("LinkStatus = %q, want valid", dto.LinkStatus)
 	}
+}
+
+// TestResendRepoGuardMapped repo 锁内复核拒绝（校验后并发推进终态）映射 1802。
+func TestResendRepoGuardMapped(t *testing.T) {
+	task := &domain.AssessmentTestTask{ID: 7, Status: domain.TestTaskStatusPending}
+	taskRepo := &fakeTSTRepo{byID: task,
+		replaceErr: fmt.Errorf("wrap: %w", repository.ErrTaskNotSubmittable)}
+	svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+	_, err := svc.Resend(context.Background(), 7)
+	wantServiceErr(t, err, errcode.TestTaskStatusInvalid)
 }
 
 // TestResendStatusGuard 核心断言：completed 任务返 1802、不存在任务返 1801，

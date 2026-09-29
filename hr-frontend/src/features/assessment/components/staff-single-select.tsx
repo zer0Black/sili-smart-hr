@@ -14,9 +14,15 @@ import { useStaffs } from '@/features/system-params/hooks';
 import { useDebouncedValue } from '@/lib/use-debounced';
 import { cn } from '@/lib/utils';
 
+/** 单选下拉的选项值形态（与 userapi staff_id/staff_name 双字段同构）。 */
+export interface StaffOption {
+  staff_id: string;
+  staff_name: string;
+}
+
 export interface StaffSingleSelectProps {
-  value: { staff_id: string; staff_name: string } | null;
-  onChange: (next: { staff_id: string; staff_name: string } | null) => void;
+  value: StaffOption | null;
+  onChange: (next: StaffOption | null) => void;
 }
 
 const PAGE_SIZE = 20;
@@ -44,7 +50,7 @@ export function StaffSingleSelect({ value, onChange }: StaffSingleSelectProps): 
 
   const list = staffsQ.data?.list ?? [];
 
-  const pick = (s: { staff_id: string; staff_name: string }) => {
+  const pick = (s: StaffOption) => {
     onChange({ staff_id: s.staff_id, staff_name: s.staff_name });
     setOpen(false); // 选中即收起
   };

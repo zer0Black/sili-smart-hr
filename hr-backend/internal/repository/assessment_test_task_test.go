@@ -412,6 +412,32 @@ func TestReplaceLinkPendingTolerated(t *testing.T) {
 	}
 }
 
+// TestReplaceLinkTerminalRejected 终态守卫：completed/canceled 任务重发在锁内复核被拒
+//（ErrTaskNotSubmittable，不插新行），防 service 校验后并发推进终态仍落新 valid 链接。
+func TestReplaceLinkTerminalRejected(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	for i, status := range []string{domain.TestTaskStatusCompleted, domain.TestTaskStatusCanceled} {
+		qNo := fmt.Sprintf("Q-AG-000%d", i+1)
+		taskNo := fmt.Sprintf("T20260928000%d", i+1)
+		task, first := mustCreate(t, repo, taskNo, []domain.Question{seedQ(t, db, qNo)})
+		db.Model(&domain.AssessmentTestTask{}).Where("id = ?", task.ID).Update("status", status)
+
+		newLink := linkRow("plain-2", "hash-2", tUTC(2026, 9, 30, 9, 0), tUTC(2026, 10, 7, 9, 0))
+		if err := repo.ReplaceLink(ctx, task.ID, &newLink); err == nil {
+			t.Fatalf("replace on %s: want ErrTaskNotSubmittable, got nil", status)
+		} else if !errors.Is(err, repository.ErrTaskNotSubmittable) {
+			t.Fatalf("replace on %s: err = %v, want ErrTaskNotSubmittable", status, err)
+		}
+		if n := countTaskRows(t, db, &domain.AssessmentTestLink{}, "task_id = ?", task.ID); n != 1 {
+			t.Fatalf("link rows after rejected replace on %s = %d, want 1（不插新行）", status, n)
+		}
+		if got := loadLink(t, db, first.ID).Status; got != domain.LinkStatusValid {
+			t.Fatalf("原链接状态 after rejected replace on %s = %s, want valid（不被作废）", status, got)
+		}
+	}
+}
+
 // --- CancelTask ---
 
 // TestCancelTaskGuard 状态守卫：completed 返 affected=0；pending 取消成功且链接 invalid（BR2）。

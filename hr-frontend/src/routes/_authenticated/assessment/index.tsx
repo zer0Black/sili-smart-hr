@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -74,10 +74,13 @@ export function AssessmentCenterPage() {
   // 主动测试轮询探针（specs §4.1.3 未终态任务轮询）：任一类计数 > 0 即驱动
   // 对应 tab 列表轮询；两 tab 常驻，各自只消费当前类型的计数。
   const testPollQ = useTestTaskPollCounts();
-  const testPolling = (testPollQ: { data?: { ai_mgmt_active: number; enneagram_active: number } }) => ({
-    ai_mgmt: (testPollQ.data?.ai_mgmt_active ?? 0) > 0,
-    enneagram: (testPollQ.data?.enneagram_active ?? 0) > 0,
-  });
+  const testPolling = useMemo(
+    () => ({
+      ai_mgmt: (testPollQ.data?.ai_mgmt_active ?? 0) > 0,
+      enneagram: (testPollQ.data?.enneagram_active ?? 0) > 0,
+    }),
+    [testPollQ.data],
+  );
 
   // 恢复即拉（specs §4.1.3）：refetchOnWindowFocus 全局关闭，切回标签页时
   // 显式拉一次统计与探针，恢复瞬间数据即时而非等下一个轮询间隔。
@@ -165,11 +168,9 @@ export function AssessmentCenterPage() {
               setLinkTaskId(taskId);
             }}
             onResend={(taskId) => onResendLink(taskId)}
-            onCancel={() => {
-              // 取消确认在组件内完成，页面级暂无后续动作
-            }}
+            resendPending={resendMut.isPending}
             resetKey={testResetKeys[type]}
-            polling={testPolling(testPollQ)[type]}
+            polling={testPolling[type]}
           />
         </div>
       ))}

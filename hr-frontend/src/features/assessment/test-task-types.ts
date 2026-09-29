@@ -51,7 +51,7 @@ export interface CreateTestTaskPayload {
   dimension_ids?: string[];
 }
 
-/** POST /api/assessment/test-tasks/scale-status 响应（03 §3 B2）。未就绪时空串零值。 */
+/** GET /api/assessment/test-tasks/scale-status 响应（03 §3 B2）。未就绪时空串零值。 */
 export interface TestScaleStatus {
   ready: boolean;
   scale_key: string;
@@ -69,4 +69,13 @@ export interface TestTaskLinkInfo {
   link_status: TestTaskLinkStatus;
   generated_at: string;
   expires_at: string;
+}
+
+/** 链接状态标签变体（specs §6.1 三态 → Badge variant）：valid 主色、used 中性、invalid 警示。 */
+export function linkStatusVariant(
+  status: TestTaskLinkStatus,
+): 'default' | 'secondary' | 'destructive' {
+  if (status === 'valid') return 'default';
+  if (status === 'used') return 'secondary';
+  return 'destructive';
 }

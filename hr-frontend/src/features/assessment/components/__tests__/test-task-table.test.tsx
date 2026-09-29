@@ -52,7 +52,6 @@ function makeProps() {
     onCreateOpen: vi.fn(),
     onLinkOpen: vi.fn(),
     onResend: vi.fn(),
-    onCancel: vi.fn(),
   };
 }
 
@@ -161,7 +160,7 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
     expect(screen.queryByText('已评分')).not.toBeInTheDocument();
   });
 
-  it('TestTaskTableCancelConfirm：取消二次确认文案含任务号与姓名，确认后回调 onCancel', async () => {
+  it('TestTaskTableCancelConfirm：取消二次确认文案含任务号与姓名，确认后调取消接口并关弹窗', async () => {
     vi.mocked(fetchTestTasks).mockResolvedValue({
       list: [makeItem()],
       total: 1,
@@ -169,9 +168,9 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
       page_size: 10,
     });
     useAuthStore.setState({ token: 'test-token' });
-    const props = makeProps();
+    const { cancelTestTask } = await import('@/features/assessment/test-task-api');
 
-    renderTable(<TestTaskTable {...props} />);
+    renderTable(<TestTaskTable {...makeProps()} />);
 
     fireEvent.click(await screen.findByRole('button', { name: '取消' }));
     // 确认弹窗文案含任务号与对象姓名（specs §4.1.3 取消任务）
@@ -179,7 +178,11 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
     expect(dialog.textContent).toContain('T202609280001');
     expect(dialog.textContent).toContain('张敏');
     fireEvent.click(screen.getByRole('button', { name: '确认取消' }));
-    await waitFor(() => expect(props.onCancel).toHaveBeenCalledWith('1790000000000000001'));
+    // 组件内自持取消链路：mutation 直调取消接口携任务 ID，成功后关闭确认弹窗
+    await waitFor(() =>
+      expect(cancelTestTask).toHaveBeenCalledWith('1790000000000000001', expect.anything()),
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 
   it('TestTaskTableLinkAndResend：行内链接与重发回调父层', async () => {
@@ -199,6 +202,22 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
 
     fireEvent.click(screen.getByRole('button', { name: '重发' }));
     expect(props.onResend).toHaveBeenCalledWith('1790000000000000001');
+  });
+
+  it('TestTaskTableResendPending：重发请求进行中行内按钮禁用（specs §4.1.3 loading 至接口响应）', async () => {
+    vi.mocked(fetchTestTasks).mockResolvedValue({
+      list: [makeItem({ status: 'expired', link_status: 'invalid' })],
+      total: 1,
+      page: 1,
+      page_size: 10,
+    });
+    const props = makeProps();
+    renderTable(<TestTaskTable {...props} resendPending />);
+
+    const resendBtn = await screen.findByRole('button', { name: '重发' });
+    expect(resendBtn).toBeDisabled();
+    fireEvent.click(resendBtn);
+    expect(props.onResend).not.toHaveBeenCalled();
   });
 
   it('TestTaskTableFilterTwoPhase：状态下拉 + 关键字回车等效查询，重置清空', async () => {

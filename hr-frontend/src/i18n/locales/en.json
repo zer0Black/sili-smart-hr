@@ -798,6 +798,7 @@
         "generatedAt": "Generated At",
         "linkLabel": "Answer Link",
         "copy": "Copy",
+        "copyLink": "Copy Link",
         "copySuccess": "Link copied to clipboard",
         "copyFailed": "Copy failed; please copy the link manually",
         "usedHint": "Used: the answer has been submitted",

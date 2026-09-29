@@ -12,11 +12,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/pkg/dberr"
 	"sili-smart-hr/backend/internal/pkg/errcode"
 	"sili-smart-hr/backend/internal/questionbank/scaledata"
 	"sili-smart-hr/backend/internal/repository"
@@ -39,6 +41,9 @@ const answerURLPrefix = "/answer/"
 
 // tokenBytes 令牌随机字节数：base64url 编码后恒 43 字符（specs §5.1.4 规则1）。
 const tokenBytes = 32
+
+// taskNoRetryLimit 撞 uk_task_no 并发重号时重取序号的重试上限（04 §3.1 索引说明）。
+const taskNoRetryLimit = 3
 
 // ListTestTaskFilter 任务列表查询条件（03 A1）：test_type 必填二值，status/keyword 空跳过。
 type ListTestTaskFilter struct {
@@ -242,6 +247,8 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 	// ② 对象校验：解密密钥后经 userapi.ListStaffs 拉取比对 staff_id+staff_name，
 	// 上游失败或未命中一律 1805 且任务不创建（specs §5.1.5 第一行）。
 	if err := s.validateStaff(ctx, p.StaffID, p.StaffName); err != nil {
+		slog.Error("test task create staff invalid",
+			"staff_id", p.StaffID, "staff_name", p.StaffName, "err", err)
 		return nil, err
 	}
 
@@ -253,33 +260,36 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 	)
 	switch p.TestType {
 	case domain.TestTypeAIMgmt:
-		dims, codes, names, err := s.selectAIMgmtDimensions(ctx, p.DimensionIDs)
+		sel, err := s.selectAIMgmtDimensions(ctx, p.DimensionIDs)
 		if err != nil {
 			return nil, err
 		}
-		questions, qerr := s.questionRepo.ListActiveByDimensionIDs(ctx, dims)
+		questions, qerr := s.questionRepo.ListActiveByDimensionIDs(ctx, sel.IDs)
 		if qerr != nil {
 			return nil, fmt.Errorf("list active questions: %w", qerr)
 		}
 		// 每子能力启用题全取，0 题报错携维度名（specs §4.2.4 规则1）。
-		byDim := make(map[int64]int, len(dims))
+		byDim := make(map[int64]int, len(sel.IDs))
 		for i := range questions {
 			byDim[questions[i].DimensionID]++
 		}
-		for i := range dims {
-			if byDim[dims[i]] == 0 {
+		for _, id := range sel.IDs {
+			if byDim[id] == 0 {
+				slog.Warn("test task create dimension questions empty",
+					"dimension", sel.NameByID[id])
 				return nil, NewErrorWithMsg(errcode.TestDimensionQuestionsEmpty,
-					fmt.Sprintf("子能力 %s 无可用题目，请先在题库补充", names[dims[i]]))
+					fmt.Sprintf("子能力 %s 无可用题目，请先在题库补充", sel.NameByID[id]))
 			}
 		}
 		for i := range questions {
 			questionIDs = append(questionIDs, questions[i].ID)
 		}
-		dimensionCodes = codes
+		dimensionCodes = sel.Codes
 	default: // enneagram
 		batch, berr := s.batchRepo.FindLatestImportedBatch(ctx)
 		if berr != nil {
 			if errors.Is(berr, gorm.ErrRecordNotFound) {
+				slog.Warn("test task create scale not imported")
 				return nil, NewError(errcode.TestScaleNotReady)
 			}
 			return nil, fmt.Errorf("find latest imported batch: %w", berr)
@@ -289,6 +299,7 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 			return nil, fmt.Errorf("list active scale questions: %w", qerr)
 		}
 		if len(questions) == 0 {
+			slog.Warn("test task create scale questions empty", "scale_key", batch.ScaleKey)
 			return nil, NewError(errcode.TestScaleNotReady)
 		}
 		for i := range questions {
@@ -308,32 +319,20 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 	}
 
 	// ⑤ 令牌生成：crypto/rand 32 字节 base64url=43 字符，hash=SHA-256 hex（specs §5.1.4 规则1）。
-	now := s.now()
+	// 落库时间统一 UTC 口径（04 §3.1：SQLite 文本字典序可比）。
+	now := s.now().UTC()
 	plain, hash, err := generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
 	}
 
 	// ⑥ 取号 + 单事务落库（任务行+链接行+引用计数 +1，T3 CreateWithLink 收口）。
+	// 撞 uk_task_no（同前缀同日期并发取号）时重取序号重试（04 §3.1 索引说明）。
 	prefix := taskNoPrefixAIMgmt
 	if p.TestType == domain.TestTypeEnneagram {
 		prefix = taskNoPrefixEnneagram
 	}
-	taskNo, err := s.taskRepo.NextTaskNo(ctx, prefix, now)
-	if err != nil {
-		return nil, fmt.Errorf("next task no: %w", err)
-	}
-	task := &domain.AssessmentTestTask{
-		TaskNo:             taskNo,
-		TestType:           p.TestType,
-		StaffID:            p.StaffID,
-		StaffName:          p.StaffName,
-		Status:             domain.TestTaskStatusPending,
-		GradingStatus:      domain.GradingStatusWaiting,
-		QuestionIDsJSON:    idsJSON,
-		ScaleKey:           scaleKey,
-		DimensionCodesJSON: codesJSON,
-	}
+	var task *domain.AssessmentTestTask
 	link := &domain.AssessmentTestLink{
 		TokenPlain:  plain,
 		TokenHash:   hash,
@@ -341,12 +340,37 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 		GeneratedAt: now,
 		ExpiresAt:   now.Add(linkTTL),
 	}
-	if err := s.taskRepo.CreateWithLink(ctx, task, link); err != nil {
-		return nil, fmt.Errorf("create test task with link: %w", err)
+	for range taskNoRetryLimit {
+		taskNo, err := s.taskRepo.NextTaskNo(ctx, prefix, now)
+		if err != nil {
+			return nil, fmt.Errorf("next task no: %w", err)
+		}
+		cand := &domain.AssessmentTestTask{
+			TaskNo:             taskNo,
+			TestType:           p.TestType,
+			StaffID:            p.StaffID,
+			StaffName:          p.StaffName,
+			Status:             domain.TestTaskStatusPending,
+			GradingStatus:      domain.GradingStatusWaiting,
+			QuestionIDsJSON:    idsJSON,
+			ScaleKey:           scaleKey,
+			DimensionCodesJSON: codesJSON,
+		}
+		if err := s.taskRepo.CreateWithLink(ctx, cand, link); err != nil {
+			if dberr.UniqueViolation(err) {
+				continue // 并发同号：重取下一序号重试
+			}
+			return nil, fmt.Errorf("create test task with link: %w", err)
+		}
+		task = cand
+		break
+	}
+	if task == nil {
+		return nil, fmt.Errorf("create test task: task no conflict after %d retries", taskNoRetryLimit)
 	}
 	return &CreateTestTaskResult{
 		ID:        task.ID,
-		TaskNo:    taskNo,
+		TaskNo:    task.TaskNo,
 		TestType:  p.TestType,
 		StaffName: p.StaffName,
 		Status:    task.Status,
@@ -355,12 +379,19 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 	}, nil
 }
 
+// dimSelection 维度圈定结果：按维度表 code ASC 序的 ID、编码序列与名称索引。
+type dimSelection struct {
+	IDs      []int64
+	Codes    []string
+	NameByID map[int64]string
+}
+
 // selectAIMgmtDimensions 圈定勾选维度：取 SourceTest 启用集过滤 ModuleCode=AI_MGMT，
-// 与 dimension_ids 求交集校验（越界即 1400），返回按维度表 code ASC 序的 ID、编码与名称。
-func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, dimensionIDs []string) ([]int64, []string, map[int64]string, error) {
+// 与 dimension_ids 求交集校验（越界即 1400）。
+func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, dimensionIDs []string) (*dimSelection, error) {
 	dims, err := s.dimRepo.ListEnabledFullByDataSource(ctx, domain.SourceTest)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("list enabled dimensions: %w", err)
+		return nil, fmt.Errorf("list enabled dimensions: %w", err)
 	}
 	enabled := make(map[int64]domain.Dimension, len(dims))
 	for i := range dims {
@@ -373,28 +404,30 @@ func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, 
 	for _, raw := range dimensionIDs {
 		id, perr := strconv.ParseInt(raw, 10, 64)
 		if perr != nil {
-			return nil, nil, nil, NewError(errcode.BadRequest)
+			return nil, NewError(errcode.BadRequest)
 		}
 		if _, ok := enabled[id]; !ok {
-			return nil, nil, nil, NewError(errcode.BadRequest)
+			return nil, NewError(errcode.BadRequest)
 		}
 		seen[id] = true
 	}
 	if len(seen) == 0 {
-		return nil, nil, nil, NewError(errcode.BadRequest)
+		return nil, NewError(errcode.BadRequest)
 	}
-	ordered := make([]int64, 0, len(seen))
-	codes := make([]string, 0, len(seen))
-	names := make(map[int64]string, len(seen))
+	sel := &dimSelection{
+		IDs:      make([]int64, 0, len(seen)),
+		Codes:    make([]string, 0, len(seen)),
+		NameByID: make(map[int64]string, len(seen)),
+	}
 	for i := range dims { // dims 为 code ASC 序，快照编码与 ID 同序
 		d := dims[i]
 		if d.ModuleCode == domain.ModuleAIMgmt && seen[d.ID] {
-			ordered = append(ordered, d.ID)
-			codes = append(codes, d.Code)
-			names[d.ID] = d.Name
+			sel.IDs = append(sel.IDs, d.ID)
+			sel.Codes = append(sel.Codes, d.Code)
+			sel.NameByID[d.ID] = d.Name
 		}
 	}
-	return ordered, codes, names, nil
+	return sel, nil
 }
 
 // validateStaff 对象校验：经 userapi.ListStaffs（keyword=staff_name）分页拉全量比对
@@ -483,7 +516,7 @@ func (s *assessmentTestTaskService) Resend(ctx context.Context, taskID int64) (*
 	if task.Status != domain.TestTaskStatusPending && task.Status != domain.TestTaskStatusExpired {
 		return nil, NewError(errcode.TestTaskStatusInvalid)
 	}
-	now := s.now()
+	now := s.now().UTC()
 	plain, hash, err := generateToken()
 	if err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -496,6 +529,10 @@ func (s *assessmentTestTaskService) Resend(ctx context.Context, taskID int64) (*
 		ExpiresAt:   now.Add(linkTTL),
 	}
 	if err := s.taskRepo.ReplaceLink(ctx, taskID, newLink); err != nil {
+		// 锁内复核拒绝（并发推进到 completed/canceled 等）：映射 1802（specs §4.1.4）
+		if errors.Is(err, repository.ErrTaskNotSubmittable) {
+			return nil, NewError(errcode.TestTaskStatusInvalid)
+		}
 		return nil, fmt.Errorf("replace link: %w", err)
 	}
 	dto := toTestTaskLinkDTO(task, newLink)
@@ -521,13 +558,13 @@ func (s *assessmentTestTaskService) Cancel(ctx context.Context, taskID int64) (*
 }
 
 // CompleteTask 员工作答提交的事务内推进（specs §5.2.2 步骤1、03 §4.6）：组装
-// enqueue 闭包抹平 tx 形参后交 repo 单事务收口（三步推进 + 投递，报错整体回滚）；
-// repo 哨兵 ErrTaskNotSubmittable 映射 1802，completed 幂等路径 repo 已返回 nil。
+// enqueue 闭包抹平 tx 形参后交 repo 单事务收口；repo 哨兵 ErrTaskNotSubmittable
+// 映射 1802，completed 幂等路径 repo 已返回 nil。
 func (s *assessmentTestTaskService) CompleteTask(ctx context.Context, taskID int64) error {
 	enqueue := func(tx *gorm.DB) error {
 		return s.gradeEnqueuer.EnqueueTestGrade(ctx, tx, taskID)
 	}
-	if err := s.taskRepo.CompleteTask(ctx, taskID, enqueue, s.now()); err != nil {
+	if err := s.taskRepo.CompleteTask(ctx, taskID, enqueue, s.now().UTC()); err != nil {
 		if errors.Is(err, repository.ErrTaskNotSubmittable) {
 			return NewError(errcode.TestTaskStatusInvalid)
 		}

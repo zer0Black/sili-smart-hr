@@ -33,16 +33,22 @@ func NewAssessmentTestResultRepository(db *gorm.DB) AssessmentTestResultReposito
 	return &assessmentTestResultRepository{db: db}
 }
 
+// resultUpsertColumns 撞 uk_result_task 时覆盖的业务列（空串照写，degraded
+// 占位值不被零值跳过）。
+var resultUpsertColumns = []string{
+	"main_type", "wing_type", "distribution_json", "rationale",
+	"model_name", "prompt_version", "grading_status", "updated_at",
+}
+
 // UpsertByTaskID clause.OnConflict upsert（与 dimension_score.SaveAll 同范式）：
 // DoUpdates 显式列清单不被零值跳过，degraded 占位空串照写覆盖。
+// 首写时间显式 UTC（session_feature 范式），防同列混存偏移串。
 func (r *assessmentTestResultRepository) UpsertByTaskID(ctx context.Context, res *domain.AssessmentTestResult) error {
+	res.CreatedAt, res.UpdatedAt = utcNow(), utcNow()
 	return r.db.WithContext(ctx).
 		Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "task_id"}},
-			DoUpdates: clause.AssignmentColumns([]string{
-				"main_type", "wing_type", "distribution_json", "rationale",
-				"model_name", "prompt_version", "grading_status", "updated_at",
-			}),
+			Columns:   []clause.Column{{Name: "task_id"}},
+			DoUpdates: clause.AssignmentColumns(resultUpsertColumns),
 		}).
 		Create(res).Error
 }
@@ -61,13 +67,7 @@ func (r *assessmentTestResultRepository) DegradeTask(ctx context.Context, taskID
 				Rationale:     resultDegradeRationale,
 				GradingStatus: domain.GradingStatusDegraded,
 			}
-			if err := tx.Clauses(clause.OnConflict{
-				Columns: []clause.Column{{Name: "task_id"}},
-				DoUpdates: clause.AssignmentColumns([]string{
-					"main_type", "wing_type", "distribution_json", "rationale",
-					"model_name", "prompt_version", "grading_status", "updated_at",
-				}),
-			}).Create(row).Error; err != nil {
+			if err := upsertResult(tx, row); err != nil {
 				return err
 			}
 		}
@@ -78,6 +78,15 @@ func (r *assessmentTestResultRepository) DegradeTask(ctx context.Context, taskID
 				"updated_at":     utcNow(),
 			}).Error
 	})
+}
+
+// upsertResult 事务通道内的结果行 upsert（DegradeTask 复用 UpsertByTaskID 形态）。
+func upsertResult(tx *gorm.DB, row *domain.AssessmentTestResult) error {
+	row.CreatedAt, row.UpdatedAt = utcNow(), utcNow()
+	return tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "task_id"}},
+		DoUpdates: clause.AssignmentColumns(resultUpsertColumns),
+	}).Create(row).Error
 }
 
 // FindBatchByTaskIDs task_id IN (?) 一次取回，Go 侧组装 map（uk_result_task
