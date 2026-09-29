@@ -1,0 +1,213 @@
+{
+  "schema_version": 1,
+  "feature_id": "P2_TST_001_FEAT_主动测试评估运营",
+  "subplans": {
+    "01": {
+      "base_sha": "b904f6a95143aff65358449e6e65ca8f29aad2cd",
+      "plan_digest": "627a97f3c065125dbd14f53259b3b71e674b90b8ed199750a1f02cab1a432242",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T1",
+          "status": "verified",
+          "base_sha": "b904f6a95143aff65358449e6e65ca8f29aad2cd",
+          "head_sha": "f08acea898cf5e9633e99abe83d2abb45adecdd8",
+          "verification": {
+            "path": "execution-evidence/01-T1-f08acea.md",
+            "digest": "2dd3812172181e38ceff9a15c536a078bd71494e2ca10de7452f55ff31bb7d30",
+            "head_sha": "f08acea898cf5e9633e99abe83d2abb45adecdd8",
+            "recorded_at": "2026-09-28T12:47:42Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T2",
+          "status": "verified",
+          "base_sha": "f08acea898cf5e9633e99abe83d2abb45adecdd8",
+          "head_sha": "00bd7e56e46c47f1afa98e6829b1cfcf0c8224fd",
+          "verification": {
+            "path": "execution-evidence/01-T2-00bd7e5.md",
+            "digest": "943f0eaefeb2e352ec1d761e510c609e3b25f5213bab91484b6ea960066ebf66",
+            "head_sha": "00bd7e56e46c47f1afa98e6829b1cfcf0c8224fd",
+            "recorded_at": "2026-09-28T12:58:58Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T3",
+          "status": "verified",
+          "base_sha": "00bd7e56e46c47f1afa98e6829b1cfcf0c8224fd",
+          "head_sha": "293fa50e6445bc8aae01b3ce270265de5158a7e2",
+          "verification": {
+            "path": "execution-evidence/01-T3-293fa50.md",
+            "digest": "2cb6338e67d5a25df42c74692059c984df7f0ab35d2ee19cdde4e5429317b433",
+            "head_sha": "293fa50e6445bc8aae01b3ce270265de5158a7e2",
+            "recorded_at": "2026-09-28T13:14:55Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T4",
+          "status": "verified",
+          "base_sha": "293fa50e6445bc8aae01b3ce270265de5158a7e2",
+          "head_sha": "5ec189c532d7f579616488099ba27b4a36e2e81d",
+          "verification": {
+            "path": "execution-evidence/01-T4-5ec189c.md",
+            "digest": "063f5f7a18549daca4620bb78af778fcebe9d282fcc38d39cfa76ee21d20ed80",
+            "head_sha": "5ec189c532d7f579616488099ba27b4a36e2e81d",
+            "recorded_at": "2026-09-28T13:32:01Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T5",
+          "status": "verified",
+          "base_sha": "5ec189c532d7f579616488099ba27b4a36e2e81d",
+          "head_sha": "295faa9a8b5ba38f568cfe8b9c79d3b822cc6399",
+          "verification": {
+            "path": "execution-evidence/01-T5-295faa9.md",
+            "digest": "b4f27dc00b9d07f807a0970d1351d15af2614af07450eee4dd5ad5ec0572b064",
+            "head_sha": "295faa9a8b5ba38f568cfe8b9c79d3b822cc6399",
+            "recorded_at": "2026-09-28T13:43:47Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T6",
+          "status": "verified",
+          "base_sha": "295faa9a8b5ba38f568cfe8b9c79d3b822cc6399",
+          "head_sha": "69b1a681241d3d836d96b62f6669f497a92aa28a",
+          "verification": {
+            "path": "execution-evidence/01-T6-69b1a68.md",
+            "digest": "8ec46a36116c850add059d6951be986df5cc7b21b37ad3e737b7186968034513",
+            "head_sha": "69b1a681241d3d836d96b62f6669f497a92aa28a",
+            "recorded_at": "2026-09-28T14:00:25Z",
+            "deferred_reason": null
+          }
+        },
+        "T7": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/01/T7",
+          "status": "verified",
+          "base_sha": "69b1a681241d3d836d96b62f6669f497a92aa28a",
+          "head_sha": "c96d033903d2cfcdf15a6fff07e6ecc89b258855",
+          "verification": {
+            "path": "execution-evidence/01-T7-c96d033.md",
+            "digest": "2b70c0c2ce1543ed787689fdf79adb7c9805b4d6bfab2d6f9f9984858da443e1",
+            "head_sha": "c96d033903d2cfcdf15a6fff07e6ecc89b258855",
+            "recorded_at": "2026-09-28T14:25:43Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01-review-c96d033.md",
+        "digest": "858bead19fb616b402ff014c355279f4bef12297d0912a70dcb3923d32e5ac9f",
+        "head_sha": "c96d033903d2cfcdf15a6fff07e6ecc89b258855",
+        "base_sha": "b904f6a95143aff65358449e6e65ca8f29aad2cd",
+        "passed": true,
+        "recorded_at": "2026-09-28T14:39:44Z"
+      },
+      "review_failures": 0
+    },
+    "02": {
+      "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+      "plan_digest": "1099f1392c72310836d7103f1c80c98361fe8038c979c43b66633291a42a2d18",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T1",
+          "status": "verified",
+          "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+          "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+          "verification": {
+            "path": "execution-evidence/02-T1-f5cbb82.md",
+            "digest": "6eb1617a8036ac725c8d8145989c6b02a7754d259ddc593c7cb91e197007de99",
+            "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+            "recorded_at": "2026-09-28T15:31:32Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T2",
+          "status": "verified",
+          "base_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+          "head_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+          "verification": {
+            "path": "execution-evidence/02-T2-e5a6d9c.md",
+            "digest": "5983ae50403872afe209d67462d59c82c5f7f6de9fe8dc3598abd8aecb35e00e",
+            "head_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+            "recorded_at": "2026-09-28T15:31:53Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T3",
+          "status": "verified",
+          "base_sha": "e5a6d9c2ea716f9e582356ac93b0e212093b13be",
+          "head_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+          "verification": {
+            "path": "execution-evidence/02-T3-9fbe1b2.md",
+            "digest": "d21a304b37028b6d6f6d28c6db292f71fc05fde5d14f5ef32682dfedcd5f988b",
+            "head_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+            "recorded_at": "2026-09-28T15:43:23Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TST_001_FEAT_主动测试评估运营/02/T4",
+          "status": "verified",
+          "base_sha": "9fbe1b2ca63aa5206035f7e08cb4ecc0ae7ca356",
+          "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+          "verification": {
+            "path": "execution-evidence/02-T4-d9dbd30.md",
+            "digest": "58432dae1174dd5f244b90d4033ec84dcd63edebf1383379c6f9529cb475402f",
+            "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+            "recorded_at": "2026-09-28T16:08:41Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/02-review-d9dbd30.md",
+        "digest": "6200838e6ed5adf5f265db605615a582be84c209ae69e825b6b77cb8ffc74032",
+        "head_sha": "d9dbd30d5b13e4badf94df639ad064e786a3e73b",
+        "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+        "passed": true,
+        "recorded_at": "2026-09-28T16:23:10Z"
+      },
+      "review_failures": 0,
+      "plan_changes": [
+        {
+          "reason": "控制器按 specs 裁决回改 02-T2 容差锚点（98.5 拒绝改为 97.9/102.1 拒绝、98/98.5/102 接受），普通锚点修正不影响任务骨架",
+          "recorded_at": "2026-09-28T15:30:58Z",
+          "previous": {
+            "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+            "plan_digest": "b3ad9ac430043cbc1b6f383de5844e9b9472e1ffd7f375df38ead3789ba51307",
+            "tasks": {
+              "T1": {
+                "key": "P2_TST_001_FEAT_主动测试评估运营/02/T1",
+                "status": "verified",
+                "base_sha": "788e2652d6ff207b39ed1be59e9212ebb9adb5dd",
+                "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                "verification": {
+                  "path": "execution-evidence/02-T1-f5cbb82.md",
+                  "digest": "6eb1617a8036ac725c8d8145989c6b02a7754d259ddc593c7cb91e197007de99",
+                  "head_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                  "recorded_at": "2026-09-28T14:51:39Z",
+                  "deferred_reason": null
+                }
+              },
+              "T2": {
+                "key": "P2_TST_001_FEAT_主动测试评估运营/02/T2",
+                "status": "started",
+                "base_sha": "f5cbb8279ef52f77e8d482f196d1ed2885c9f785",
+                "head_sha": null
+              }
+            },
+            "review": null,
+            "review_failures": 0
+          }
+        }
+      ]
+    }
+  },
+  "updated_at": "2026-09-28T16:23:10Z"
+}

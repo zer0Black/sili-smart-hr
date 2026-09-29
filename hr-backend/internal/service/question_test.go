@@ -73,6 +73,22 @@ func (r *qFakeRepo) MaxQuestionSeq(_ context.Context, _ string) (int64, error) {
 	return 0, nil
 }
 
+func (r *qFakeRepo) ListActiveByDimensionIDs(_ context.Context, _ []int64) ([]domain.Question, error) {
+	return nil, nil
+}
+
+func (r *qFakeRepo) ListActiveByScaleKey(_ context.Context, _ string) ([]domain.Question, error) {
+	return nil, nil
+}
+
+func (r *qFakeRepo) ListByIDsUnscoped(_ context.Context, _ []int64) ([]domain.Question, error) {
+	return nil, nil
+}
+
+func (r *qFakeRepo) IncrementReferenceCounts(_ context.Context, _ *gorm.DB, _ []int64) error {
+	return nil
+}
+
 // qFakeDimRepo 是 question service 用的 DimensionRepository 假实现：
 // ListAll 返回可配置维度集（编辑校验过滤 AI_MGMT+enabled），unscopedNames 模拟
 // 软删行存量名称二查回填。

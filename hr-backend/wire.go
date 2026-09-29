@@ -120,6 +120,21 @@ func InitializeApp(configPath string) (*App, error) {
 		// 批次查询/发起域（03 §3）：时钟经 NowFunc 命名类型注入规避 func 同型冲突。
 		ProvideNowFunc,
 		NewAssessmentBatchServiceAdapter,
+		// 主动测试域（specs P2_TST_001）：task 仓储 + service 经 NowFunc 复用装配 +
+		// handler（03 §3 七接口）+ 逾期 tick handler（§5.3，runner 直连仓储）。
+		repository.NewAssessmentTestTaskRepository,
+		NewAssessmentTestTaskServiceAdapter,
+		NewTestExpireTickHandlerTyped,
+		handler.NewAssessmentTestTaskHandler,
+		// AI 阅卷域（specs §5.2，02-T4）：result 仓储 + 阅卷专用 LLM 客户端
+		//（240s Timeout，独立 gate）+ Grader 十参装配 + assessment:test-grade
+		// handler 经参数注入 NewMux + Asynq 投递适配器（service.TestGradeEnqueuer
+		// 窄接口，default 队列 MaxRetry 默认 25 不收紧，03 §4.5）。
+		repository.NewAssessmentTestResultRepository,
+		NewGradingLLMClient,
+		NewGradingProvider,
+		NewTestGradeHandlerTyped,
+		NewAsynqTestGradeEnqueuer,
 		handler.NewAccountHandler,
 		handler.NewHealthHandler,
 		handler.NewSetupHandler,
@@ -143,6 +158,8 @@ func InitializeApp(configPath string) (*App, error) {
 		wire.Bind(new(service.ConversationlogPinger), new(*conversationlog.Client)),
 		// 生成任务投递：*AsynqGenerationEnqueuer 绑定 service.GenerationEnqueuer 窄接口。
 		wire.Bind(new(service.GenerationEnqueuer), new(*AsynqGenerationEnqueuer)),
+		// 阅卷任务投递：*AsynqTestGradeEnqueuer 绑定 service.TestGradeEnqueuer 窄接口。
+		wire.Bind(new(service.TestGradeEnqueuer), new(*AsynqTestGradeEnqueuer)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

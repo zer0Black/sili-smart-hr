@@ -3,8 +3,8 @@ package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
 // 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，
-// assessment batch 1601-1603，题库管理 1701-1709+1713。
-// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank。
+// assessment batch 1601-1603，题库管理 1701-1709+1713，主动测试 1801-1805。
+// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank，8=主动测试。
 // dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
@@ -52,6 +52,12 @@ const (
 	QuestionStatusInvalid   = 1708 // 题目状态转换前置校验失败
 	LLMNotConfigured        = 1709 // 大模型未配置（无排他启用模型）
 	QuestionVersionConflict = 1713 // 题目乐观锁版本冲突（并发变更）
+	// 主动测试 18xx 段（specs P2_TST_001 03 §5 错误码表）。
+	TestTaskNotFound            = 1801 // 测试任务不存在
+	TestTaskStatusInvalid       = 1802 // 任务状态不允许该操作（取消/重发前置校验失败）
+	TestDimensionQuestionsEmpty = 1803 // 子能力无可用题目（specs §4.2.4 规则1）
+	TestScaleNotReady           = 1804 // 九型量表未就绪（specs §4.2.4 规则2）
+	TestStaffInvalid            = 1805 // 发起对象人员无效（specs §5.1.5）
 )
 
 var messages = map[int]string{
@@ -98,6 +104,11 @@ var messages = map[int]string{
 	QuestionStatusInvalid:            "question status invalid",
 	LLMNotConfigured:                 "llm not configured",
 	QuestionVersionConflict:          "question version conflict",
+	TestTaskNotFound:                 "test task not found",
+	TestTaskStatusInvalid:            "test task status invalid",
+	TestDimensionQuestionsEmpty:      "test dimension questions empty",
+	TestScaleNotReady:                "test scale not ready",
+	TestStaffInvalid:                 "test staff invalid",
 }
 
 // Message 返回错误码对应文案，未注册返回 "error"。

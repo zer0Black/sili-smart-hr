@@ -60,6 +60,11 @@ export const ErrCode = {
   QuestionStatusInvalid: 1708,
   LLMNotConfigured: 1709,
   QuestionVersionConflict: 1713,
+  TestTaskNotFound: 1801,
+  TestTaskStatusInvalid: 1802,
+  TestDimensionQuestionsEmpty: 1803,
+  TestScaleNotReady: 1804,
+  TestStaffInvalid: 1805,
 } as const;
 
 /** 脱敏账号。id 为雪花 ID，后端以 JSON string 传输规避前端 JS 精度坑。 */

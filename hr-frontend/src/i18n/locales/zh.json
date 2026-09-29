@@ -596,7 +596,9 @@
       "subtitle": "查看跑批态势与计划、追溯批次记录、发起手动定向分析"
     },
     "tabs": {
-      "aiUsage": "AI 使用能力"
+      "aiUsage": "AI 使用能力",
+      "aiMgmt": "AI 管理能力",
+      "enneagram": "九型人格"
     },
     "stats": {
       "evalCount": "本期评测次数",
@@ -672,7 +674,6 @@
       "typeConversation": "对话分析",
       "typeAiMgmt": "AI 管理能力",
       "typeEnneagram": "九型人格",
-      "typeDisabled": "该评测类型将在后续版本开放",
       "targetLabel": "评估对象",
       "targetPlaceholder": "点击选择评估对象",
       "targetSearchPlaceholder": "输入人名搜索",
@@ -697,10 +698,24 @@
       "cancel": "取消",
       "cancelConfirm": "已选择评估对象，确定放弃并关闭？",
       "cancelConfirmOk": "放弃并关闭",
+      "singleTargetLabel": "测评对象",
+      "singleTargetPlaceholder": "点击选择测评对象",
+      "singleTargetClear": "清除 {{name}}",
+      "singleTargetRequired": "请选择测评对象",
+      "dimsLabel": "子能力维度",
+      "dimsRequired": "请至少选择一项子能力",
+      "scaleLabel": "使用量表",
+      "scaleLoading": "加载中…",
+      "scaleCount": "共 {{count}} 题",
+      "cancelTestConfirm": "已选择测评对象，确定放弃并关闭？",
       "toastCreated": "已发起评测，批次进入评估队列",
+      "toastTestCreated": "已发起测试，任务进入待作答",
       "toastGeneric": "发起失败，请稍后重试",
       "toastPeriodInvalid": "评估时段无效：结束日期须早于今天",
-      "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试"
+      "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试",
+      "toastDimEmpty": "子能力无可用题目，请先在题库补充",
+      "toastScaleNotReady": "九型量表未就绪，请先在题库引入量表",
+      "toastStaffInvalid": "人员信息获取失败，请稍后重试"
     },
     "failures": {
       "title": "失败明细 · {{batchNo}}",
@@ -712,6 +727,89 @@
       "retry": "重试",
       "restartByFailures": "按失败对象重新发起",
       "close": "关闭"
+    },
+    "testTask": {
+      "table": {
+        "title": "测试任务",
+        "createAction": "发起评测",
+        "filterStatus": "状态",
+        "filterStatusAll": "全部",
+        "keywordLabel": "对象",
+        "keywordPlaceholder": "姓名或任务号",
+        "query": "查询",
+        "reset": "重置",
+        "status": {
+          "pending": "待作答",
+          "in_progress": "进行中",
+          "completed": "已完成",
+          "expired": "已逾期",
+          "canceled": "已取消"
+        },
+        "linkStatus": {
+          "valid": "有效",
+          "used": "已使用",
+          "invalid": "已失效"
+        },
+        "grading": {
+          "waiting": "待阅卷",
+          "grading": "阅卷中",
+          "scored": "已评分",
+          "degraded": "已降级"
+        },
+        "gradingEnneagram": {
+          "waiting": "待判型",
+          "grading": "判型中",
+          "scored": "已判定",
+          "degraded": "已降级"
+        },
+        "colTaskNo": "任务号",
+        "colStaff": "对象",
+        "colStatus": "状态",
+        "colLink": "作答链接",
+        "colGrading": "阅卷状态",
+        "colGradingEnneagram": "判型状态",
+        "colCreatedAt": "发起时间",
+        "colCompletedAt": "完成时间",
+        "colActions": "操作",
+        "actionLink": "作答链接",
+        "actionResend": "重发",
+        "actionCancel": "取消",
+        "actionResult": "结果",
+        "resultDisabled": "个人画像功能建设中",
+        "cancelTitle": "取消测试任务",
+        "cancelDesc": "确认取消任务 {{taskNo}}（{{staffName}}）？取消后作答链接作废，任务不可恢复。",
+        "cancelConfirm": "确认取消",
+        "cancelSubmitting": "取消中…",
+        "loadError": "数据加载失败，请重试",
+        "empty": "暂无测试任务，点击右上角发起评测",
+        "total": "共 {{total}} 条",
+        "prevPage": "上一页",
+        "nextPage": "下一页",
+        "pageSize10": "10 条/页",
+        "pageSize20": "20 条/页",
+        "pageSize50": "50 条/页",
+        "pageSizeLabel": "每页条数"
+      },
+      "linkDialog": {
+        "title": "作答链接",
+        "taskNo": "任务号",
+        "staff": "对象",
+        "testType": "评测类型",
+        "generatedAt": "生成时间",
+        "linkLabel": "作答链接",
+        "copy": "复制",
+        "copySuccess": "链接已复制到剪贴板",
+        "copyFailed": "复制失败，请手动复制链接",
+        "usedHint": "已使用：作答已提交",
+        "invalidHint": "已失效：可重发生成新链接",
+        "footerHint": "员工提交作答后链接即刻失效。逾期未作答请在记录中点击重发生成新链接，复制后手动分发",
+        "loading": "加载中…",
+        "loadError": "链接信息加载失败，请重试",
+        "retry": "重试",
+        "close": "关闭",
+        "resendSuccess": "已重发作答链接",
+        "resendFailed": "重发失败，请稍后重试"
+      }
     }
   },
   "questionBank": {

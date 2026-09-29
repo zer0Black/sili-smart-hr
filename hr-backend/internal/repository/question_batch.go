@@ -67,6 +67,10 @@ type QuestionBatchRepository interface {
 	// RESUBMIT 批则 batch_id 改挂+question_count+1，否则 NextBatchNo("R") 新建 RESUBMIT 批。
 	// 题目乐观锁失败（version 不符）返回 ErrVersionConflict。
 	ResubmitToBatch(ctx context.Context, question *domain.Question, updates map[string]any) (*domain.QuestionBatch, error)
+	// FindLatestImportedBatch 最新引入量批判定（specs TST 03 B2）：batch_type=IMPORT AND
+	// status=CLOSED 按 created_at DESC 首行，无行返回 gorm.ErrRecordNotFound
+	//（两套量表并存取最新一套的判定依据）。
+	FindLatestImportedBatch(ctx context.Context) (*domain.QuestionBatch, error)
 }
 
 type questionBatchRepository struct {
@@ -116,6 +120,20 @@ func (r *questionBatchRepository) FindPendingResubmitBatch(ctx context.Context) 
 		Where("source = ? AND batch_type = ? AND status = ?",
 			domain.QuestionSourceAI, domain.QuestionBatchTypeResubmit, domain.QuestionBatchStatusPending).
 		Order("created_at ASC").
+		First(&b).Error
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+// FindLatestImportedBatch 与 FindPendingResubmitBatch 同形态：First 无行即
+// gorm.ErrRecordNotFound，调用方据此映射「量表未引入」（1804 前置判定）。
+func (r *questionBatchRepository) FindLatestImportedBatch(ctx context.Context) (*domain.QuestionBatch, error) {
+	var b domain.QuestionBatch
+	err := r.db.WithContext(ctx).
+		Where("batch_type = ? AND status = ?", domain.QuestionBatchTypeImport, domain.QuestionBatchStatusClosed).
+		Order("created_at DESC").
 		First(&b).Error
 	if err != nil {
 		return nil, err

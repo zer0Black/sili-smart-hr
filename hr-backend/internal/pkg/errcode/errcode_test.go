@@ -50,6 +50,13 @@ func TestMessages(t *testing.T) {
 		{"StaffListUnavailable", errcode.StaffListUnavailable, 1305, "staff list unavailable"},
 		{"ConfigVersionConflict", errcode.ConfigVersionConflict, 1306, "config version conflict"},
 		{"SecretDecryptFailed", errcode.SecretDecryptFailed, 1307, "secret decrypt failed"},
+
+		// 主动测试域 1801-1805（P2_TST_001 03 §5 错误码表）
+		{"TestTaskNotFound", errcode.TestTaskNotFound, 1801, "test task not found"},
+		{"TestTaskStatusInvalid", errcode.TestTaskStatusInvalid, 1802, "test task status invalid"},
+		{"TestDimensionQuestionsEmpty", errcode.TestDimensionQuestionsEmpty, 1803, "test dimension questions empty"},
+		{"TestScaleNotReady", errcode.TestScaleNotReady, 1804, "test scale not ready"},
+		{"TestStaffInvalid", errcode.TestStaffInvalid, 1805, "test staff invalid"},
 	}
 
 	for _, tt := range tests {
