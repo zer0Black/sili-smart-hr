@@ -24,11 +24,16 @@
 - 前端：评测运营中心三 tab、测试任务列表（筛选/轮询/行操作/逾期警示）、发起弹窗三类型激活、测评对象单选、作答链接弹窗
 - 文档：CLAUDE.md 三文件同步
 
-## 待清理项
-
-- git worktree remove E:/Agent-zone/sili-smart-hr/.worktrees/TST_001 后删除分支 codex/tst-001（清理前需用户确认）
-
 ## 遗留（供后续 Feature）
 
 - F8 作答页未建，CompleteTask/StartSession 无生产触发路径，任务停留待作答/已逾期/已取消口径自洽
-- 终审低价值建议（未处理，用户自决）：zh/en cancelTestConfirm 疑似死键、NextTaskNo UTC 日界、validateStaff 前 100 条比对边界、degrade 两步非同事务
+- main 领先 origin/main 未推送（含合并与收尾记录）
+
+## 终审低价值建议处置记录（2026-09-29 处理完毕，提交 2f0790b）
+
+1. cancelTestConfirm 疑似死键：核实为误报。create-batch-dialog.tsx:574 经三元 `t(isTest ? 'create.cancelTestConfirm' : 'create.cancelConfirm')` 消费，双 key 均在用且文案语义有区分（对话分析多人 vs 测试限一人），保留。
+2. NextTaskNo UTC 日界取号：已修复。日期改 `now.Local()` 日界，与列表 created_at 直出 Local() 口径一致，防东八区 0-8 点任务号日期与发起时间分属两天。
+3. validateStaff 前 100 条比对边界：已修复。分页拉全量比对（短页/收齐 total 双终止 + 页数上限 100，仿 pipeline fetchAllStaffNames），同名超 100 人不再漏判 1805；补第 2 页命中测试。
+4. degrade 两步非同事务：已修复。AssessmentTestResultRepository 新增 DegradeTask 单事务方法（enneagram 降级行 upsert + 任务行 grading→degraded 原子化），worker handler 改走该方法，TerminalDegrader 窄面收窄为只读；补仓储级事务/幂等/ai_mgmt 三态测试。
+
+修复后全量回归：后端 28 包测试全绿。
