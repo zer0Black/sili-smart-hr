@@ -586,6 +586,45 @@ func TestCreateStaffInvalid(t *testing.T) {
 			t.Error("上游不可达不应创建任务")
 		}
 	})
+	t.Run("同名超一页第2页命中", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{nextNo: "T202609280001"}
+		// 按页返回：第 1 页 100 个同名未命中行，第 2 页含目标。
+		ua := &pagedUserapiClient{target: userapi.Staff{StaffID: "u1", StaffName: "张敏"}}
+		secretRepo := &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1, SecretCipher: encryptedSecret(t, "sec")}}
+		svc := service.NewAssessmentTestTaskService(taskRepo, &fakeTSTQuestionRepo{byDims: aiMgmtQuestions()}, &fakeTSTBatchRepo{}, &fakeDimRepo{dims: aiMgmtEnabledDims()}, ua, secretRepo, batchEncKey, &fakeGradeEnqueuer{}, tstFixedNow)
+		if _, err := svc.Create(context.Background(), service.CreateTestTaskPayload{
+			TestType: domain.TestTypeAIMgmt, StaffID: "u1", StaffName: "张敏",
+			DimensionIDs: []string{"101"},
+		}); err != nil {
+			t.Fatalf("第 2 页命中应创建成功: %v", err)
+		}
+		if !taskRepo.createCalled {
+			t.Error("翻页命中后应创建任务")
+		}
+		if ua.maxPage < 2 {
+			t.Errorf("未翻页（maxPage=%d）, want >= 2", ua.maxPage)
+		}
+	})
+}
+
+// pagedUserapiClient 分页 fake：第 1 页满 100 行同名噪音，目标行仅在第 2 页返回。
+type pagedUserapiClient struct {
+	target  userapi.Staff
+	maxPage int
+}
+
+func (f *pagedUserapiClient) ListStaffs(_ context.Context, _, _ string, page, _ int) ([]userapi.Staff, int64, error) {
+	if page > f.maxPage {
+		f.maxPage = page
+	}
+	if page == 1 {
+		noise := make([]userapi.Staff, 100)
+		for i := range noise {
+			noise[i] = userapi.Staff{StaffID: "noise", StaffName: "张敏"}
+		}
+		return noise, 101, nil
+	}
+	return []userapi.Staff{f.target}, 101, nil
 }
 
 // TestCreateEnneagramScaleNotReady：无 IMPORT 批次或量表启用题为空返 1804，任务不创建

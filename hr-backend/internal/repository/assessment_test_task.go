@@ -190,9 +190,11 @@ func parseQuestionIDs(s string) ([]int64, error) {
 
 // NextTaskNo 同前缀同日期取最大序号递增；无行归 1。序号列定宽 4 位，
 // 超 9999 时格式退化为 5 位（uk_task_no 仍保唯一，任务号只是人工引用锚点）。
-// Unscoped 含全部行：本表无软删除，语义为已建任务全量（canceled 亦占号防复用）。
+// 日期按本地时区日界（与列表 created_at 直出 Local() 口径一致，防东八区
+// 0-8 点任务号日期与发起时间分属两天）；Unscoped 含全部行：本表无软删除，
+// 语义为已建任务全量（canceled 亦占号防复用）。
 func (r *assessmentTestTaskRepository) NextTaskNo(ctx context.Context, prefix string, now time.Time) (string, error) {
-	dayKey := now.UTC().Format("20060102")
+	dayKey := now.Local().Format("20060102")
 	fullPrefix := prefix + dayKey
 	var top []string
 	if err := r.db.WithContext(ctx).Unscoped().Model(&domain.AssessmentTestTask{}).

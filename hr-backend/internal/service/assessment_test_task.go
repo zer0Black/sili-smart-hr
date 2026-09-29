@@ -397,20 +397,33 @@ func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, 
 	return ordered, codes, names, nil
 }
 
-// validateStaff 对象校验：经 userapi.ListStaffs（keyword=staff_name）拉取比对
-// staff_id+staff_name 双命中；未配置密钥、上游失败、未命中统一 1805（specs §5.1.5）。
+// validateStaff 对象校验：经 userapi.ListStaffs（keyword=staff_name）分页拉全量比对
+// staff_id+staff_name 双匹配（同名超一页时翻页兜底，短页/收齐 total 双终止，
+// fetchAllStaffNames 同范式），页数上限防上游分页失效无界翻页；未配置密钥、
+// 上游失败、未命中统一 1805（specs §5.1.5）。
 func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, staffName string) error {
 	secret, err := ResolveIntegrationSecret(ctx, s.secretRepo, s.encKey)
 	if err != nil {
 		return NewError(errcode.TestStaffInvalid)
 	}
-	staffs, _, err := s.staffs.ListStaffs(ctx, secret, staffName, 1, 100)
-	if err != nil {
-		return NewError(errcode.TestStaffInvalid)
-	}
-	for i := range staffs {
-		if staffs[i].StaffID == staffID && staffs[i].StaffName == staffName {
-			return nil
+	const pageSize = 100
+	fetched := 0
+	for page := 1; page <= 100; page++ {
+		staffs, total, err := s.staffs.ListStaffs(ctx, secret, staffName, page, pageSize)
+		if err != nil {
+			return NewError(errcode.TestStaffInvalid)
+		}
+		for i := range staffs {
+			if staffs[i].StaffID == staffID && staffs[i].StaffName == staffName {
+				return nil
+			}
+		}
+		fetched += len(staffs)
+		if len(staffs) < pageSize || len(staffs) == 0 {
+			return NewError(errcode.TestStaffInvalid)
+		}
+		if total > 0 && int64(fetched) >= total {
+			return NewError(errcode.TestStaffInvalid)
 		}
 	}
 	return NewError(errcode.TestStaffInvalid)

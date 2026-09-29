@@ -32,19 +32,17 @@ type TestGrader interface {
 	Run(ctx context.Context, taskID int64) error
 }
 
-// TerminalDegrader 降级处置窄面：读任务行定 test_type + 推进 grading 终态。
+// TerminalDegrader 降级处置窄面：读任务行定 test_type（终态推进收敛进
+// TestGradeResultRepo.DegradeTask 单事务，本接口只承担读）。
 type TerminalDegrader interface {
 	GetByID(ctx context.Context, id int64) (*domain.AssessmentTestTask, error)
-	MarkGradingTerminal(ctx context.Context, taskID int64, gradingStatus string) error
 }
 
-// TestGradeResultRepo 判型降级行落库窄面（enneagram 耗尽时落 degraded 行）。
+// TestGradeResultRepo 判型降级窄面：DegradeTask 单事务落降级行并推任务行
+// degraded（enneagram），ai_mgmt 仅推任务行（04 §3.3 降级行形态）。
 type TestGradeResultRepo interface {
-	UpsertByTaskID(ctx context.Context, r *domain.AssessmentTestResult) error
+	DegradeTask(ctx context.Context, taskID int64, enneagram bool) error
 }
-
-// degradedRationale 降级行判定依据（04 §3.3：rationale 记降级说明）。
-const degradedRationale = "AI 阅卷重试耗尽，已降级终态；作答数据与统计上下文保留，可重新发起测试补偿。"
 
 // retryBudget 读 asynq 重试元数据（v0.26.0 签名返 (n, ok)），ok=false 按 m=0
 // 处理。包级变量供测试注入（asynq 无公开 API 构造带 metadata 的 ctx）。
@@ -89,9 +87,9 @@ func NewTestGradeHandler(grader TestGrader, degrader TerminalDegrader, results T
 	}
 }
 
-// degrade 重试耗尽降级（specs §5.2.5：WARN 记任务号，不产出告警信号）：enneagram
-// 先落降级行（判型字段占位、rationale 记降级说明）再推任务行 degraded；ai_mgmt
-// 无判型行只推任务行。失败上抛保留下次执行/补偿再投递收敛。
+// degrade 重试耗尽降级（specs §5.2.5：WARN 记任务号，不产出告警信号）：
+// DegradeTask 单事务承载「enneagram 落降级行 + 任务行推 degraded」两步，
+// 防半降级中间态；失败上抛保留下次执行/补偿再投递收敛。
 func degrade(ctx context.Context, taskID int64, degrader TerminalDegrader, results TestGradeResultRepo) error {
 	task, err := degrader.GetByID(ctx, taskID)
 	if err != nil {
@@ -100,18 +98,8 @@ func degrade(ctx context.Context, taskID int64, degrader TerminalDegrader, resul
 	slog.Warn("test grade retries exhausted, degrade to terminal",
 		"task_id", taskID, "task_no", task.TaskNo)
 
-	if task.TestType == domain.TestTypeEnneagram {
-		row := &domain.AssessmentTestResult{
-			TaskID:        taskID,
-			Rationale:     degradedRationale,
-			GradingStatus: domain.GradingStatusDegraded,
-		}
-		if err := results.UpsertByTaskID(ctx, row); err != nil {
-			return fmt.Errorf("test grade degrade: upsert result of task %d: %w", taskID, err)
-		}
-	}
-	if err := degrader.MarkGradingTerminal(ctx, taskID, domain.GradingStatusDegraded); err != nil {
-		return fmt.Errorf("test grade degrade: mark degraded of task %d: %w", taskID, err)
+	if err := results.DegradeTask(ctx, taskID, task.TestType == domain.TestTypeEnneagram); err != nil {
+		return fmt.Errorf("test grade degrade: degrade task %d: %w", taskID, err)
 	}
 	return nil
 }

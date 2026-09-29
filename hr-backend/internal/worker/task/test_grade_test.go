@@ -35,13 +35,11 @@ func (f *fakeTestGrader) Run(_ context.Context, taskID int64) error {
 	return f.err
 }
 
-// fakeTerminalDegrader 降级窄面 fake：返回预置任务行，记录终态化调用。
+// fakeTerminalDegrader 降级窄面 fake：返回预置任务行（终态推进已收敛进
+// fakeResultWriter.DegradeTask，本 fake 只承担读）。
 type fakeTerminalDegrader struct {
-	task         *domain.AssessmentTestTask
-	getErr       error
-	markErr      error
-	markedIDs    []int64
-	markedStatus []string
+	task   *domain.AssessmentTestTask
+	getErr error
 }
 
 var _ TerminalDegrader = (*fakeTerminalDegrader)(nil)
@@ -53,24 +51,20 @@ func (f *fakeTerminalDegrader) GetByID(_ context.Context, _ int64) (*domain.Asse
 	return f.task, nil
 }
 
-func (f *fakeTerminalDegrader) MarkGradingTerminal(_ context.Context, taskID int64, gradingStatus string) error {
-	f.markedIDs = append(f.markedIDs, taskID)
-	f.markedStatus = append(f.markedStatus, gradingStatus)
-	return f.markErr
-}
-
-// fakeResultWriter 判型结果落库 fake：捕获降级行。
+// fakeResultWriter 判型降级 fake：捕获 DegradeTask 调用（taskID 与 enneagram 标记）。
 type fakeResultWriter struct {
-	err   error
-	calls int
-	rows  []*domain.AssessmentTestResult
+	err     error
+	calls   int
+	taskIDs []int64
+	enns    []bool
 }
 
 var _ TestGradeResultRepo = (*fakeResultWriter)(nil)
 
-func (f *fakeResultWriter) UpsertByTaskID(_ context.Context, r *domain.AssessmentTestResult) error {
+func (f *fakeResultWriter) DegradeTask(_ context.Context, taskID int64, enneagram bool) error {
 	f.calls++
-	f.rows = append(f.rows, r)
+	f.taskIDs = append(f.taskIDs, taskID)
+	f.enns = append(f.enns, enneagram)
 	return f.err
 }
 
@@ -134,15 +128,15 @@ func TestTestGradeHappyPath(t *testing.T) {
 	if grader.calls != 1 || grader.gotID != id {
 		t.Fatalf("grader.Run 调用 %d 次 taskID %d, want 1 次 %d", grader.calls, grader.gotID, id)
 	}
-	if len(degrader.markedStatus) != 0 || results.calls != 0 {
+	if results.calls != 0 {
 		t.Fatal("正常路径不应触达降级")
 	}
 }
 
 // TestTestGradeDegradeOnExhausted 核心锚点（BR3/BR4/BR5）：重试预算耗尽
-//（retried>=maxRetry）时吞掉 grader 错误走降级：handler 返 nil、任务行落
-// degraded、enneagram 同时落降级行（判型字段占位、rationale 记降级说明、
-// grading_status=degraded，specs §5.2.5、04 §3.3 降级行形态）。
+//（retried>=maxRetry）时吞掉 grader 错误走降级：handler 返 nil、DegradeTask
+// 被调一次且 enneagram=true（仓储侧单事务落降级行并推任务行 degraded，
+// specs §5.2.5、04 §3.3 降级行形态）。
 func TestTestGradeDegradeOnExhausted(t *testing.T) {
 	withRetryBudget(t, 25, 25)
 	grader := &fakeTestGrader{err: errors.New("llm down")}
@@ -153,22 +147,11 @@ func TestTestGradeDegradeOnExhausted(t *testing.T) {
 	if err := runGradeTask(h, `{"task_id":"42"}`); err != nil {
 		t.Fatalf("耗尽降级后应返回 nil: %v", err)
 	}
-	if len(degrader.markedStatus) != 1 || degrader.markedIDs[0] != 42 ||
-		degrader.markedStatus[0] != domain.GradingStatusDegraded {
-		t.Fatalf("任务行应推进 degraded, got id=%v status=%v", degrader.markedIDs, degrader.markedStatus)
+	if results.calls != 1 || len(results.taskIDs) != 1 || results.taskIDs[0] != 42 {
+		t.Fatalf("DegradeTask 应被调一次携 task 42, got calls=%d ids=%v", results.calls, results.taskIDs)
 	}
-	if results.calls != 1 {
-		t.Fatalf("enneagram 耗尽应落降级行, got %d 次", results.calls)
-	}
-	row := results.rows[0]
-	if row.TaskID != 42 || row.GradingStatus != domain.GradingStatusDegraded {
-		t.Fatalf("降级行 task/grading_status = %d/%s, want 42/degraded", row.TaskID, row.GradingStatus)
-	}
-	if row.MainType != "" || row.WingType != "" || row.DistributionJSON != "" {
-		t.Errorf("判型字段应占位空值, got %q/%q/%q", row.MainType, row.WingType, row.DistributionJSON)
-	}
-	if row.Rationale == "" {
-		t.Error("rationale 应记降级说明")
+	if !results.enns[0] {
+		t.Error("enneagram 任务降级应携 enneagram=true（仓储侧落降级行）")
 	}
 }
 
@@ -186,7 +169,7 @@ func TestTestGradeErrorPropagatesBeforeExhausted(t *testing.T) {
 	if !errors.Is(got, wantErr) {
 		t.Fatalf("err = %v, want 原样上抛 %v", got, wantErr)
 	}
-	if len(degrader.markedStatus) != 0 || results.calls != 0 {
+	if results.calls != 0 {
 		t.Fatal("未耗尽不应触达降级")
 	}
 }
@@ -195,13 +178,13 @@ func TestTestGradeErrorPropagatesBeforeExhausted(t *testing.T) {
 //（保留下次执行/补偿再投递收敛，specs §5.2.5）。
 func TestTestGradeDegradeFailsStillErrors(t *testing.T) {
 	withRetryBudget(t, 25, 25)
-	markErr := errors.New("db down")
+	degradeErr := errors.New("db down")
 	h := NewTestGradeHandler(
 		&fakeTestGrader{err: errors.New("llm down")},
-		&fakeTerminalDegrader{task: enneagramGradeTask(), markErr: markErr},
-		&fakeResultWriter{},
+		&fakeTerminalDegrader{task: enneagramGradeTask()},
+		&fakeResultWriter{err: degradeErr},
 	)
-	if got := runGradeTask(h, `{"task_id":"42"}`); !errors.Is(got, markErr) {
+	if got := runGradeTask(h, `{"task_id":"42"}`); !errors.Is(got, degradeErr) {
 		t.Fatalf("降级失败应上抛, got %v", got)
 	}
 }
@@ -253,8 +236,8 @@ func TestNewMuxTestGradeTimeout(t *testing.T) {
 
 // ---- 边界补充 ----
 
-// TestTestGradeDegradeAIMgmtNoResultRow 边界补充：ai_mgmt 耗尽只推任务行
-// degraded，无判型降级行（结果表仅 enneagram 落行，04 §3.3）。
+// TestTestGradeDegradeAIMgmtNoResultRow 边界补充：ai_mgmt 耗尽 DegradeTask
+// 携 enneagram=false（仓储侧仅推任务行，无判型降级行，04 §3.3）。
 func TestTestGradeDegradeAIMgmtNoResultRow(t *testing.T) {
 	withRetryBudget(t, 25, 25)
 	degrader := &fakeTerminalDegrader{task: &domain.AssessmentTestTask{
@@ -267,11 +250,8 @@ func TestTestGradeDegradeAIMgmtNoResultRow(t *testing.T) {
 	if err := runGradeTask(h, `{"task_id":"7"}`); err != nil {
 		t.Fatalf("ai_mgmt 耗尽降级应 nil: %v", err)
 	}
-	if len(degrader.markedStatus) != 1 || degrader.markedStatus[0] != domain.GradingStatusDegraded {
-		t.Fatalf("任务行应推进 degraded, got %+v", degrader.markedStatus)
-	}
-	if results.calls != 0 {
-		t.Fatalf("ai_mgmt 不落判型降级行, got %d 次", results.calls)
+	if results.calls != 1 || results.enns[0] {
+		t.Fatalf("ai_mgmt 降级应携 enneagram=false, got calls=%d enns=%v", results.calls, results.enns)
 	}
 }
 
@@ -298,8 +278,8 @@ func TestTestGradeNoMetadataDegrades(t *testing.T) {
 	if err := runGradeTask(h, `{"task_id":"42"}`); err != nil {
 		t.Fatalf("无元数据视同耗尽应降级返 nil: %v", err)
 	}
-	if len(degrader.markedStatus) != 1 || degrader.markedStatus[0] != domain.GradingStatusDegraded {
-		t.Fatalf("应推进 degraded, got %+v", degrader.markedStatus)
+	if results.calls != 1 || !results.enns[0] {
+		t.Fatalf("应走降级（enneagram=true）, got calls=%d enns=%v", results.calls, results.enns)
 	}
 }
 
