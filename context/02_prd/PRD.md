@@ -588,7 +588,8 @@ AI 管理能力题生成依赖平台自配大模型；九型人格依赖标准�
 | F4 | 维度与权重配置 | dimension-config-list.html | 维度与权重配置·维度权重维护；活跃度规则配置 | 2 | T1 |
 | F5 | 题库管理 | question-bank-list.html、question-generate-form.html | 题库管理·题目生成、量表引入、题目审核、题库维护 | 4 | T1、T2（LLM 出题） |
 | F6 | 周期批量评估跑批编排（对话分析评估运营） | assessment-batch-list.html（AI 使用能力 tab、跑批计划卡、对话分析发起入口；跑批调度、pipeline 编排与失败兜底为非页面功能随本 Feature 交付） | 对话分析评估·周期批量评估、手动定向分析；异常处置·失败兜底（定向补跑入口与告警信号产出，呈现归 F11） | 3 | T5、F3、F4 |
-| F7 | 主动测试评估运营 | assessment-batch-list.html（AI 管理能力与九型 tab） | 主动测试评估·测试发起、测试阅卷、测试管理 | 3 | T2（AI 阅卷）、F4、F5、F8 || F8 | 员工作答 | assessment-answer.html（独立路由、一次性令牌鉴权，与主平台 JWT 隔离） | 员工作答·测评作答；对外接口·作答提交接口 | 2 | T1（作答令牌基座）、F7 |
+| F7 | 主动测试评估运营 | assessment-batch-list.html（AI 管理能力与九型 tab） | 主动测试评估·测试发起、测试阅卷、测试管理 | 3 | T2（AI 阅卷）、F4、F5、F8 |
+| F8 | 员工作答 | assessment-answer.html（独立路由、一次性令牌鉴权，与主平台 JWT 隔离） | 员工作答·测评作答；对外接口·作答提交接口 | 2 | T1（作答令牌基座）、F7 |
 | F9 | 个人画像 | profile-list.html、profile-detail.html | 个人画像·画像查询、画像详情；对外接口·画像数据接口（预留） | 3 | T1（画像数据由 F6/F7 产出，只读消费） |
 | F10 | 团队看板 | team-dashboard.html、team-ability-trend.html | 团队看板·看板查询、人群识别、趋势下钻 | 3 | T1、F9（下钻个人） |
 | F11 | 工作台 | index.html | 工作台·工作台总览（含跑批失败超阈告警与测试逾期待处理项） | 1 | F6（告警信号）、F7、F9、F10 |
