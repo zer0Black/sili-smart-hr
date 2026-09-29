@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/engine/extractor"
 )
 
 // scoreSpecs 三维度口径（收敛白名单基准）。
@@ -81,9 +82,9 @@ func boolJSON(b bool) string {
 	return "false"
 }
 
-// scorePtr 构造 *scoreNumber（scoreDimension.Score 字段的测试简写）。
-func scorePtr(n int) *scoreNumber {
-	return &scoreNumber{n: n}
+// scorePtr 构造 *extractor.ScoreNumber（scoreDimension.Score 字段的测试简写）。
+func scorePtr(n int) *extractor.ScoreNumber {
+	return &extractor.ScoreNumber{N: n}
 }
 
 // TestParseScoreOutputPlain 纯 JSON 直接解析成功。
@@ -97,7 +98,7 @@ func TestParseScoreOutputPlain(t *testing.T) {
 		t.Fatalf("维度数 = %d, want 1", len(out.Dimensions))
 	}
 	d := out.Dimensions[0]
-	if d.Code != "AI_INSTRUCTION" || d.Score == nil || d.Score.n != 72 || d.Insufficient || d.Rationale != "指令明确" {
+	if d.Code != "AI_INSTRUCTION" || d.Score == nil || d.Score.N != 72 || d.Insufficient || d.Rationale != "指令明确" {
 		t.Errorf("维度字段不符: %+v", d)
 	}
 }
@@ -326,7 +327,7 @@ func TestParseScoreOutputFloatForm(t *testing.T) {
 		t.Fatalf("浮点整数形态应解析成功: %v", err)
 	}
 	d := out.Dimensions[0]
-	if d.Score == nil || d.Score.n != 78 {
+	if d.Score == nil || d.Score.N != 78 {
 		t.Errorf("score = %+v, want 78", d.Score)
 	}
 }
@@ -349,7 +350,7 @@ func TestParseScoreOutputScientificNotationConverged(t *testing.T) {
 		t.Fatalf("科学计数法整型浮点应解析成功: %v", err)
 	}
 	d := out.Dimensions[0]
-	if d.Score == nil || d.Score.n != 70 {
+	if d.Score == nil || d.Score.N != 70 {
 		t.Errorf("score = %+v, want 70", d.Score)
 	}
 }

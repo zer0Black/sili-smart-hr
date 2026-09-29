@@ -606,8 +606,8 @@ func TestCreateDimensionEmpty(t *testing.T) {
 	if !strings.Contains(serr.Msg, "目标对齐") {
 		t.Errorf("Msg = %q, want 携维度名「目标对齐」", serr.Msg)
 	}
-	if !strings.Contains(serr.Msg, "无可用题目") {
-		t.Errorf("Msg = %q, want 含 specs §4.2.4 规则1 文案", serr.Msg)
+	if !strings.Contains(serr.Msg, "has no active questions") {
+		t.Errorf("Msg = %q, want 含固定英文模板（前端剥离维度名走 i18n，03 B1）", serr.Msg)
 	}
 	if taskRepo.createCalled {
 		t.Error("0 题维度不应创建任务")

@@ -8,6 +8,7 @@ import (
 
 	"sili-smart-hr/backend/internal/pkg/errcode"
 	"sili-smart-hr/backend/internal/pkg/response"
+	"sili-smart-hr/backend/internal/repository"
 	"sili-smart-hr/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -23,12 +24,13 @@ func NewAssessmentTestTaskHandler(svc service.AssessmentTestTaskService) *Assess
 	return &AssessmentTestTaskHandler{svc: svc}
 }
 
-// List 处理 GET /api/assessment/test-tasks。page/page_size 缺省与钳制（缺省 10、
-// 上限 100）由 repository.ClampPageSize 统一收口；test_type 必填与 status 枚举
-// 校验在 service 层（03 A1：缺省与非法统一 1400）。
+// List 处理 GET /api/assessment/test-tasks。page/page_size 缺省 1/10、上限 100
+// 的钳制在 repository.ClampPageSize 统一收口，handler 用同口径钳制回显防两处
+// 漂移；test_type 必填与 status 枚举校验在 service 层（03 A1：缺省与非法统一 1400）。
 func (h *AssessmentTestTaskHandler) List(c *gin.Context) {
 	page, _ := strconv.Atoi(c.Query("page"))
 	pageSize, _ := strconv.Atoi(c.Query("page_size"))
+	page, pageSize = repository.ClampPageSize(page, pageSize, 10)
 	list, total, err := h.svc.List(c.Request.Context(), service.ListTestTaskFilter{
 		TestType: c.Query("test_type"),
 		Status:   c.Query("status"),

@@ -204,20 +204,29 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
     expect(props.onResend).toHaveBeenCalledWith('1790000000000000001');
   });
 
-  it('TestTaskTableResendPending：重发请求进行中行内按钮禁用（specs §4.1.3 loading 至接口响应）', async () => {
+  it('TestTaskTableResending：重发中的行按钮 loading 禁用，其余行可点（specs §4.1.3 行级 loading）', async () => {
     vi.mocked(fetchTestTasks).mockResolvedValue({
-      list: [makeItem({ status: 'expired', link_status: 'invalid' })],
-      total: 1,
+      list: [
+        makeItem({ id: '1790000000000000001', status: 'expired', link_status: 'invalid' }),
+        makeItem({ id: '1790000000000000002', status: 'expired', link_status: 'invalid' }),
+      ],
+      total: 2,
       page: 1,
       page_size: 10,
     });
     const props = makeProps();
-    renderTable(<TestTaskTable {...props} resendPending />);
+    renderTable(<TestTaskTable {...props} resendingId="1790000000000000001" />);
 
-    const resendBtn = await screen.findByRole('button', { name: '重发' });
-    expect(resendBtn).toBeDisabled();
-    fireEvent.click(resendBtn);
+    const loadingBtn = await screen.findByRole('button', { name: '重发中…' });
+    expect(loadingBtn).toBeDisabled();
+    fireEvent.click(loadingBtn);
     expect(props.onResend).not.toHaveBeenCalled();
+
+    // 其他行不受影响：重发按钮可点
+    const otherBtn = screen.getByRole('button', { name: '重发' });
+    expect(otherBtn).toBeEnabled();
+    fireEvent.click(otherBtn);
+    expect(props.onResend).toHaveBeenCalledWith('1790000000000000002');
   });
 
   it('TestTaskTableFilterTwoPhase：状态下拉 + 关键字回车等效查询，重置清空', async () => {

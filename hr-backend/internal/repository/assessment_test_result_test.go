@@ -1,5 +1,5 @@
 // Package repository_test 对主动测试判型结果仓储做黑盒集成测试（specs TST §5.2.4/§5.2.5）。
-// 覆盖 UpsertByTaskID 幂等收敛（uk_result_task）与 FindBatchByTaskIDs 批量现读。
+// 覆盖 UpsertByTaskID 幂等收敛（uk_result_task）与 DegradeTask 降级两步同事务。
 package repository_test
 
 import (
@@ -30,20 +30,6 @@ func newTestResultDB(t *testing.T) *gorm.DB {
 		t.Fatalf("auto migrate result: %v", err)
 	}
 	return db
-}
-
-// seedResult 直插一行判型结果（测试基线，不走被测 upsert 通道）。
-func seedResult(t *testing.T, db *gorm.DB, taskID int64, mainType string) domain.AssessmentTestResult {
-	t.Helper()
-	r := domain.AssessmentTestResult{
-		TaskID: taskID, MainType: mainType, WingType: "",
-		DistributionJSON: `{"1":5.0}`, Rationale: "判定-" + mainType,
-		ModelName: "m-" + mainType, PromptVersion: "v1", GradingStatus: domain.GradingStatusScored,
-	}
-	if err := db.Create(&r).Error; err != nil {
-		t.Fatalf("seed result task %d: %v", taskID, err)
-	}
-	return r
 }
 
 // countResultRows 直查结果行数。
@@ -107,33 +93,6 @@ func TestUpsertByTaskID(t *testing.T) {
 	}
 	if n := countResultRows(t, db, "task_id = ?", int64(1002)); n != 1 {
 		t.Fatalf("rows for task 1002 = %d, want 1", n)
-	}
-}
-
-// TestFindBatchByTaskIDs 批量读命中、无命中与空输入三态：空 map 不炸（F9 画像按
-// 任务集批量消费路径）。
-func TestFindBatchByTaskIDs(t *testing.T) {
-	db := newTestResultDB(t)
-	repo := repository.NewAssessmentTestResultRepository(db)
-	ctx := context.Background()
-	seedResult(t, db, 2001, "3")
-	seedResult(t, db, 2002, "9")
-
-	got, err := repo.FindBatchByTaskIDs(ctx, []int64{2001, 2002})
-	if err != nil {
-		t.Fatalf("FindBatchByTaskIDs: %v", err)
-	}
-	if len(got) != 2 || got[2001].MainType != "3" || got[2002].MainType != "9" {
-		t.Fatalf("batch map = %v, want both rows keyed by task_id", got)
-	}
-
-	miss, err := repo.FindBatchByTaskIDs(ctx, []int64{9999})
-	if err != nil || len(miss) != 0 {
-		t.Fatalf("missing ids: map=%v err=%v, want empty nil", miss, err)
-	}
-	empty, err := repo.FindBatchByTaskIDs(ctx, nil)
-	if err != nil || len(empty) != 0 {
-		t.Fatalf("nil ids: map=%v err=%v, want empty nil", empty, err)
 	}
 }
 

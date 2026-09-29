@@ -255,17 +255,23 @@ func TestTestGradeDegradeAIMgmtNoResultRow(t *testing.T) {
 	}
 }
 
-// TestTestGradeDegradeLoadFailsStillErrors 边界补充：降级读任务行失败上抛保留收敛。
+// TestTestGradeDegradeLoadFailsStillErrors 边界补充：降级前读任务行失败时按
+// task_type 未知口径仍执行降级（仅推任务行不落降级行），DegradeTask 失败上抛
+// 保留收敛；读行错误本身已被错误路径吞掉记日志，不阻断终态推进。
 func TestTestGradeDegradeLoadFailsStillErrors(t *testing.T) {
 	withRetryBudget(t, 25, 25)
-	getErr := errors.New("db down")
+	degrader := &fakeTerminalDegrader{getErr: errors.New("db down")}
+	results := &fakeResultWriter{}
 	h := NewTestGradeHandler(
 		&fakeTestGrader{err: errors.New("llm down")},
-		&fakeTerminalDegrader{getErr: getErr},
-		&fakeResultWriter{},
+		degrader,
+		results,
 	)
-	if got := runGradeTask(h, `{"task_id":"42"}`); !errors.Is(got, getErr) {
-		t.Fatalf("降级读行失败应上抛, got %v", got)
+	if err := runGradeTask(h, `{"task_id":"42"}`); err != nil {
+		t.Fatalf("读行失败降级仍应执行返 nil: %v", err)
+	}
+	if results.calls != 1 || results.enns[0] {
+		t.Fatalf("task_type 未知按 ai_mgmt 口径仅推任务行, got calls=%d enns=%v", results.calls, results.enns)
 	}
 }
 

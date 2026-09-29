@@ -39,11 +39,6 @@ const (
 const (
 	// batchNoSeqMax 批次号 3 位序号上限（04 §3.1：B+yyyyMMddHHmm+3位序号）。
 	batchNoSeqMax = 999
-	// staffPageSize 全员名单分页页大小（上游 page_size 上限 100）。
-	staffPageSize = 100
-	// staffListMaxPages 全员名单翻页页数上限（上游分页失效防无界循环，
-	// fetchAllSessions 同范式）。
-	staffListMaxPages = 100
 )
 
 // ErrStaffFetchFailed 全员名单拉取失败哨兵（service 层据此映射 1305，errors.Is 判定）。
@@ -607,39 +602,18 @@ func (o *Orchestrator) resolveNames(ctx context.Context, req CreateBatchRequest)
 	return []string{}, nil
 }
 
-// fetchAllStaffNames 全员名单全量分页拉取（RunBatch 异步展开消费）：短页/空页
-// 与收齐 total 双终止，页数上限防上游分页失效无界翻页。
+// fetchAllStaffNames 全员名单全量分页拉取（RunBatch 异步展开消费）：
+// 翻页与去重口径单点在 userapi.FetchAllStaff（service 对象校验同源）。
 func (o *Orchestrator) fetchAllStaffNames(ctx context.Context) ([]string, error) {
 	secret, err := o.secrets(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSecretResolveFailed, err)
 	}
-	names := make([]string, 0)
-	seen := make(map[string]struct{})
-	fetched := 0 // 原始行数累计（未去重），与上游 total 同基
-	for page := 1; page <= staffListMaxPages; page++ {
-		items, total, err := o.staffs.ListStaffs(ctx, secret, "", page, staffPageSize)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrStaffFetchFailed, err)
-		}
-		for _, s := range items {
-			if _, ok := seen[s.StaffName]; !ok {
-				seen[s.StaffName] = struct{}{}
-				names = append(names, s.StaffName)
-			}
-		}
-		fetched += len(items)
-		// 终止：短页/空页是唯一可信信号（FetchAllSessions 同范式）；total>0
-		// 时按原始行数收齐亦可终止——上游跨页重复行会让去重后 len(names)
-		// 永远追不上 total，误用会打到页数上限整批失败。
-		if len(items) < staffPageSize || len(items) == 0 {
-			return names, nil
-		}
-		if total > 0 && int64(fetched) >= total {
-			return names, nil
-		}
+	names, err := userapi.FetchAllStaff(ctx, o.staffs, secret)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrStaffFetchFailed, err)
 	}
-	return nil, fmt.Errorf("%w: 翻页超 %d 页上限（上游分页疑似失效）", ErrStaffFetchFailed, staffListMaxPages)
+	return names, nil
 }
 
 // DedupeNames 按值去重并保持首次出现序。staff_name 去重键与 uk_batch_person

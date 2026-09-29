@@ -344,7 +344,7 @@ func buildScoreRows(out *scoreOutput, dims []domain.Dimension, raw string) ([]do
 			rows = append(rows, insufficientRow(dim))
 			continue
 		}
-		if d.Score != nil && (d.Score.n < 0 || d.Score.n > 100) {
+		if d.Score != nil && (d.Score.N < 0 || d.Score.N > 100) {
 			return nil, schemaErrWithExcerpt(raw)
 		}
 		row := domain.DimensionScore{
@@ -359,7 +359,7 @@ func buildScoreRows(out *scoreOutput, dims []domain.Dimension, raw string) ([]do
 			row.Score = 0
 			row.Insufficient = true
 		} else {
-			row.Score = d.Score.n
+			row.Score = d.Score.N
 		}
 		rows = append(rows, row)
 	}

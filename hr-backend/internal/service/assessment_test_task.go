@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
+	"sili-smart-hr/backend/internal/integration/userapi"
 	"sili-smart-hr/backend/internal/pkg/dberr"
 	"sili-smart-hr/backend/internal/pkg/errcode"
 	"sili-smart-hr/backend/internal/questionbank/scaledata"
@@ -277,8 +278,10 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 			if byDim[id] == 0 {
 				slog.Warn("test task create dimension questions empty",
 					"dimension", sel.NameByID[id])
+				// message 为固定英文模板携维度名数据（03 B1 错误码表约定），
+				// 前端按前后缀剥离取维度名后走 i18n 模板拼接。
 				return nil, NewErrorWithMsg(errcode.TestDimensionQuestionsEmpty,
-					fmt.Sprintf("子能力 %s 无可用题目，请先在题库补充", sel.NameByID[id]))
+					fmt.Sprintf("dimension %s has no active questions", sel.NameByID[id]))
 			}
 		}
 		for i := range questions {
@@ -423,39 +426,19 @@ func (s *assessmentTestTaskService) selectAIMgmtDimensions(ctx context.Context, 
 	return sel, nil
 }
 
-// validateStaff 对象校验：经 userapi.ListStaffs（keyword=staff_name）分页拉全量比对
-// staff_id+staff_name 双匹配（同名超一页时翻页兜底，短页/收齐 total 双终止，
-// fetchAllStaffNames 同范式），页数上限防上游分页失效无界翻页；未配置密钥、
-// 上游失败、未命中统一 1805（specs §5.1.5）。
+// validateStaff 对象校验：经 userapi.FindStaff（keyword=staff_name 过滤后翻页
+// 比对 staff_id+staff_name 双匹配，翻页口径单点在 userapi.WalkStaffPages），
+// 未配置密钥、上游失败、未命中、翻页超上限统一 1805（specs §5.1.5）。
 func (s *assessmentTestTaskService) validateStaff(ctx context.Context, staffID, staffName string) error {
 	secret, err := ResolveIntegrationSecret(ctx, s.secretRepo, s.encKey)
 	if err != nil {
 		return NewError(errcode.TestStaffInvalid)
 	}
-	// 翻页拉取上限（与 pipeline.fetchAllStaffNames 同范式）：staffListMaxPages
-	// 页防无界翻页，超出按对象无效处置。
-	const staffPageSize = 100
-	const staffListMaxPages = 100
-	fetched := 0
-	for page := 1; page <= staffListMaxPages; page++ {
-		staffs, total, err := s.staffs.ListStaffs(ctx, secret, staffName, page, staffPageSize)
-		if err != nil {
-			return NewError(errcode.TestStaffInvalid)
-		}
-		for i := range staffs {
-			if staffs[i].StaffID == staffID && staffs[i].StaffName == staffName {
-				return nil
-			}
-		}
-		fetched += len(staffs)
-		if len(staffs) < staffPageSize || len(staffs) == 0 {
-			return NewError(errcode.TestStaffInvalid)
-		}
-		if total > 0 && int64(fetched) >= total {
-			return NewError(errcode.TestStaffInvalid)
-		}
+	found, err := userapi.FindStaff(ctx, s.staffs, secret, staffID, staffName)
+	if err != nil || !found {
+		return NewError(errcode.TestStaffInvalid)
 	}
-	return NewError(errcode.TestStaffInvalid)
+	return nil
 }
 
 // resolveScale 组卷量表解析（01 §4.2.4 规则2）：自最新引入批次向下迭代，取首个

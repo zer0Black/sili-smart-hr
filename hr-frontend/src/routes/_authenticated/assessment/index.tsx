@@ -86,16 +86,22 @@ export function AssessmentCenterPage() {
   // 显式拉一次统计与探针，恢复瞬间数据即时而非等下一个轮询间隔。
   useRefetchOnVisible([statsQ, testPollQ]);
 
-  // 重发作答链接（specs §4.1.3）：成功后直接以作答链接弹窗展示新链接
+  // 重发作答链接（specs §4.1.3）：成功后直接以作答链接弹窗展示新链接。
+  // 行级 loading（specs §4.1.3 加载状态）：pending 期间仅被点击行的按钮转圈，
+  // 防重复提交由行内 disable 收口，不影响其他行。
   const resendMut = useResendTestTaskLink();
+  const [resendingId, setResendingId] = useState<string | null>(null);
   function onResendLink(taskId: string) {
+    setResendingId(taskId);
     resendMut.mutate(taskId, {
       onSuccess: (data) => {
+        setResendingId(null);
         toast.success(t('testTask.linkDialog.resendSuccess'));
         setLinkData(data);
         setLinkTaskId(data.task_id);
       },
       onError: () => {
+        setResendingId(null);
         toast.error(t('testTask.linkDialog.resendFailed'));
       },
     });
@@ -156,7 +162,20 @@ export function AssessmentCenterPage() {
         ))}
       </div>
 
-      {/* 两测试任务 tab 常驻挂载，隐藏非激活 tab 保查询状态（specs §4.1.5 切 tab 不互相污染） */}
+      {/* 统计卡与跑批计划卡为 F6 既有页面骨架（specs §4.1.1），不随 tab 切换隐藏 */}
+      <StatsCards />
+
+      {/* 三 tab 常驻挂载、隐藏非激活 tab，查询与筛选状态互不清空（specs §4.1.5
+          切 tab 不互相污染，F6 批次 tab 同口径） */}
+      <div className={activeTab === 'aiUsage' ? 'contents' : 'hidden'}>
+        <BatchTable
+          onCreateOpen={() => openCreateDialog(null)}
+          onFailuresOpen={setFailureBatchId}
+          onReSubmit={(batch) => void onReSubmit(batch)}
+          resetKey={tableResetKey}
+          polling={statsQ.isLoading || hasActiveRunning}
+        />
+      </div>
       {(['ai_mgmt', 'enneagram'] as const).map((type) => (
         <div key={type} className={activeTab === type ? 'contents' : 'hidden'}>
           <TestTaskTable
@@ -168,26 +187,12 @@ export function AssessmentCenterPage() {
               setLinkTaskId(taskId);
             }}
             onResend={(taskId) => onResendLink(taskId)}
-            resendPending={resendMut.isPending}
+            resendingId={resendingId}
             resetKey={testResetKeys[type]}
             polling={testPolling[type]}
           />
         </div>
       ))}
-
-      {activeTab === 'aiUsage' && (
-        <>
-          <StatsCards />
-
-          <BatchTable
-            onCreateOpen={() => openCreateDialog(null)}
-            onFailuresOpen={setFailureBatchId}
-            onReSubmit={(batch) => void onReSubmit(batch)}
-            resetKey={tableResetKey}
-            polling={statsQ.isLoading || hasActiveRunning}
-          />
-        </>
-      )}
 
       <CreateBatchDialog
         open={createOpen}

@@ -445,9 +445,11 @@ describe('CreateBatchDialog 三态激活（P2_TST_001 specs §4.2.2/§4.2.5）',
     fireEvent.click(await screen.findByRole('button', { name: /张三/ }));
 
     const { ApiError } = await import('@/lib/http-client');
-    // 1804/1805/1305 为固定原文，前端 i18n 分桶。
+    // 1804/1805/1305 为固定原文，前端 i18n 分桶；1803 走英文模板剥离 + i18n
+    // 插值（维度名取自 message，03 B1 错误码表契约）。
     const cases: Array<{ err: Error; message: string }> = [
-      { err: new ApiError(1803, '子能力 AI 战略规划 无可用题目，请先在题库补充'), message: '子能力 AI 战略规划 无可用题目，请先在题库补充' },
+      { err: new ApiError(1803, 'dimension AI 战略规划 has no active questions'), message: '子能力 AI 战略规划 无可用题目，请先在题库补充' },
+      { err: new ApiError(1803, 'unrecognized message shape'), message: '子能力无可用题目，请先在题库补充' },
       { err: new ApiError(1804, 'backend'), message: '九型量表未就绪，请先在题库引入量表' },
       { err: new ApiError(1805, 'backend'), message: '人员信息获取失败，请稍后重试' },
       { err: new ApiError(1305, 'backend'), message: '人员或会话上游暂不可用，请稍后重试' },

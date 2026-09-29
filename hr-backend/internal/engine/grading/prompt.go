@@ -47,26 +47,21 @@ const aiMgmtInstructionTail = `【输出要求】
 // buildAIMgmtPrompt 组装 ai_mgmt 阅卷 prompt：系统段 + 维度段 + 题目段 +
 // 作答对话段（当前无来源空段占位）+ 输出要求段。
 func buildAIMgmtPrompt(dims []domain.Dimension, questions []domain.Question) string {
-	var b strings.Builder
-	b.Grow(4096)
-	b.WriteString(aiMgmtSystemTemplate)
-
-	b.WriteString("\n\n【维度段】（评分口径，逐维度评分）\n")
-	for _, d := range dims {
-		fmt.Fprintf(&b, aiMgmtDimensionTemplate+"\n\n", d.Code, d.Name, d.Anchor)
-	}
-
-	b.WriteString("\n【题目段】（任务题目快照全文）\n")
-	for _, q := range questions {
-		fmt.Fprintf(&b, aiMgmtQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
-	}
-
-	b.WriteString("\n【作答对话段】（员工作答对话全过程）\n")
-	b.WriteString(emptyAnswerSectionPlaceholder)
-
-	b.WriteString("\n\n")
-	b.WriteString(aiMgmtInstructionTail)
-	return b.String()
+	return buildGradingPrompt(
+		aiMgmtSystemTemplate,
+		"【维度段】（评分口径，逐维度评分）\n",
+		func(b *strings.Builder) {
+			for _, d := range dims {
+				fmt.Fprintf(b, aiMgmtDimensionTemplate+"\n\n", d.Code, d.Name, d.Anchor)
+			}
+		},
+		"【题目段】（任务题目快照全文）\n",
+		questions,
+		func(b *strings.Builder, q domain.Question) {
+			fmt.Fprintf(b, aiMgmtQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
+		},
+		aiMgmtInstructionTail,
+	)
 }
 
 // enneagramSystemTemplate enneagram 系统段：判型师角色 + 判型输出 schema 约束
@@ -96,19 +91,48 @@ const enneagramInstructionTail = `【输出要求】
 // buildEnneagramPrompt 组装 enneagram 阅卷 prompt：判型师角色 + 量表题全文 +
 // 作答对话段（空段占位）+ 输出要求段。
 func buildEnneagramPrompt(questions []domain.Question) string {
+	return buildGradingPrompt(
+		enneagramSystemTemplate,
+		"", // 无维度段：量表题自含计分键，型别维度口径不进 prompt（03 §4.4 2c）
+		nil,
+		"【量表题目段】（任务题目快照全文）\n",
+		questions,
+		func(b *strings.Builder, q domain.Question) {
+			fmt.Fprintf(b, enneagramQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
+		},
+		enneagramInstructionTail,
+	)
+}
+
+// buildGradingPrompt 两类型 prompt 共享组装骨架：系统段 +（可选口径段）+ 题目段 +
+// 作答对话段占位 + 输出要求段。段文案差异由调用方模板承载，骨架单点防两处漂移。
+func buildGradingPrompt(
+	system string,
+	sectionHeader string,
+	section func(*strings.Builder),
+	questionHeader string,
+	questions []domain.Question,
+	questionItem func(*strings.Builder, domain.Question),
+	tail string,
+) string {
 	var b strings.Builder
 	b.Grow(4096)
-	b.WriteString(enneagramSystemTemplate)
-
-	b.WriteString("\n\n【量表题目段】（任务题目快照全文）\n")
-	for _, q := range questions {
-		fmt.Fprintf(&b, enneagramQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
+	b.WriteString(system)
+	if section != nil {
+		b.WriteString("\n\n")
+		b.WriteString(sectionHeader)
+		section(&b)
+		b.WriteString("\n")
+	} else {
+		b.WriteString("\n\n")
 	}
-
+	b.WriteString(questionHeader)
+	for _, q := range questions {
+		questionItem(&b, q)
+	}
 	b.WriteString("\n【作答对话段】（员工作答对话全过程）\n")
 	b.WriteString(emptyAnswerSectionPlaceholder)
-
 	b.WriteString("\n\n")
-	b.WriteString(enneagramInstructionTail)
+	b.WriteString(tail)
 	return b.String()
 }

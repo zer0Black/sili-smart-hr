@@ -713,7 +713,8 @@
       "toastGeneric": "Launch failed, please retry later",
       "toastPeriodInvalid": "Invalid period: the end date must be before today",
       "toastStaffUnavailable": "Staff or conversation upstream is unavailable, please retry later",
-      "toastDimEmpty": "No available questions for the sub-capability; add questions in the bank first",
+      "toastDimEmpty": "No available questions for sub-capability {{dim}}; add questions in the bank first",
+      "toastDimEmptyNoName": "No available questions for the sub-capability; add questions in the bank first",
       "toastScaleNotReady": "Enneagram scale is not ready; import a scale in the bank first",
       "toastStaffInvalid": "Failed to fetch person info, please retry later"
     },
@@ -773,6 +774,7 @@
         "colActions": "Actions",
         "actionLink": "Answer Link",
         "actionResend": "Resend",
+        "resendLoading": "Resending…",
         "actionCancel": "Cancel",
         "actionResult": "Result",
         "resultDisabled": "Profile feature is under construction",

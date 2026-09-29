@@ -246,11 +246,19 @@ export function CreateBatchDialog({
   }
 
   /** 主动测试提交错误码分桶（P2_TST_001 specs §4.2.4/§5.1.5 原文）：
-   * 1803 文案含动态维度名透出后端 message；1804/1805/1305 为固定 i18n 文案。 */
+   * 1803 走 i18n 模板插值（维度名从后端固定英文模板 message 剥离，前后缀契约
+   * 见 03 B1 错误码表）；1804/1805/1305 为固定 i18n 文案。 */
   function toastTestError(err: unknown) {
     if (err instanceof ApiError) {
       if (err.code === ErrCode.TestDimensionQuestionsEmpty) {
-        toast.error(err.message || t('create.toastDimEmpty'));
+        const dim = err.message
+          .replace('dimension ', '')
+          .replace(' has no active questions', '');
+        toast.error(
+          dim && dim !== err.message
+            ? t('create.toastDimEmpty', { dim })
+            : t('create.toastDimEmptyNoName'),
+        );
       } else if (err.code === ErrCode.TestScaleNotReady) {
         toast.error(t('create.toastScaleNotReady'));
       } else if (err.code === ErrCode.TestStaffInvalid) {

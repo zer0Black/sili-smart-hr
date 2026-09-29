@@ -78,10 +78,13 @@ func NewTestGradeHandler(grader TestGrader, degrader TerminalDegrader, results T
 
 		if err := grader.Run(ctx, taskID); err != nil {
 			// ERROR 记任务号与错误摘要（specs §5.2.5 异常表）；任务行读取失败
-			// 时退记 task_id，不因日志增强反向阻断重试。
+			// 时退记 task_id，不因日志增强反向阻断重试。读到的任务行透传 degrade
+			// 复用（testType 判定 enneagram 需），失败路径不二次读行。
 			taskNo := ""
+			taskType := ""
 			if t2, gerr := degrader.GetByID(ctx, taskID); gerr == nil && t2 != nil {
 				taskNo = t2.TaskNo
+				taskType = t2.TestType
 			}
 			slog.Error("test grade run failed, will retry",
 				"task_id", taskID, "task_no", taskNo, "err", err)
@@ -89,7 +92,7 @@ func NewTestGradeHandler(grader TestGrader, degrader TerminalDegrader, results T
 			if retried < maxRetry {
 				return err
 			}
-			return degrade(ctx, taskID, degrader, results)
+			return degrade(ctx, taskID, taskNo, taskType, results)
 		}
 		return nil
 	}
@@ -97,16 +100,13 @@ func NewTestGradeHandler(grader TestGrader, degrader TerminalDegrader, results T
 
 // degrade 重试耗尽降级（specs §5.2.5：WARN 记任务号，不产出告警信号）：
 // DegradeTask 单事务承载「enneagram 落降级行 + 任务行推 degraded」两步，
-// 防半降级中间态；失败上抛保留下次执行/补偿再投递收敛。
-func degrade(ctx context.Context, taskID int64, degrader TerminalDegrader, results TestGradeResultRepo) error {
-	task, err := degrader.GetByID(ctx, taskID)
-	if err != nil {
-		return fmt.Errorf("test grade degrade: load task %d: %w", taskID, err)
-	}
+// 防半降级中间态；失败上抛保留下次执行/补偿再投递收敛。taskType 来自错误
+// 路径已读的任务行，读取失败时降级按 ai_mgmt 口径仅推任务行（不落降级行）。
+func degrade(ctx context.Context, taskID int64, taskNo, taskType string, results TestGradeResultRepo) error {
 	slog.Warn("test grade retries exhausted, degrade to terminal",
-		"task_id", taskID, "task_no", task.TaskNo)
+		"task_id", taskID, "task_no", taskNo)
 
-	if err := results.DegradeTask(ctx, taskID, task.TestType == domain.TestTypeEnneagram); err != nil {
+	if err := results.DegradeTask(ctx, taskID, taskType == domain.TestTypeEnneagram); err != nil {
 		return fmt.Errorf("test grade degrade: degrade task %d: %w", taskID, err)
 	}
 	return nil

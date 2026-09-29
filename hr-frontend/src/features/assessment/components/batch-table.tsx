@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
 
@@ -24,6 +24,7 @@ import { useBatches, useRefetchOnVisible } from '@/features/assessment/hooks';
 import { targetSummaryText } from '@/features/assessment/target-summary';
 import type { BatchFilter } from '@/features/assessment/types';
 import type { BatchListItem } from '@/lib/contracts';
+import { usePageClamp, useResetSignal } from '@/lib/use-table-state';
 import { cn } from '@/lib/utils';
 
 export interface BatchTableProps {
@@ -62,29 +63,18 @@ export function BatchTable({ onCreateOpen, onFailuresOpen, onReSubmit, resetKey,
   useRefetchOnVisible([query]);
 
   // 外部 resetKey 变化（跳过首挂载）时把筛选与页码重置为默认，由 filter 变化触发 refetch
-  const resetKeyRef = useRef<number | undefined>(resetKey);
-  useEffect(() => {
-    if (resetKey === undefined) {
-      resetKeyRef.current = resetKey;
-      return;
-    }
-    if (resetKeyRef.current === resetKey) return;
-    resetKeyRef.current = resetKey;
+  useResetSignal(resetKey, () => {
     setDraftTrigger(ALL);
     setDraftStatus(ALL);
     setFilter({ page: 1, page_size: DEFAULT_PAGE_SIZE });
-  }, [resetKey]);
+  });
   const list = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / filter.page_size));
 
   // 页码钳位：total 收缩（删除/筛选）让当前页落空时回落到末页，防轮询刷新后
   // 渲染「暂无数据」空态误导用户以为记录丢失。
-  useEffect(() => {
-    if (filter.page > totalPages) {
-      setFilter((f) => ({ ...f, page: totalPages }));
-    }
-  }, [totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePageClamp(filter.page, totalPages, (page) => setFilter((f) => ({ ...f, page })));
 
   function onQuery() {
     setFilter({

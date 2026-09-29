@@ -1,7 +1,6 @@
 package extractor
 
 import (
-	"encoding/json"
 	"errors"
 	"slices"
 	"strings"
@@ -42,20 +41,11 @@ type llmProfileJSON struct {
 // （UserMsgCount==0）Instruction 非空判失败防编造；零叙述形态靠 LLM 遵守
 // prompt 指示 + narrative_absent 字段透传，校验放行。
 func parseProfile(raw string, stats ProfileStats) (string, []InstructionSeg, ProfileBehavior, error) {
-	body := StripFences(strings.TrimSpace(raw))
+	// 宽容解析走 FirstJSONObject 共享骨架：候选须含 summary 键，防前导说明文字中
+	// 的示例对象（{"ok":true} 形态）劫持；兜底无围栏 JSON 后跟解释文字的形态。
 	var p llmProfileJSON
-	if err := json.Unmarshal([]byte(body), &p); err != nil {
-		// 无围栏输出 JSON 后跟解释文字的形态（stripFences 只覆盖围栏包裹）：
-		// 截取首个含 summary 键的顶层平衡 JSON 对象重试一次，防白白消耗 schema
-		// 重试并误落 failed。候选须含 summary 键：前导说明文字中的示例对象
-		//（{"ok":true} 形态）自身平衡合法，无键约束会被劫持为截取结果。
-		if trimmed := firstProfileObject(body); trimmed != "" {
-			body = trimmed
-			err = json.Unmarshal([]byte(body), &p)
-		}
-		if err != nil {
-			return "", nil, ProfileBehavior{}, ErrSchemaInvalid
-		}
+	if !FirstJSONObject(raw, &p, func() bool { return p.Summary != "" }) {
+		return "", nil, ProfileBehavior{}, ErrSchemaInvalid
 	}
 	summary := strings.TrimSpace(p.Summary)
 	if summary == "" || utf8.RuneCountInString(summary) > lengthLimit*2 {
@@ -87,27 +77,6 @@ func validBehavior(b ProfileBehavior) bool {
 		slices.Contains([]string{"frequent", "occasional", "rare", "no_evidence"}, b.InterruptStyle) &&
 		slices.Contains([]string{"high", "medium", "low", "no_evidence"}, b.ReviewRatio) &&
 		slices.Contains([]string{"heavy", "moderate", "light", "none"}, b.PasteScale)
-}
-
-// firstProfileObject 截取首个含 summary 键的顶层平衡 JSON 对象：按括号深度配对
-// （字符串字面量内的括号不计数，含转义）逐候选扫描，候选反序列化后含 summary 键
-// 才采纳。兜底 LLM 在 JSON 后跟解释文字的形态（json.Unmarshal 拒绝尾随文本）；
-// 无键约束的首个平衡对象会被前导说明文字里的示例对象（{"ok":true} 形态）劫持。
-func firstProfileObject(s string) string {
-	from := 0
-	for from < len(s) {
-		cand := FirstBalancedJSONObject(s[from:])
-		if cand == "" {
-			return ""
-		}
-		var probe llmProfileJSON
-		if json.Unmarshal([]byte(cand), &probe) == nil && probe.Summary != "" {
-			return cand
-		}
-		// 候选不含 summary 键（示例对象或不完整候选），跳过其后继续扫。
-		from += strings.Index(s[from:], cand) + len(cand)
-	}
-	return ""
 }
 
 // FirstBalancedJSONObject 截取首个顶层平衡 JSON 对象：从首个 { 起按括号深度配对

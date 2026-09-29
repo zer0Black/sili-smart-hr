@@ -230,19 +230,19 @@ func TestListBindsQuery(t *testing.T) {
 		t.Fatalf("page = (%d,%d), want (2,50)", svc.listFilter.Page, svc.listFilter.PageSize)
 	}
 
-	// 兜底：handler 只做解析透传（page=abc→0、page_size=-1 原样透传），
-	// 缺省与钳制由 repository.ClampPageSize 收口（question 域同范式）。
+	// 兜底：page=abc→0、page_size=-1 在 handler 层钳制为 1/10 后透传（回显同口径，
+	// 与仓储取行钳制共用 ClampPageSize）；超上限 page_size 钳 100。
 	svc2 := &fakeAssessmentTestTaskService{listRes: []service.TestTaskListDTO{}}
 	r2 := newTestTaskRouter(svc2)
 	doReq(t, r2, http.MethodGet, "/api/assessment/test-tasks?test_type=enneagram&page=abc&page_size=-1", "")
-	if svc2.listFilter.Page != 0 || svc2.listFilter.PageSize != -1 {
-		t.Fatalf("fallback page = (%d,%d), want (0,-1) 透传", svc2.listFilter.Page, svc2.listFilter.PageSize)
+	if svc2.listFilter.Page != 1 || svc2.listFilter.PageSize != 10 {
+		t.Fatalf("fallback page = (%d,%d), want (1,10)", svc2.listFilter.Page, svc2.listFilter.PageSize)
 	}
 	svc3 := &fakeAssessmentTestTaskService{listRes: []service.TestTaskListDTO{}}
 	r3 := newTestTaskRouter(svc3)
 	doReq(t, r3, http.MethodGet, "/api/assessment/test-tasks?test_type=enneagram&page_size=200", "")
-	if svc3.listFilter.PageSize != 200 {
-		t.Fatalf("clamped page_size = %d, want 200 透传（钳制在仓储层）", svc3.listFilter.PageSize)
+	if svc3.listFilter.PageSize != 100 {
+		t.Fatalf("clamped page_size = %d, want 100", svc3.listFilter.PageSize)
 	}
 }
 

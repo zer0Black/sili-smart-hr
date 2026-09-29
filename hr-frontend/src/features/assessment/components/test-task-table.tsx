@@ -1,9 +1,10 @@
 // 单 tab 测试任务列表（specs P2_TST_001 §4.1.2 A/B / §4.1.3 / §4.1.4 / §4.1.5）。
 // 两 tab 各持一份实例常驻挂载，查询条件（draft→filter 两段式）与分页内部自治，
 // 切 tab 不互相污染（§4.1.5）。
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
+import { Loader2 } from 'lucide-react';
 
 import {
   AlertDialog,
@@ -42,6 +43,7 @@ import {
   type TestTaskStatus,
   type TestType,
 } from '@/features/assessment/test-task-types';
+import { usePageClamp, useResetSignal } from '@/lib/use-table-state';
 import { cn } from '@/lib/utils';
 
 export interface TestTaskTableProps {
@@ -53,8 +55,8 @@ export interface TestTaskTableProps {
   onLinkOpen: (taskId: string) => void;
   /** 重发作答链接（specs §4.1.3：仅已逾期可见）。 */
   onResend: (taskId: string) => void;
-  /** 重发请求进行中：行内按钮 loading 至接口响应（specs §4.1.3）。 */
-  resendPending?: boolean;
+  /** 行级重发中任务：该行重发按钮 loading 至接口响应（specs §4.1.3 加载状态），其余行可点。 */
+  resendingId?: string | null;
   /** 外部重置信号：值变化时清空筛选并回第一页（发起成功重置入口，specs §4.2.3）。 */
   resetKey?: number;
   /** 轮询开关：当前类型存在未终态任务时由父级 poll-counts 探针驱动（specs §4.1.3）。 */
@@ -89,7 +91,7 @@ export function TestTaskTable({
   onCreateOpen,
   onLinkOpen,
   onResend,
-  resendPending,
+  resendingId,
   resetKey,
   polling,
 }: TestTaskTableProps): JSX.Element {
@@ -118,29 +120,18 @@ export function TestTaskTable({
   useRefetchOnVisible([query]);
 
   // 外部 resetKey 变化（跳过首挂载）时把筛选与页码重置为默认（batch-table 先例）
-  const resetKeyRef = useRef<number | undefined>(resetKey);
-  useEffect(() => {
-    if (resetKey === undefined) {
-      resetKeyRef.current = resetKey;
-      return;
-    }
-    if (resetKeyRef.current === resetKey) return;
-    resetKeyRef.current = resetKey;
+  useResetSignal(resetKey, () => {
     setDraftStatus(ALL);
     setDraftKeyword('');
     setFilter({ page: 1, page_size: DEFAULT_PAGE_SIZE });
-  }, [resetKey]);
+  });
 
   const list = query.data?.list ?? [];
   const total = query.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / filter.page_size));
 
   // 页码钳位：total 收缩让当前页落空时回落末页（batch-table 先例）
-  useEffect(() => {
-    if (filter.page > totalPages) {
-      setFilter((f) => ({ ...f, page: totalPages }));
-    }
-  }, [totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePageClamp(filter.page, totalPages, (page) => setFilter((f) => ({ ...f, page })));
 
   function applyDraft() {
     setFilter({
@@ -256,9 +247,15 @@ export function TestTaskTable({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={linkStatusVariant(item.link_status)}>
-                        {t(`testTask.table.linkStatus.${item.link_status}`)}
-                      </Badge>
+                      {/* link_status 空串兜底：任务创建必落链接行，空串仅在异常数据
+                          出现，渲染无链接占位防 i18n 键名直出 */}
+                      {item.link_status ? (
+                        <Badge variant={linkStatusVariant(item.link_status)}>
+                          {t(`testTask.table.linkStatus.${item.link_status}`)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-sm">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant={gradingVariant(item.grading_status)}>
@@ -278,10 +275,15 @@ export function TestTaskTable({
                         <Button
                           variant="link"
                           size="sm"
-                          disabled={resendPending}
+                          disabled={resendingId === item.id}
                           onClick={() => onResend(item.id)}
                         >
-                          {t('testTask.table.actionResend')}
+                          {resendingId === item.id && (
+                            <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                          )}
+                          {resendingId === item.id
+                            ? t('testTask.table.resendLoading')
+                            : t('testTask.table.actionResend')}
                         </Button>
                       )}
                       {CANCELABLE_STATUSES.includes(item.status) && (

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -51,39 +50,10 @@ type scoreOutput struct {
 
 // scoreDimension 单维度输出：score null 表示 insufficient。
 type scoreDimension struct {
-	Code         string       `json:"code"`
-	Score        *scoreNumber `json:"score"`
-	Insufficient bool         `json:"insufficient"`
-	Rationale    string       `json:"rationale"`
-}
-
-// scoreNumber 容忍整数与浮点整型两种数值形态（78 与 78.0），字符串形态显式拒绝
-// （evaluator schema.go scoreNumber 同口径）。
-type scoreNumber struct {
-	n int
-}
-
-// UnmarshalJSON 按 json.Number 解码：整数值原样承载，浮点形态仅容忍无小数部分，
-// 非 int64 范围值判失败（0-100 校验由上层兜底拒绝）。
-func (s *scoreNumber) UnmarshalJSON(b []byte) error {
-	if len(b) > 0 && b[0] == '"' {
-		return fmt.Errorf("score 非数值形态: %s", b)
-	}
-	var num json.Number
-	if err := json.Unmarshal(b, &num); err != nil {
-		return err
-	}
-	i, err := strconv.ParseInt(num.String(), 10, 64)
-	if err == nil {
-		s.n = int(i)
-		return nil
-	}
-	f, ferr := strconv.ParseFloat(num.String(), 64)
-	if ferr != nil || f != math.Trunc(f) || f < math.MinInt64 || f > math.MaxInt64 {
-		return fmt.Errorf("score 非整数形态: %s", num.String())
-	}
-	s.n = int(f)
-	return nil
+	Code         string              `json:"code"`
+	Score        *extractor.ScoreNumber `json:"score"`
+	Insufficient bool                `json:"insufficient"`
+	Rationale    string              `json:"rationale"`
 }
 
 // enneagramOutput 判型输出 schema（03 §4.4 步骤3b）。
@@ -120,12 +90,12 @@ func (t *typeNumber) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// parseScoreOutput 宽容解析 ai_mgmt 输出：剥围栏后 Unmarshal，失败截取首个含
-// dimensions 键的顶层平衡 JSON 对象重试，仍失败或无 dimensions 键判 ErrSchemaInvalid
-//（wrap 原始输出摘要）。
+// parseScoreOutput 宽容解析 ai_mgmt 输出：首个含 dimensions 键的顶层平衡 JSON
+// 对象重试（extractor.FirstJSONObject 共享骨架），失败或无 dimensions 键判
+// ErrSchemaInvalid（wrap 原始输出摘要）。
 func parseScoreOutput(raw string) (*scoreOutput, error) {
 	var out scoreOutput
-	if err := firstJSONObject(raw, &out, func() bool { return out.Dimensions != nil }); err != nil {
+	if !extractor.FirstJSONObject(raw, &out, func() bool { return out.Dimensions != nil }) {
 		return nil, schemaErrWithExcerpt(raw)
 	}
 	return &out, nil
@@ -136,7 +106,7 @@ func parseScoreOutput(raw string) (*scoreOutput, error) {
 // main_type/wing_type 收敛为数字串（0 形态的翼型转空串），rationale 不可缺失。
 func parseEnneagramOutput(raw string) (*enneagramOutput, error) {
 	var doc enneagramDoc
-	if err := firstJSONObject(raw, &doc, func() bool { return doc.MainType.s != "" }); err != nil {
+	if !extractor.FirstJSONObject(raw, &doc, func() bool { return doc.MainType.s != "" }) {
 		return nil, schemaErrWithExcerpt(raw)
 	}
 
@@ -171,28 +141,6 @@ type enneagramDoc struct {
 	WingType     typeNumber         `json:"wing_type"`
 	Distribution map[string]float64 `json:"distribution"`
 	Rationale    string             `json:"rationale"`
-}
-
-// firstJSONObject 宽容解析骨架（evaluator 范式收敛）：剥围栏后 Unmarshal，
-// 失败逐个截取顶层平衡 JSON 对象重试（防前导示例劫持）。probe 在候选解码成功
-// 且判键命中时放行（判键随解码结果写入 out，闭包读取）。
-func firstJSONObject[T any](raw string, out *T, probe func() bool) error {
-	body := extractor.StripFences(strings.TrimSpace(raw))
-	if err := json.Unmarshal([]byte(body), out); err == nil && probe() {
-		return nil
-	}
-	from := 0
-	for from < len(body) {
-		cand := extractor.FirstBalancedJSONObject(body[from:])
-		if cand == "" {
-			break
-		}
-		if json.Unmarshal([]byte(cand), out) == nil && probe() {
-			return nil
-		}
-		from += strings.Index(body[from:], cand) + len(cand)
-	}
-	return ErrSchemaInvalid
 }
 
 // validTypeCode 1-9 数字串判定。

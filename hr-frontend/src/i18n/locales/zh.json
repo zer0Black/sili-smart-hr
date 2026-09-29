@@ -713,7 +713,8 @@
       "toastGeneric": "发起失败，请稍后重试",
       "toastPeriodInvalid": "评估时段无效：结束日期须早于今天",
       "toastStaffUnavailable": "人员或会话上游暂不可用，请稍后重试",
-      "toastDimEmpty": "子能力无可用题目，请先在题库补充",
+      "toastDimEmpty": "子能力 {{dim}} 无可用题目，请先在题库补充",
+      "toastDimEmptyNoName": "子能力无可用题目，请先在题库补充",
       "toastScaleNotReady": "九型量表未就绪，请先在题库引入量表",
       "toastStaffInvalid": "人员信息获取失败，请稍后重试"
     },
@@ -773,6 +774,7 @@
         "colActions": "操作",
         "actionLink": "作答链接",
         "actionResend": "重发",
+        "resendLoading": "重发中…",
         "actionCancel": "取消",
         "actionResult": "结果",
         "resultDisabled": "个人画像功能建设中",

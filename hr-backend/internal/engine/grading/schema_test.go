@@ -24,7 +24,7 @@ func TestParseScoreOutputValid(t *testing.T) {
 		if len(out.Dimensions) != 2 {
 			t.Fatalf("%s 维度数 %d, want 2", name, len(out.Dimensions))
 		}
-		if out.Dimensions[0].Score == nil || out.Dimensions[0].Score.n != 82 {
+		if out.Dimensions[0].Score == nil || out.Dimensions[0].Score.N != 82 {
 			t.Errorf("%s score = %v, want 82", name, out.Dimensions[0].Score)
 		}
 		if out.Dimensions[1].Score != nil {
@@ -73,8 +73,8 @@ func TestParseScoreOutputFloatIntegralForm(t *testing.T) {
 	if err != nil {
 		t.Fatalf("78.0 应解析成功: %v", err)
 	}
-	if out.Dimensions[0].Score.n != 78 {
-		t.Errorf("78.0 应收敛 78, got %d", out.Dimensions[0].Score.n)
+	if out.Dimensions[0].Score.N != 78 {
+		t.Errorf("78.0 应收敛 78, got %d", out.Dimensions[0].Score.N)
 	}
 }
 

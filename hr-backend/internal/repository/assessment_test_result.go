@@ -19,9 +19,6 @@ type AssessmentTestResultRepository interface {
 	// DegradeTask 降级终态单事务：enneagram 先落降级行再推任务行 grading_status
 	// degraded（ai_mgmt 无判型行仅推任务行），两步原子防半降级（specs §5.2.5）。
 	DegradeTask(ctx context.Context, taskID int64, enneagram bool) error
-	// FindBatchByTaskIDs 按任务 ID 集批量读，返回 task_id → 结果行映射；
-	// 无结果的任务不出现在 map，空集返回空 map。
-	FindBatchByTaskIDs(ctx context.Context, taskIDs []int64) (map[int64]domain.AssessmentTestResult, error)
 }
 
 type assessmentTestResultRepository struct {
@@ -44,13 +41,7 @@ var resultUpsertColumns = []string{
 // DoUpdates 显式列清单不被零值跳过，degraded 占位空串照写覆盖。
 // 首写时间显式 UTC（session_feature 范式），防同列混存偏移串。
 func (r *assessmentTestResultRepository) UpsertByTaskID(ctx context.Context, res *domain.AssessmentTestResult) error {
-	res.CreatedAt, res.UpdatedAt = utcNow(), utcNow()
-	return r.db.WithContext(ctx).
-		Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "task_id"}},
-			DoUpdates: clause.AssignmentColumns(resultUpsertColumns),
-		}).
-		Create(res).Error
+	return upsertResult(r.db.WithContext(ctx), res)
 }
 
 // resultDegradeRationale 降级行判定依据（04 §3.3：rationale 记降级说明）。
@@ -80,30 +71,12 @@ func (r *assessmentTestResultRepository) DegradeTask(ctx context.Context, taskID
 	})
 }
 
-// upsertResult 事务通道内的结果行 upsert（DegradeTask 复用 UpsertByTaskID 形态）。
-func upsertResult(tx *gorm.DB, row *domain.AssessmentTestResult) error {
+// upsertResult 结果行 upsert 单点实现：首写时间显式 UTC（session_feature 范式），
+// UpsertByTaskID 与 DegradeTask 事务通道共用，防两处 OnConflict 列清单漂移。
+func upsertResult(db *gorm.DB, row *domain.AssessmentTestResult) error {
 	row.CreatedAt, row.UpdatedAt = utcNow(), utcNow()
-	return tx.Clauses(clause.OnConflict{
+	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "task_id"}},
 		DoUpdates: clause.AssignmentColumns(resultUpsertColumns),
 	}).Create(row).Error
-}
-
-// FindBatchByTaskIDs task_id IN (?) 一次取回，Go 侧组装 map（uk_result_task
-// 保证至多一行，无归组歧义）。
-func (r *assessmentTestResultRepository) FindBatchByTaskIDs(ctx context.Context, taskIDs []int64) (map[int64]domain.AssessmentTestResult, error) {
-	out := make(map[int64]domain.AssessmentTestResult, len(taskIDs))
-	if len(taskIDs) == 0 {
-		return out, nil
-	}
-	var list []domain.AssessmentTestResult
-	if err := r.db.WithContext(ctx).
-		Where("task_id IN ?", taskIDs).
-		Find(&list).Error; err != nil {
-		return nil, err
-	}
-	for _, row := range list {
-		out[row.TaskID] = row
-	}
-	return out, nil
 }

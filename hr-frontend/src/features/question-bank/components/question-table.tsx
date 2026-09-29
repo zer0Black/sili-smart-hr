@@ -40,6 +40,7 @@ import { handleWriteError } from '@/features/question-bank/write-error';
 import { ErrCode } from '@/lib/contracts';
 import type { QuestionListItem } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
+import { usePageClamp } from '@/lib/use-table-state';
 
 export interface QuestionTableProps {
   tab: QuestionTab;
@@ -126,11 +127,7 @@ export function QuestionTable({ tab, onEdit, onView, onResubmit, onTotalChange, 
   }, [tab, query.data]);
 
   // 页码钳位：total 收缩让当前页落空时回落末页（batch-table 先例）
-  useEffect(() => {
-    if (filter.page > totalPages) {
-      setFilter((f) => ({ ...f, page: totalPages }));
-    }
-  }, [totalPages]); // eslint-disable-line react-hooks/exhaustive-deps
+  usePageClamp(filter.page, totalPages, (page) => setFilter((f) => ({ ...f, page })));
 
   function onQuery() {
     setFilter({

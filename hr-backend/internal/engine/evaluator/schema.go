@@ -1,12 +1,7 @@
 package evaluator
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
-	"math"
-	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -28,84 +23,21 @@ type scoreOutput struct {
 
 // scoreDimension 单维度输出：score null 表示 insufficient。
 type scoreDimension struct {
-	Code         string `json:"code"`
-	Score        *scoreNumber `json:"score"`
-	Insufficient bool   `json:"insufficient"`
-	Rationale    string `json:"rationale"`
+	Code         string                  `json:"code"`
+	Score        *extractor.ScoreNumber `json:"score"`
+	Insufficient bool                    `json:"insufficient"`
+	Rationale    string                  `json:"rationale"`
 }
 
-// scoreNumber 容忍模型输出的整数与浮点两种数值形态（78 与 78.0）：OpenAI 兼容
-// 通道在无严格 integer schema 约束时部分模型习惯性输出 .0 形态，*int 会直接
-// 解码失败。非整数值由 validateAndConverge 的 0-100 整数校验兜底拒绝。
-type scoreNumber struct {
-	n int
-}
-
-// UnmarshalJSON 按 json.Number 解码：整数值原样承载，浮点形态仅容忍无小数部分
-//（78.0 收敛 78，78.5 判解码失败）。字符串形态（"72"）显式拒绝——json.Number
-// 本质 string，Unmarshal 会剥引号静默接受，须按 JSON 首字节排除（specs 评分输出
-// schema：score 是 0-100 整数或 null，字符串形态属校验失败走重试通道）。
-// ParseFloat 回退同时覆盖科学计数法整型浮点（7e1 收敛 70）；超 int64 范围值判
-// 失败（int(f) 超范围转换是未定义行为），越界分数由 validateAndConverge 的
-// 0-100 校验兜底拒绝。
-func (s *scoreNumber) UnmarshalJSON(b []byte) error {
-	if len(b) > 0 && b[0] == '"' {
-		return fmt.Errorf("score 非数值形态: %s", b)
-	}
-	var num json.Number
-	if err := json.Unmarshal(b, &num); err != nil {
-		return err
-	}
-	i, err := strconv.ParseInt(num.String(), 10, 64)
-	if err == nil {
-		s.n = int(i)
-		return nil
-	}
-	f, ferr := strconv.ParseFloat(num.String(), 64)
-	if ferr != nil || f != math.Trunc(f) || f < math.MinInt64 || f > math.MaxInt64 {
-		return fmt.Errorf("score 非整数形态: %s", num.String())
-	}
-	s.n = int(f)
-	return nil
-}
-
-// parseScoreOutput 宽容解析（specs §2.4 能力1，同 extractor schema.go 范式）：
-// 剥 markdown 围栏（extractor.StripFences），Unmarshal 失败时截取首个含 dimensions
-// 键的顶层平衡 JSON 对象重试（防前导示例对象劫持），仍失败返回 ErrSchemaInvalid。
+// parseScoreOutput 宽容解析（specs §2.4 能力1，extractor.FirstJSONObject 共享骨架）：
+// 剥围栏后 Unmarshal，失败截取首个含 dimensions 键的顶层平衡 JSON 对象重试
+//（防前导示例对象劫持），仍失败或无 dimensions 键返回 ErrSchemaInvalid。
 func parseScoreOutput(raw string) (*scoreOutput, error) {
-	body := extractor.StripFences(strings.TrimSpace(raw))
 	var out scoreOutput
-	if err := json.Unmarshal([]byte(body), &out); err != nil {
-		if trimmed := firstScoreObject(body); trimmed != "" {
-			body = trimmed
-			err = json.Unmarshal([]byte(body), &out)
-		}
-		if err != nil {
-			return nil, ErrSchemaInvalid
-		}
-	}
-	if out.Dimensions == nil {
-		return nil, ErrSchemaInvalid // 无 dimensions 键（{} 或 null）
+	if !extractor.FirstJSONObject(raw, &out, func() bool { return out.Dimensions != nil }) {
+		return nil, ErrSchemaInvalid
 	}
 	return &out, nil
-}
-
-// firstScoreObject 截取首个含 dimensions 键的顶层平衡 JSON 对象：候选须含
-// dimensions 键才采纳，防前导说明文字中的示例对象（{"ok":true}）劫持。
-func firstScoreObject(s string) string {
-	from := 0
-	for from < len(s) {
-		cand := extractor.FirstBalancedJSONObject(s[from:])
-		if cand == "" {
-			return ""
-		}
-		var probe scoreOutput
-		if json.Unmarshal([]byte(cand), &probe) == nil && probe.Dimensions != nil {
-			return cand
-		}
-		from += strings.Index(s[from:], cand) + len(cand)
-	}
-	return ""
 }
 
 // validateAndConverge schema 校验与白名单收敛（specs §2.4 能力1 校验规则）：
@@ -128,10 +60,10 @@ func validateAndConverge(out *scoreOutput, specs []DimensionSpec) ([]domain.Dime
 		}
 		score := 0
 		if d.Score != nil {
-			if d.Score.n < ScoreMin || d.Score.n > ScoreMax {
+			if d.Score.N < ScoreMin || d.Score.N > ScoreMax {
 				return nil, ErrSchemaInvalid
 			}
-			score = d.Score.n
+			score = d.Score.N
 		}
 		if utf8.RuneCountInString(d.Rationale) > MaxRationaleChars*2 {
 			return nil, ErrSchemaInvalid
