@@ -8,15 +8,15 @@ sub_plans:
   - id: "01"
     name: "作答接口"
     file: "01_作答接口.md"
-    status: "pending"
+    status: "completed"
   - id: "02"
     name: "作答页"
     file: "02_作答页.md"
-    status: "pending"
+    status: "completed"
   - id: "03"
     name: "阅卷接入"
     file: "03_阅卷接入.md"
-    status: "pending"
+    status: "completed"
 
 execution_order:
   - "01"

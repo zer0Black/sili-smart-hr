@@ -1,7 +1,8 @@
 package grading
 
 // grading_test.go 契约测试：Grader.Run 双类型阅卷编排（specs TST §5.2.2/§5.2.4/§5.2.5，
-// 03 §4.4）。核心断言用真 :memory: SQLite 落任务/题目/维度/评分/聚合/判型行验证。
+// 03 §4.4；P2_TST_002 03 §4.3 作答对话段接入）。核心断言用真 :memory: SQLite 落
+// 任务/题目/维度/评分/聚合/判型/作答记录行验证。
 
 import (
 	"context"
@@ -45,6 +46,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 		&domain.AssessmentTestTask{}, &domain.AssessmentTestResult{},
 		&domain.Question{}, &domain.Dimension{},
 		&domain.DimensionScore{}, &domain.AggregateScore{}, &domain.AssessmentConfig{},
+		&domain.AssessmentTestAnswer{},
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
@@ -125,6 +127,7 @@ func seedAIMgmt(t *testing.T, db *gorm.DB) domain.AssessmentTestTask {
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatalf("seed task: %v", err)
 	}
+	seedAnswers(t, db, task.ID, "C，因为紧急交付需先授权分工", "A")
 	seedConfig(t, db)
 	return task
 }
@@ -156,8 +159,20 @@ func seedEnneagram(t *testing.T, db *gorm.DB) domain.AssessmentTestTask {
 	if err := db.Create(&task).Error; err != nil {
 		t.Fatalf("seed task: %v", err)
 	}
+	seedAnswers(t, db, task.ID, "4", "5")
 	seedConfig(t, db)
 	return task
+}
+
+// seedAnswers 建任务的全量作答记录（seq 1 起逐行，提交门槛已保证全答）。
+func seedAnswers(t *testing.T, db *gorm.DB, taskID int64, contents ...string) {
+	t.Helper()
+	for i, c := range contents {
+		row := domain.AssessmentTestAnswer{TaskID: taskID, QuestionSeq: i + 1, Content: c}
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("seed answer seq %d: %v", i+1, err)
+		}
+	}
 }
 
 // seedConfig weekly 周期单例（grading 按任务创建时刻推窗口）。
@@ -240,20 +255,41 @@ func (f *fakeSysParams) ReadStringArrays(keys ...string) (map[string][]string, e
 
 var _ repository.SystemParamReader = (*fakeSysParams)(nil)
 
-// gradingFixture 聚合一次 Run 测试的全部注入件（真仓储 + fake LLM/provider/params）。
+// fakeAnswerRepo 作答记录读取 fake：记录调用与收到的 taskID，可编程返回错误。
+type fakeAnswerRepo struct {
+	answers  []domain.AssessmentTestAnswer
+	err      error
+	called   bool
+	taskIDs  int64
+}
+
+func (f *fakeAnswerRepo) ListByTask(ctx context.Context, taskID int64) ([]domain.AssessmentTestAnswer, error) {
+	f.called = true
+	f.taskIDs = taskID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.answers, nil
+}
+
+var _ AnswerRepo = (*fakeAnswerRepo)(nil)
+
+// gradingFixture 聚合一次 Run 测试的全部注入件（真仓储 + fake LLM/provider/params/answers）。
 type gradingFixture struct {
-	db   *gorm.DB
-	llm  *fakeLLM
-	g    *Grader
-	task domain.AssessmentTestTask
+	db      *gorm.DB
+	llm     *fakeLLM
+	answers *fakeAnswerRepo
+	g       *Grader
+	task    domain.AssessmentTestTask
 }
 
 func newFixture(t *testing.T, seed func(*testing.T, *gorm.DB) domain.AssessmentTestTask) *gradingFixture {
 	t.Helper()
 	db := newTestDB(t)
 	f := &gradingFixture{
-		db:  db,
-		llm: &fakeLLM{},
+		db:      db,
+		llm:     &fakeLLM{},
+		answers: &fakeAnswerRepo{},
 	}
 	f.task = seed(t, db)
 	f.g = New(
@@ -261,6 +297,7 @@ func newFixture(t *testing.T, seed func(*testing.T, *gorm.DB) domain.AssessmentT
 		&fakeModelProvider{cfg: llm.ModelConfig{Provider: "openai", ModelID: "gpt-test", BaseURL: "http://x", APIKey: "k"}},
 		repository.NewAssessmentTestTaskRepository(db),
 		repository.NewQuestionRepository(db),
+		f.answers,
 		repository.NewAssessmentTestResultRepository(db),
 		repository.NewDimensionRepository(db),
 		repository.NewDimensionScoreRepository(db),
@@ -268,6 +305,13 @@ func newFixture(t *testing.T, seed func(*testing.T, *gorm.DB) domain.AssessmentT
 		repository.NewAssessmentConfigRepository(db),
 		&fakeSysParams{},
 	)
+	// fakeAnswerRepo 程序化返回真仓储已落库的作答记录（进程内自读）。
+	rows, err := repository.NewAssessmentTestAnswerRepository(db).
+		ListByTask(context.Background(), f.task.ID)
+	if err != nil {
+		t.Fatalf("load seeded answers: %v", err)
+	}
+	f.answers.answers = rows
 	return f
 }
 
@@ -585,5 +629,58 @@ func TestRunTaskNotFound(t *testing.T) {
 	f := newFixture(t, seedAIMgmt)
 	if err := f.g.Run(context.Background(), 999999); err == nil {
 		t.Fatal("任务不存在应报错")
+	}
+}
+
+// TestRunLoadsAnswers 核心断言（BR1）：Run 时经 AnswerRepo 按 taskID 现读作答记录，
+// 拼进 prompt 的作答对话段（fake LLM 捕获）。
+func TestRunLoadsAnswers(t *testing.T) {
+	f := newFixture(t, seedAIMgmt)
+	f.llm.fn = func(call int) (string, error) { return aiMgmtScoreJSON(), nil }
+
+	if err := f.g.Run(context.Background(), f.task.ID); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !f.answers.called {
+		t.Fatal("Run 未调用 answers.ListByTask")
+	}
+	if f.answers.taskIDs != f.task.ID {
+		t.Errorf("ListByTask 收到 taskID=%d, want %d", f.answers.taskIDs, f.task.ID)
+	}
+	if f.llm.calls != 1 || len(f.llm.prompts) != 1 {
+		t.Fatalf("LLM 调用 %d 次 prompt %d 条, want 1/1", f.llm.calls, len(f.llm.prompts))
+	}
+	p := f.llm.prompts[0]
+	if !strings.Contains(p, "【作答对话段】") {
+		t.Error("prompt 缺作答对话段标题")
+	}
+	if !strings.Contains(p, "第 1 题作答：C，因为紧急交付需先授权分工") ||
+		!strings.Contains(p, "第 2 题作答：A") {
+		t.Errorf("prompt 缺作答行: %s", p)
+	}
+	if strings.Contains(p, emptyAnswerSectionPlaceholder) {
+		t.Error("有作答记录时 prompt 不应含空段占位")
+	}
+}
+
+// TestRunAnswerRepoFailure 核心断言：作答记录读取失败上抛（交 Asynq 重试），
+// 不吞错假 scored。
+func TestRunAnswerRepoFailure(t *testing.T) {
+	f := newFixture(t, seedAIMgmt)
+	f.answers.err = errors.New("answers db down")
+
+	if err := f.g.Run(context.Background(), f.task.ID); err == nil {
+		t.Fatal("作答读取失败应上抛")
+	}
+	if f.llm.calls != 0 {
+		t.Errorf("LLM 被调 %d 次, want 0", f.llm.calls)
+	}
+	var n int64
+	f.db.Model(&domain.DimensionScore{}).Count(&n)
+	if n != 0 {
+		t.Fatalf("评分行 %d, want 0", n)
+	}
+	if task := loadTask(t, f.db, f.task.ID); task.GradingStatus != domain.GradingStatusGrading {
+		t.Fatalf("grading_status = %s, want 停留 grading", task.GradingStatus)
 	}
 }

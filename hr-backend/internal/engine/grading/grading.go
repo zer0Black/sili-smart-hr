@@ -36,6 +36,11 @@ type QuestionRepo interface {
 	ListByIDsUnscoped(ctx context.Context, ids []int64) ([]domain.Question, error)
 }
 
+// AnswerRepo 作答对话记录读取窄面（03 §4.3，specs §5.2.3 全过程对话）。
+type AnswerRepo interface {
+	ListByTask(ctx context.Context, taskID int64) ([]domain.AssessmentTestAnswer, error)
+}
+
 // ResultRepo 判型结果落库窄面。
 type ResultRepo interface {
 	UpsertByTaskID(ctx context.Context, r *domain.AssessmentTestResult) error
@@ -62,6 +67,7 @@ type Grader struct {
 	modelProvider llm.EnabledModelProvider
 	taskRepo      TaskRepo
 	questionRepo  QuestionRepo
+	answers       AnswerRepo
 	resultRepo    ResultRepo
 	dimRepo       DimRepo
 	scoreRepo     repository.DimensionScoreRepository
@@ -70,9 +76,9 @@ type Grader struct {
 	sysParams     repository.SystemParamReader
 }
 
-// New 构造 Grader，十个依赖集中注入（llmClient 为 240s 阅卷专用 client，T4 装配）。
+// New 构造 Grader，十一个依赖集中注入（llmClient 为 240s 阅卷专用 client，T4 装配）。
 func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
-	taskRepo TaskRepo, questionRepo QuestionRepo, resultRepo ResultRepo,
+	taskRepo TaskRepo, questionRepo QuestionRepo, answers AnswerRepo, resultRepo ResultRepo,
 	dimRepo DimRepo, scoreRepo repository.DimensionScoreRepository, aggRepo AggRepo,
 	configRepo ConfigRepo, sysParams repository.SystemParamReader) *Grader {
 	return &Grader{
@@ -80,6 +86,7 @@ func New(llmClient llm.Client, modelProvider llm.EnabledModelProvider,
 		modelProvider: modelProvider,
 		taskRepo:      taskRepo,
 		questionRepo:  questionRepo,
+		answers:       answers,
 		resultRepo:    resultRepo,
 		dimRepo:       dimRepo,
 		scoreRepo:     scoreRepo,
@@ -110,6 +117,12 @@ func (g *Grader) Run(ctx context.Context, taskID int64) error {
 		return err
 	}
 
+	// 作答对话记录现读（03 §4.3）：失败 wrap 上抛交 Asynq 重试，与 loadQuestions 同口径。
+	answers, err := g.answers.ListByTask(ctx, task.ID)
+	if err != nil {
+		return fmt.Errorf("grading: load answers of task %d: %w", task.ID, err)
+	}
+
 	// 模型解析失败落空串不阻断（与 evaluator 同口径），调用失败另走重试。
 	modelID := ""
 	if mc, merr := g.modelProvider.GetEnabledModel(ctx); merr == nil {
@@ -120,9 +133,9 @@ func (g *Grader) Run(ctx context.Context, taskID int64) error {
 
 	switch task.TestType {
 	case domain.TestTypeAIMgmt:
-		return g.runAIMgmt(ctx, task, questions, modelID)
+		return g.runAIMgmt(ctx, task, questions, answers, modelID)
 	case domain.TestTypeEnneagram:
-		return g.runEnneagram(ctx, task, questions, modelID)
+		return g.runEnneagram(ctx, task, questions, answers, modelID)
 	default:
 		return fmt.Errorf("grading: unknown test_type %q of task %d", task.TestType, taskID)
 	}
@@ -144,13 +157,13 @@ func (g *Grader) loadQuestions(ctx context.Context, task *domain.AssessmentTestT
 
 // runAIMgmt ai_mgmt 阅卷（specs §5.2.2 步骤3a/4a/5）：维度口径取任务快照全字段
 // 直读（含停用维度）→ LLM 评分 → 逐子能力落 active_test 行 → 自调聚合 → 推进 scored。
-func (g *Grader) runAIMgmt(ctx context.Context, task *domain.AssessmentTestTask, questions []domain.Question, modelID string) error {
+func (g *Grader) runAIMgmt(ctx context.Context, task *domain.AssessmentTestTask, questions []domain.Question, answers []domain.AssessmentTestAnswer, modelID string) error {
 	dims, err := g.taskDimensions(ctx, task)
 	if err != nil {
 		return err
 	}
 
-	raw, err := g.callLLM(ctx, buildAIMgmtPrompt(dims, questions))
+	raw, err := g.callLLM(ctx, buildAIMgmtPrompt(dims, questions, answers))
 	if err != nil {
 		return err
 	}
@@ -199,8 +212,8 @@ func (g *Grader) runAIMgmt(ctx context.Context, task *domain.AssessmentTestTask,
 
 // runEnneagram enneagram 阅卷（specs §5.2.2 步骤3b/4b）：量表题全文入 prompt、
 // 型别维度口径不进 prompt（量表题自含计分键）→ 判型四字段落结果行 → 推进 scored。
-func (g *Grader) runEnneagram(ctx context.Context, task *domain.AssessmentTestTask, questions []domain.Question, modelID string) error {
-	raw, err := g.callLLM(ctx, buildEnneagramPrompt(questions))
+func (g *Grader) runEnneagram(ctx context.Context, task *domain.AssessmentTestTask, questions []domain.Question, answers []domain.AssessmentTestAnswer, modelID string) error {
+	raw, err := g.callLLM(ctx, buildEnneagramPrompt(questions, answers))
 	if err != nil {
 		return err
 	}

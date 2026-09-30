@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "feature_id": "P2_TST_002_FEAT_员工作答",
+  "subplans": {
+    "01": {
+      "base_sha": "45ad25d75d9eac46c67167ccd16fb9cba7bee238",
+      "plan_digest": "9df54dac145cdc1117c7e076ac46084527bf53d765876cead43f976a436d0460",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_002_FEAT_员工作答/01/T1",
+          "status": "verified",
+          "base_sha": "45ad25d75d9eac46c67167ccd16fb9cba7bee238",
+          "head_sha": "9c4258f64304f6a966aaa133977a9055a025f9fb",
+          "verification": {
+            "path": "execution-evidence/01-T1-9c4258f.md",
+            "digest": "73b75ea362a38c6f2a7d455aea3fd8f7706e9385cc9ba337bd4be11884a0ca28",
+            "head_sha": "9c4258f64304f6a966aaa133977a9055a025f9fb",
+            "recorded_at": "2026-09-30T07:44:41Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_002_FEAT_员工作答/01/T2",
+          "status": "verified",
+          "base_sha": "9c4258f64304f6a966aaa133977a9055a025f9fb",
+          "head_sha": "4dc57d5093d5ed080fa0cb0a5ab0e5a7788d1071",
+          "verification": {
+            "path": "execution-evidence/01-T2-4dc57d5.md",
+            "digest": "35ad82650adacd7be00f2af3c90cdc4649abdd84841eeac75a0493d7b8d716c1",
+            "head_sha": "4dc57d5093d5ed080fa0cb0a5ab0e5a7788d1071",
+            "recorded_at": "2026-09-30T07:50:33Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TST_002_FEAT_员工作答/01/T4",
+          "status": "verified",
+          "base_sha": "4dc57d5093d5ed080fa0cb0a5ab0e5a7788d1071",
+          "head_sha": "aaaf6fff450544b809699ebe9ccfd40c69154e3d",
+          "verification": {
+            "path": "execution-evidence/01-T4-aaaf6ff.md",
+            "digest": "94c69ce360eceb394ce04c13c3b4187d26d83cdda77489af36079cf85cc006c0",
+            "head_sha": "aaaf6fff450544b809699ebe9ccfd40c69154e3d",
+            "recorded_at": "2026-09-30T07:54:14Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TST_002_FEAT_员工作答/01/T3",
+          "status": "verified",
+          "base_sha": "aaaf6fff450544b809699ebe9ccfd40c69154e3d",
+          "head_sha": "e7073bad513d6dfb3797e0e6f7d8d879a22d132b",
+          "verification": {
+            "path": "execution-evidence/01-T3-e7073ba.md",
+            "digest": "70392398ff01dca0b11cd3ae018e6e677f2babbb4c8d6bef5d6eb7fc935c9e82",
+            "head_sha": "e7073bad513d6dfb3797e0e6f7d8d879a22d132b",
+            "recorded_at": "2026-09-30T08:07:21Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_TST_002_FEAT_员工作答/01/T5",
+          "status": "verified",
+          "base_sha": "e7073bad513d6dfb3797e0e6f7d8d879a22d132b",
+          "head_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+          "verification": {
+            "path": "execution-evidence/01-T5-2a295e0.md",
+            "digest": "fe4aa05b1250404b772677709bfc180da3e67fea84aa0fab736d73dc4926f219",
+            "head_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+            "recorded_at": "2026-09-30T08:18:45Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01-review-2a295e0.md",
+        "digest": "1adf910abe3c2979983d420667410358397988413b00efca936dc19d70540a44",
+        "head_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+        "base_sha": "45ad25d75d9eac46c67167ccd16fb9cba7bee238",
+        "passed": true,
+        "recorded_at": "2026-09-30T08:27:51Z"
+      },
+      "review_failures": 0
+    },
+    "02": {
+      "base_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+      "plan_digest": "44b918489d5a0ea7450afd1e29371078a82bd8a4199992a3d02917f4759532d8",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_002_FEAT_员工作答/02/T1",
+          "status": "verified",
+          "base_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+          "head_sha": "144900535db98c15d5d301c51549693b7a3c012f",
+          "verification": {
+            "path": "execution-evidence/02-T1-1449005.md",
+            "digest": "b9f9811dae4e38c8d06569ec9382168cb913d2605ade14befe43d5e5dbb2c997",
+            "head_sha": "144900535db98c15d5d301c51549693b7a3c012f",
+            "recorded_at": "2026-09-30T08:43:12Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_002_FEAT_员工作答/02/T2",
+          "status": "verified",
+          "base_sha": "144900535db98c15d5d301c51549693b7a3c012f",
+          "head_sha": "210695df61333162c69bd2588cbc45a1c5d9a931",
+          "verification": {
+            "path": "execution-evidence/02-T2-210695d.md",
+            "digest": "d78be5f7667e214d2ba73667aed7382527d95316af58283cb7cd80c102a78939",
+            "head_sha": "210695df61333162c69bd2588cbc45a1c5d9a931",
+            "recorded_at": "2026-09-30T08:50:18Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TST_002_FEAT_员工作答/02/T3",
+          "status": "verified",
+          "base_sha": "210695df61333162c69bd2588cbc45a1c5d9a931",
+          "head_sha": "7109ce58ba66fcd0747f53cede552c7446cbefa7",
+          "verification": {
+            "path": "execution-evidence/02-T3-7109ce5.md",
+            "digest": "e18d6a173647c83349a2d61eafd7f8368c9925a09b93dd317d44ea3599c039b7",
+            "head_sha": "7109ce58ba66fcd0747f53cede552c7446cbefa7",
+            "recorded_at": "2026-09-30T09:52:19Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TST_002_FEAT_员工作答/02/T4",
+          "status": "verified",
+          "base_sha": "7109ce58ba66fcd0747f53cede552c7446cbefa7",
+          "head_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+          "verification": {
+            "path": "execution-evidence/02-T4-8e212d4.md",
+            "digest": "50f42291af69eec6e4cdb395c6f6b45c218107faf0088c4f51b1e90538b677bc",
+            "head_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+            "recorded_at": "2026-09-30T10:22:27Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/02-review-8e212d4.md",
+        "digest": "784fa7e00215892b3148034d54fb6ecbdd08e59f8c3f411d19f16d056da8fab7",
+        "head_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+        "base_sha": "2a295e01b41ab066ffa11a563a0ebcb90f4712e7",
+        "passed": true,
+        "recorded_at": "2026-09-30T10:28:03Z"
+      },
+      "review_failures": 1
+    },
+    "03": {
+      "base_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+      "plan_digest": "63907ddb1779f6a5ea4c973ae45c16e45fdf3a372740904d70c9bcfb666fa75a",
+      "tasks": {
+        "T1": {
+          "key": "P2_TST_002_FEAT_员工作答/03/T1",
+          "status": "verified",
+          "base_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+          "head_sha": "926fa5ff2827fa2051d047e21dd9aeb53968765f",
+          "verification": {
+            "path": "execution-evidence/03-T1-926fa5f.md",
+            "digest": "179bb47324e7f6c8c2b216e8177da00bc4c0a1a1c65aea5703723c729eb20c9c",
+            "head_sha": "926fa5ff2827fa2051d047e21dd9aeb53968765f",
+            "recorded_at": "2026-09-30T10:36:23Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TST_002_FEAT_员工作答/03/T2",
+          "status": "verified",
+          "base_sha": "926fa5ff2827fa2051d047e21dd9aeb53968765f",
+          "head_sha": "1245d78ff4e72ae67f890d2cd2ff785d0cfcf7a7",
+          "verification": {
+            "path": "execution-evidence/03-T2-1245d78.md",
+            "digest": "ad02f7624d16c2c6903eafc542685ed5fca9ad1bbb2a5eab2d3acad3048e24a9",
+            "head_sha": "1245d78ff4e72ae67f890d2cd2ff785d0cfcf7a7",
+            "recorded_at": "2026-09-30T10:43:46Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/03-review-1245d78.md",
+        "digest": "4da9c2900b7581821ee1c9de2d5ef0cc8bd743a5d231e4957447c1d24e2bec24",
+        "head_sha": "1245d78ff4e72ae67f890d2cd2ff785d0cfcf7a7",
+        "base_sha": "8e212d437d0f39d05324e7954eaf3dd6a2e08db9",
+        "passed": true,
+        "recorded_at": "2026-09-30T10:47:39Z"
+      },
+      "review_failures": 0
+    }
+  },
+  "updated_at": "2026-09-30T10:47:39Z"
+}
