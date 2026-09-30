@@ -1051,5 +1051,80 @@
       "cancelConfirm": "Abandon and Return",
       "cancelSubmitting": "Canceling…"
     }
+  },
+  "answer": {
+    "brand": {
+      "subtitle": "Talent Assessment Platform · Employee Assessment"
+    },
+    "meta": {
+      "ai": {
+        "tag": "AI Conversational Assessment",
+        "title": "AI Management Assessment",
+        "purpose": "Assesses your managerial judgment and decision-making in AI collaboration scenarios.",
+        "duration": "Approx. 25-30 minutes"
+      },
+      "enne": {
+        "tag": "Standard Scale",
+        "title": "Enneagram Assessment",
+        "purpose": "Helps you understand your personality tendency distribution as a reference for teamwork and personal development. Results are for reference only and are not used for performance evaluation.",
+        "duration": "Approx. 10-15 minutes"
+      },
+      "questionCount": "{{count}} questions"
+    },
+    "notice": {
+      "title": "Instructions",
+      "items": [
+        "This assessment is completed through conversation with an AI. The AI asks questions one by one; just reply directly.",
+        "Each reply moves you to the next question immediately. You cannot go back to change answers, so answer fully before sending.",
+        "Answer based on your genuine thoughts and actual practice. Results are evaluated by the AI and are not shown on this page."
+      ]
+    },
+    "progress": {
+      "label": "Conversation Progress",
+      "count": "{{answered}} / {{total}} completed"
+    },
+    "script": {
+      "ai": {
+        "opening1": "Hello, I am the assistant for this AI Management Assessment.",
+        "opening2": "I will present a management scenario for each question. Please answer based on your actual practice; you may indicate your chosen option and reasoning. After each answer, I will move on to the next question."
+      },
+      "enne": {
+        "opening1": "Hello, this is the Enneagram Assessment.",
+        "opening2": "I will present statements one by one. Please reply with the number from 1 (completely unlike me) to 5 (completely like me) that best matches you."
+      },
+      "questionTitle": "Question {{seq}} · {{dimension}}",
+      "scaleTitle": "Question {{seq}}: {{statement}}",
+      "ackAIMgmt": "Got it. Let's move to the next question.",
+      "ackEnneagram": "Recorded. Next question.",
+      "invalidReply": "Please reply with a number between 1 and 5.",
+      "finish1": "All questions have been answered.",
+      "finish2": "I will make a comprehensive evaluation based on your answers throughout the conversation. Results will be fed back via the platform and are not shown on this page."
+    },
+    "input": {
+      "placeholderAIMgmt": "Describe your approach and reasoning; you may indicate your chosen option",
+      "placeholderEnne": "Reply with a number from 1 to 5",
+      "send": "Send",
+      "finishTip": "You have completed this assessment. You can submit to finish.",
+      "submit": "Submit and Finish",
+      "charCount": "{{count}}/500"
+    },
+    "invalid": {
+      "title": "Answer Link Unavailable",
+      "desc": "This link does not exist or has expired (including reopening after submission). Please contact the assessment initiator to obtain a new link."
+    },
+    "success": {
+      "title": "Answer Submitted",
+      "subtitle": "Thank you for participating. Your {{title}} has been submitted successfully.",
+      "tip": "This answer link is no longer valid. The system will proceed to the grading stage; results will not be shown on this page. You can close this window now; no further action is needed.",
+      "close": "Close Window",
+      "closeFallback": "If the window does not close automatically, please close the browser tab manually",
+      "ref": "Reference No.: {{taskNo}}"
+    },
+    "error": {
+      "loadFailed": "Failed to load, please retry",
+      "retry": "Retry",
+      "incomplete": "Some questions are unanswered; please continue",
+      "submitFailed": "Submit failed, please retry"
+    }
   }
 }

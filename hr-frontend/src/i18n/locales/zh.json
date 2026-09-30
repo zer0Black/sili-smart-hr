@@ -1051,5 +1051,80 @@
       "cancelConfirm": "放弃并返回",
       "cancelSubmitting": "取消中…"
     }
+  },
+  "answer": {
+    "brand": {
+      "subtitle": "综合人才测评平台 · 员工作答"
+    },
+    "meta": {
+      "ai": {
+        "tag": "AI 对话测评",
+        "title": "AI 管理能力测评",
+        "purpose": "评估您在 AI 协作场景下的管理判断与决策能力。",
+        "duration": "约 25-30 分钟"
+      },
+      "enne": {
+        "tag": "标准量表",
+        "title": "九型人格测评",
+        "purpose": "帮助了解您的人格倾向分布，作为团队协作与个人发展的参考依据。结果仅供参考，不作为绩效评价。",
+        "duration": "约 10-15 分钟"
+      },
+      "questionCount": "共 {{count}} 题"
+    },
+    "notice": {
+      "title": "作答须知",
+      "items": [
+        "本次测评通过与 AI 对话完成，AI 会逐题发问，您直接回复即可。",
+        "每题回复后即进入下一题，无法返回修改，请完整作答后再发送。",
+        "根据您的真实想法与实际做法作答，结果由 AI 综合评估、不在此页面展示。"
+      ]
+    },
+    "progress": {
+      "label": "对话进度",
+      "count": "已完成 {{answered}} / {{total}}"
+    },
+    "script": {
+      "ai": {
+        "opening1": "您好，我是本次 AI 管理能力测评的对话助手。",
+        "opening2": "接下来我会逐题给出一个管理情境，请结合您的真实做法回答，可以说明选择的选项与理由。答完后我会进入下一题。"
+      },
+      "enne": {
+        "opening1": "您好，这是九型人格测评。",
+        "opening2": "我会逐条给出陈述，请按 1（完全不符合）到 5（完全符合）回复最符合您的程度。"
+      },
+      "questionTitle": "第 {{seq}} 题 · {{dimension}}",
+      "scaleTitle": "第 {{seq}} 题：{{statement}}",
+      "ackAIMgmt": "收到，我们看下一题。",
+      "ackEnneagram": "已记录，下一题。",
+      "invalidReply": "请回复 1 到 5 之间的数字。",
+      "finish1": "以上题目已全部作答完成。",
+      "finish2": "我会结合您在整个对话中的回答做综合评估，结果将由平台反馈，不在此页面展示。"
+    },
+    "input": {
+      "placeholderAIMgmt": "请回复您的做法与理由，可说明选择的选项",
+      "placeholderEnne": "请回复 1 到 5 的数字",
+      "send": "发送",
+      "finishTip": "本次作答已完成，可提交结束。",
+      "submit": "提交并结束",
+      "charCount": "{{count}}/500"
+    },
+    "invalid": {
+      "title": "作答链接不可用",
+      "desc": "该链接不存在或已失效（含已提交后重复打开），请联系测评发起人重新获取链接。"
+    },
+    "success": {
+      "title": "作答已提交",
+      "subtitle": "感谢您的参与，{{title}} 已成功提交。",
+      "tip": "本次作答链接已失效。系统将进入阅卷环节，作答结果不会在此页面展示。您可以直接关闭此窗口，无需其他操作。",
+      "close": "关闭窗口",
+      "closeFallback": "如窗口未自动关闭，请手动关闭浏览器标签页",
+      "ref": "参考编号：{{taskNo}}"
+    },
+    "error": {
+      "loadFailed": "加载失败，请重试",
+      "retry": "重试",
+      "incomplete": "存在未作答题目，请继续作答",
+      "submitFailed": "提交失败，请重试"
+    }
   }
 }
