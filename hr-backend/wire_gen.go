@@ -129,7 +129,7 @@ func InitializeApp(configPath string) (*App, error) {
 	testExpireTickHandler := NewTestExpireTickHandlerTyped(assessmentTestTaskRepository)
 	gradingLLMClient := NewGradingLLMClient(enabledModelProvider)
 	assessmentTestResultRepository := repository.NewAssessmentTestResultRepository(db)
-	grader := NewGradingProvider(gradingLLMClient, enabledModelProvider, assessmentTestTaskRepository, questionRepository, assessmentTestResultRepository, dimensionRepository, dimensionScoreRepository, scorerScorer, assessmentConfigRepository, systemParamReader)
+	grader := NewGradingProvider(gradingLLMClient, enabledModelProvider, assessmentTestTaskRepository, questionRepository, assessmentTestAnswerRepository, assessmentTestResultRepository, dimensionRepository, dimensionScoreRepository, scorerScorer, assessmentConfigRepository, systemParamReader)
 	testGradeHandler := NewTestGradeHandlerTyped(grader, assessmentTestTaskRepository, assessmentTestResultRepository)
 	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)

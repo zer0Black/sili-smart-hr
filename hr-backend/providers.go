@@ -548,16 +548,17 @@ func NewGradingLLMClient(provider llm.EnabledModelProvider) GradingLLMClient {
 	}, provider)
 }
 
-// NewGradingProvider 装配 AI 阅卷引擎（十参，specs §5.2.2 步骤2-6）：阅卷专用
-// LLM client + task/question/result/dimension/score/config 六仓储 + 聚合窄面
+// NewGradingProvider 装配 AI 阅卷引擎（十一参，specs §5.2.2 步骤2-6）：阅卷专用
+// LLM client + task/question/answer/result/dimension/score/config 七仓储 + 聚合窄面
 //（*scorer.Scorer 满足 AggRepo，与 evaluator 同源实例）+ 系统参数（脱敏正则）。
 // 维度口径复用 DimensionRepository（Grader 内按 AI_MGMT ∩ 快照过滤）。
 func NewGradingProvider(llmClient GradingLLMClient, modelProvider llm.EnabledModelProvider,
 	taskRepo repository.AssessmentTestTaskRepository, questionRepo repository.QuestionRepository,
+	answerRepo repository.AssessmentTestAnswerRepository,
 	resultRepo repository.AssessmentTestResultRepository, dimRepo repository.DimensionRepository,
 	scoreRepo repository.DimensionScoreRepository, agg *scorer.Scorer,
 	configRepo repository.AssessmentConfigRepository, sysParams repository.SystemParamReader) *grading.Grader {
-	return grading.New(llmClient, modelProvider, taskRepo, questionRepo, resultRepo,
+	return grading.New(llmClient, modelProvider, taskRepo, questionRepo, answerRepo, resultRepo,
 		dimRepo, scoreRepo, agg, configRepo, sysParams)
 }
 
