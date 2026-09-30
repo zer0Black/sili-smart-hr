@@ -2,12 +2,10 @@ feature_id: "P2_TECH_004_TECH_抽取规则分层"          # [阶段]_[模块代
 module_code: "TECH"        # 模块代号（2-4位大写字母）
 phase: "P2"                    # 阶段：P0/P1/P2/P3/P4
 type: "TECH"                      # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
-root_base: "P2_TECH_003_TECH_会话特征抽取"               # 变更根节点（原始需求的feature_id），首次创建为null
-base_on: "P2_TECH_003_TECH_会话特征抽取"                   # 直接基线 feature_id，新建时为null
+root_base: null          # 变更根节点（原始需求的feature_id），首次创建为null；本 Feature 与 TECH_003 的基线关系见规格文档「变更说明」，普通 Feature 变更链按契约须为空
+base_on: null                   # 直接基线 feature_id，新建时为null
 change_group: null         # 跨模块变更组，单模块变更时为null
-change_history:   # 完整变更链：[root_base → ... → base_on → 当前]
-  - "P2_TECH_003_TECH_会话特征抽取"
-  - "P2_TECH_004_TECH_抽取规则分层"
+change_history: []   # 完整变更链：[root_base → ... → base_on → 当前]
 dependencies:          # 直接依赖的feature_id列表
   - "P2_TECH_003_TECH_会话特征抽取"
   - "P2_TECH_001_TECH_LLM调用底座"

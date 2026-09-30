@@ -1,5 +1,5 @@
 feature_id: "P2_SYS_001_FEAT_系统参数与大模型配置"   # [阶段]_[模块代号]_[序号]_[类型]_[功能简述]
-module_code: "CFG"                                   # 模块代号（2-4位大写字母）：系统配置域，评估周期参数与大模型密钥维护
+module_code: "SYS"                                   # 模块代号（2-4位大写字母）：系统配置域，评估周期参数与大模型密钥维护（与 ID 段一致，原 CFG 为历史笔误）
 phase: "P2"                                          # 阶段：P0/P1/P2/P3/P4
 type: "FEAT"                                         # 类型：FEAT(新功能)/TECH(技术组件)/RFC(变更)
 root_base: null                                      # 变更根节点（原始需求的feature_id），首次创建为null
