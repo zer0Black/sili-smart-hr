@@ -8,7 +8,9 @@ import type { JSX } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { AnswerApiError } from '../answer-api';
+import type { AnswerContextResult } from '../answer-types';
 import { useAnswerContext } from '../answer-hooks';
+import { AnswerChat } from './answer-chat';
 import { AnswerHero } from './answer-hero';
 import { AnswerInvalidCard } from './answer-invalid';
 import { AnswerSuccessCard } from './answer-success';
@@ -20,6 +22,8 @@ export function AnswerPage({ token }: { token: string }): JSX.Element {
   const { t } = useTranslation('answer');
   const ctxQ = useAnswerContext(token);
   const [phase, setPhase] = useState<Phase>('loading');
+  // 提交成功态参考编号：优先 submit 响应 task_no，兜底 context 的任务号。
+  const [submittedTaskNo, setSubmittedTaskNo] = useState<string | null>(null);
   const queryError = ctxQ.error;
 
   useEffect(() => {
@@ -34,7 +38,7 @@ export function AnswerPage({ token }: { token: string }): JSX.Element {
       return;
     }
     if (ctxQ.data) {
-      // 校验通过即进作答态（context.finished 时对话区由 T4 以完成待提交子阶段呈现）。
+      // 校验通过即进作答态；context.finished 时对话区以完成待提交子阶段呈现（specs §4.1.3 对话恢复）。
       setPhase('answering');
     }
   }, [ctxQ.isPending, ctxQ.data, queryError]);
@@ -70,12 +74,9 @@ export function AnswerPage({ token }: { token: string }): JSX.Element {
             </CardContent>
           </Card>
         )}
-        {phase === 'answering' && ctxQ.data && (
-          <AnsweringState token={token} />
-        )}
+        {phase === 'answering' && ctxQ.data && <AnsweringState token={token} ctx={ctxQ.data} onSubmitSuccess={(taskNo) => { setSubmittedTaskNo(taskNo); setPhase('success'); }} />}
         {phase === 'success' && ctxQ.data && (
-          // 提交响应任务号优先（T4 落地）；当前成功态仅可由 T3 单测直挂 AnswerSuccessCard 验证。
-          <AnswerSuccessCard testType={ctxQ.data.test_type} taskNo={ctxQ.data.task_no} onClose={() => window.close()} />
+          <AnswerSuccessCard testType={ctxQ.data.test_type} taskNo={submittedTaskNo ?? ctxQ.data.task_no} onClose={() => window.close()} />
         )}
       </main>
     </div>
@@ -106,19 +107,24 @@ function noticeItems(t: (key: string, opts?: Record<string, unknown>) => string)
 }
 
 /**
- * 作答态骨架（specs §3.3 作答态线框）：hero + 卡片主体（须知 + 进度）。
- * 对话区与剧本归 T4（answer-chat.tsx/script.ts），此处渲染进度占位保持接入面干净。
+ * 作答态骨架（specs §3.3 作答态线框）：hero + 卡片主体（须知 + 进度 + 对话区）。
+ * ctx 由顶层注入（同一份 context 数据驱动进度与对话区，避免二次请求）。
  */
-function AnsweringState({ token: _token }: { token: string }) {
+function AnsweringState({
+  token,
+  ctx,
+  onSubmitSuccess,
+}: {
+  token: string;
+  ctx: AnswerContextResult;
+  onSubmitSuccess: (taskNo: string) => void;
+}): JSX.Element {
   const { t } = useTranslation('answer');
-  const ctx = useAnswerContext(_token);
-  const data = ctx.data;
-  if (!data) return null;
-  const answered = data.answered_count;
+  const answered = ctx.answered_count;
 
   return (
     <div className="shadow-xs overflow-hidden rounded-xl border">
-      <AnswerHero testType={data.test_type} questionTotal={data.question_total} />
+      <AnswerHero testType={ctx.test_type} questionTotal={ctx.question_total} />
       <Card className="gap-0 rounded-none border-0 py-0 shadow-none">
         <CardContent className="flex flex-col gap-6 px-6 py-7 sm:px-8">
           <section>
@@ -133,12 +139,12 @@ function AnsweringState({ token: _token }: { token: string }) {
             <div className="flex items-baseline justify-between">
               <span className="text-sm font-medium">{t('progress.label')}</span>
               <span className="text-muted-foreground text-[13px]">
-                {t('progress.count', { answered, total: data.question_total })}
+                {t('progress.count', { answered, total: ctx.question_total })}
               </span>
             </div>
-            <Progress value={answered} total={data.question_total} />
-            {/* T4 接入点：对话区（answer-chat.tsx）渲染在进度条之后 */}
+            <Progress value={answered} total={ctx.question_total} />
           </section>
+          <AnswerChat token={token} ctx={ctx} onSubmitSuccess={onSubmitSuccess} />
         </CardContent>
       </Card>
     </div>
