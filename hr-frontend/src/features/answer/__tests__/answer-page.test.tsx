@@ -12,9 +12,10 @@ import { AnswerApiError } from '../answer-api';
 import type { AnswerContextResult } from '../answer-types';
 
 const fetchMock = vi.hoisted(() => vi.fn());
+const replyMock = vi.hoisted(() => vi.fn());
 vi.mock('../answer-api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../answer-api')>();
-  return { ...actual, fetchAnswerContext: fetchMock };
+  return { ...actual, fetchAnswerContext: fetchMock, sendAnswerReply: replyMock };
 });
 
 // 路由级用例经真实 routeTree 走 __root beforeLoad 的 setup 探针，mock 其数据源防重定向 /setup。
@@ -61,6 +62,7 @@ beforeEach(() => {
   }
   void i18n.changeLanguage('zh');
   fetchMock.mockReset();
+  replyMock.mockReset();
 });
 
 afterEach(() => {
@@ -107,6 +109,37 @@ describe('AnswerPage 三态编排（specs §6.1 / §5.1.5）', () => {
     expect(screen.getByText('共 5 题')).toBeInTheDocument();
     expect(screen.getByText('作答须知')).toBeInTheDocument();
     expect(screen.getByText('已完成 0 / 5')).toBeInTheDocument();
+  });
+
+  it('TestReplyAdvancesProgress：reply 成功后进度计数即时推进（specs §4.1.2 B 每题确认后更新）', async () => {
+    fetchMock.mockResolvedValue({
+      ...CONTEXT,
+      questions: [1, 2, 3, 4, 5].map((seq) => ({ seq, dimension_name: `维度${seq}`, scenario: `情境${seq}`, requirement: `要求${seq}` })),
+    });
+    replyMock.mockResolvedValue({ question_seq: 1, answered_count: 1, question_total: 5, action: 'next', next_question: { seq: 2, dimension_name: '维度2', scenario: '情境2', requirement: '要求2' } });
+    renderPage();
+
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement;
+    expect(screen.getByText('已完成 0 / 5')).toBeInTheDocument();
+    fireEvent.change(box, { target: { value: '选 C，因为……' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('已完成 1 / 5')).toBeInTheDocument();
+    expect(screen.queryByText('已完成 0 / 5')).not.toBeInTheDocument();
+  });
+
+  it('TestReplyTokenInvalidToInvalidState：作答中 reply 收到 1901 页面转失效态（specs §4.1.4 规则5 / §5.2.5）', async () => {
+    fetchMock.mockResolvedValue(CONTEXT);
+    replyMock.mockRejectedValue(new AnswerApiError(1901, 'answer token invalid'));
+    renderPage();
+
+    const box = (await screen.findByRole('textbox')) as HTMLTextAreaElement;
+    fireEvent.change(box, { target: { value: '选 C，因为……' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    expect(await screen.findByText('作答链接不可用')).toBeInTheDocument();
+    expect(screen.getByText(/请联系测评发起人重新获取链接/)).toBeInTheDocument();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 });
 

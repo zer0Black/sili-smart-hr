@@ -19,10 +19,16 @@ const AIMGMT_MAX_CHARS = 500;
 export function AnswerChat({
   token,
   ctx,
+  onAnsweredChange,
+  onInvalid,
   onSubmitSuccess,
 }: {
   token: string;
   ctx: AnswerContextResult;
+  /** reply 成功后以服务端 answered_count 上提，驱动页面进度即时更新（specs §4.1.2 B）。 */
+  onAnsweredChange?: (answered: number) => void;
+  /** 发送/提交中令牌失效转页面失效态（specs §4.1.4 规则5 交互时校验兜底）。 */
+  onInvalid: () => void;
   onSubmitSuccess: (taskNo: string) => void;
 }): JSX.Element {
   const { t } = useTranslation('answer');
@@ -69,6 +75,8 @@ export function AnswerChat({
           // 服务端题号权威：以响应回传 question_seq 对齐当前题，next_question 全文即对齐后的题面
           //（specs §5.2.4 规则1 前端对齐义务）。
           setCurrentSeq(reply.question_seq);
+          // 进度以落库记录为准（specs §4.1.2 B/§4.1.5：每题确认后即时更新计数与进度条）。
+          onAnsweredChange?.(reply.answered_count);
           setScript((prev) => applyReplySuccess(t, prev, ctx, reply, content));
         },
         onError: (err) => {
@@ -83,9 +91,9 @@ export function AnswerChat({
             }));
             return;
           }
-          // 1500/网络错误：保留输入可重试（specs §5.2.5 落库失败）。
+          // 令牌失效（作答中被取消/链接重发作废）：转页面失效态（specs §4.1.4 规则5 / §5.2.5）。
           if (err instanceof AnswerApiError && err.code === 1901) {
-            toast.error(t('invalid.title'));
+            onInvalid();
             return;
           }
           toast.error(t('error.loadFailed'));
@@ -112,7 +120,8 @@ export function AnswerChat({
           return;
         }
         if (err instanceof AnswerApiError && err.code === 1901) {
-          toast.error(t('invalid.title'));
+          // 提交时令牌失效：转页面失效态（specs §5.3.5）。
+          onInvalid();
           return;
         }
         // 1500/网络错误：toast 后留在作答态可重试（specs §4.1.3）。

@@ -74,7 +74,17 @@ export function AnswerPage({ token }: { token: string }): JSX.Element {
             </CardContent>
           </Card>
         )}
-        {phase === 'answering' && ctxQ.data && <AnsweringState token={token} ctx={ctxQ.data} onSubmitSuccess={(taskNo) => { setSubmittedTaskNo(taskNo); setPhase('success'); }} />}
+        {phase === 'answering' && ctxQ.data && (
+          <AnsweringState
+            token={token}
+            ctx={ctxQ.data}
+            onInvalid={() => setPhase('invalid')}
+            onSubmitSuccess={(taskNo) => {
+              setSubmittedTaskNo(taskNo);
+              setPhase('success');
+            }}
+          />
+        )}
         {phase === 'success' && ctxQ.data && (
           <AnswerSuccessCard testType={ctxQ.data.test_type} taskNo={submittedTaskNo ?? ctxQ.data.task_no} onClose={() => window.close()} />
         )}
@@ -108,19 +118,22 @@ function noticeItems(t: (key: string, opts?: Record<string, unknown>) => string)
 
 /**
  * 作答态骨架（specs §3.3 作答态线框）：hero + 卡片主体（须知 + 进度 + 对话区）。
- * ctx 由顶层注入（同一份 context 数据驱动进度与对话区，避免二次请求）。
+ * ctx 由顶层注入（同一份 context 数据驱动进度与对话区，避免二次请求）；
+ * 进度计数以 ctx.answered_count 为初值、reply 成功后按服务端回传推进（specs §4.1.2 B 每题确认后更新）。
  */
 function AnsweringState({
   token,
   ctx,
+  onInvalid,
   onSubmitSuccess,
 }: {
   token: string;
   ctx: AnswerContextResult;
+  onInvalid: () => void;
   onSubmitSuccess: (taskNo: string) => void;
 }): JSX.Element {
   const { t } = useTranslation('answer');
-  const answered = ctx.answered_count;
+  const [answered, setAnswered] = useState(ctx.answered_count);
 
   return (
     <div className="shadow-xs overflow-hidden rounded-xl border">
@@ -144,7 +157,13 @@ function AnsweringState({
             </div>
             <Progress value={answered} total={ctx.question_total} />
           </section>
-          <AnswerChat token={token} ctx={ctx} onSubmitSuccess={onSubmitSuccess} />
+          <AnswerChat
+            token={token}
+            ctx={ctx}
+            onAnsweredChange={setAnswered}
+            onInvalid={onInvalid}
+            onSubmitSuccess={onSubmitSuccess}
+          />
         </CardContent>
       </Card>
     </div>

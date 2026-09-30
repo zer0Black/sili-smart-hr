@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ReactElement } from 'react';
 
 import i18n from '@/i18n/config';
+import { AnswerApiError } from '../answer-api';
 import type { AnswerContextResult, AnswerQuestionItem } from '../answer-types';
 
 const replyMock = vi.hoisted(() => vi.fn());
@@ -38,7 +39,11 @@ function context(partial: Partial<AnswerContextResult>): AnswerContextResult {
 
 function renderChat(node?: ReactElement) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<QueryClientProvider client={qc}>{node ?? <AnswerChat token={TOKEN} ctx={context({})} onSubmitSuccess={vi.fn()} />}</QueryClientProvider>);
+  return render(
+    <QueryClientProvider client={qc}>
+      {node ?? <AnswerChat token={TOKEN} ctx={context({})} onInvalid={vi.fn()} onSubmitSuccess={vi.fn()} />}
+    </QueryClientProvider>,
+  );
 }
 
 beforeEach(() => {
@@ -57,6 +62,7 @@ describe('AnswerChat（specs §4.1.2 B / §4.1.3 / §4.1.5）', () => {
       <AnswerChat
         token={TOKEN}
         ctx={context({ answered_count: 5, finished: true, replies: [1, 2, 3, 4, 5].map((seq) => ({ seq, content: `答${seq}` })) })}
+        onInvalid={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
     );
@@ -85,6 +91,7 @@ describe('AnswerChat（specs §4.1.2 B / §4.1.3 / §4.1.5）', () => {
       <AnswerChat
         token={TOKEN}
         ctx={context({ test_type: 'enneagram', questions: [q(1)] })}
+        onInvalid={vi.fn()}
         onSubmitSuccess={vi.fn()}
       />,
     );
@@ -105,10 +112,57 @@ describe('AnswerChat（specs §4.1.2 B / §4.1.3 / §4.1.5）', () => {
       <AnswerChat
         token={TOKEN}
         ctx={context({ answered_count: 5, finished: true, replies: [1, 2, 3, 4, 5].map((seq) => ({ seq, content: `答${seq}` })) })}
+        onInvalid={vi.fn()}
         onSubmitSuccess={onSuccess}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: '提交并结束' }));
     await waitFor(() => expect(onSuccess).toHaveBeenCalledWith('T202609290009'));
+  });
+
+  it('TestChatReplyTokenInvalid：reply 收到 1901 调 onInvalid 转页面失效态（specs §4.1.4 规则5 / §5.2.5）', async () => {
+    replyMock.mockRejectedValue(new AnswerApiError(1901, 'answer token invalid'));
+    const onInvalid = vi.fn();
+    renderChat(<AnswerChat token={TOKEN} ctx={context({})} onInvalid={onInvalid} onSubmitSuccess={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'C，因为……' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    await waitFor(() => expect(onInvalid).toHaveBeenCalledTimes(1));
+  });
+
+  it('TestChatSubmitTokenInvalid：submit 收到 1901 调 onInvalid 转页面失效态（specs §5.3.5）', async () => {
+    submitMock.mockRejectedValue(new AnswerApiError(1901, 'answer token invalid'));
+    const onInvalid = vi.fn();
+    renderChat(
+      <AnswerChat
+        token={TOKEN}
+        ctx={context({ answered_count: 5, finished: true, replies: [1, 2, 3, 4, 5].map((seq) => ({ seq, content: `答${seq}` })) })}
+        onInvalid={onInvalid}
+        onSubmitSuccess={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: '提交并结束' }));
+
+    await waitFor(() => expect(onInvalid).toHaveBeenCalledTimes(1));
+  });
+
+  it('TestChatReplyAdvancesAnswered：reply 成功以服务端 answered_count 上提进度（specs §4.1.2 B 每题确认后更新）', async () => {
+    replyMock.mockResolvedValue({
+      question_seq: 1,
+      answered_count: 1,
+      question_total: 5,
+      action: 'next',
+      next_question: q(2),
+    });
+    const onAnsweredChange = vi.fn();
+    renderChat(
+      <AnswerChat token={TOKEN} ctx={context({})} onInvalid={vi.fn()} onAnsweredChange={onAnsweredChange} onSubmitSuccess={vi.fn()} />,
+    );
+
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '选 C，因为……' } });
+    fireEvent.click(screen.getByRole('button', { name: '发送' }));
+
+    await waitFor(() => expect(onAnsweredChange).toHaveBeenCalledWith(1));
   });
 });
