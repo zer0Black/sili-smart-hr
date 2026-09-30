@@ -57,6 +57,11 @@ func TestMessages(t *testing.T) {
 		{"TestDimensionQuestionsEmpty", errcode.TestDimensionQuestionsEmpty, 1803, "test dimension questions empty"},
 		{"TestScaleNotReady", errcode.TestScaleNotReady, 1804, "test scale not ready"},
 		{"TestStaffInvalid", errcode.TestStaffInvalid, 1805, "test staff invalid"},
+
+		// answer 员工作答域 1901-1903（P2_TST_002 03 §5 错误码表）
+		{"AnswerTokenInvalid", errcode.AnswerTokenInvalid, 1901, "answer token invalid"},
+		{"AnswerReplyInvalid", errcode.AnswerReplyInvalid, 1902, "answer reply invalid"},
+		{"AnswerIncomplete", errcode.AnswerIncomplete, 1903, "answer incomplete"},
 	}
 
 	for _, tt := range tests {

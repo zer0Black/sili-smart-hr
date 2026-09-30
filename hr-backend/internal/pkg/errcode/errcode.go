@@ -3,8 +3,8 @@ package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
 // 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，
-// assessment batch 1601-1603，题库管理 1701-1709+1713，主动测试 1801-1805。
-// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank，8=主动测试。
+// assessment batch 1601-1603，题库管理 1701-1709+1713，主动测试 1801-1805，员工作答 1901-1903。
+// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank，8=主动测试，9=员工作答。
 // dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
@@ -58,6 +58,10 @@ const (
 	TestDimensionQuestionsEmpty = 1803 // 子能力无可用题目（specs §4.2.4 规则1）
 	TestScaleNotReady           = 1804 // 九型量表未就绪（specs §4.2.4 规则2）
 	TestStaffInvalid            = 1805 // 发起对象人员无效（specs §5.1.5）
+	// answer 员工作答 1901-1903（03 §5）。
+	AnswerTokenInvalid = 1901 // 作答令牌不可用（统一防枚举口径）
+	AnswerReplyInvalid = 1902 // 回复格式不符（空/超长/非 1-5 整数/完成态兜底）
+	AnswerIncomplete   = 1903 // 存在未作答题目
 )
 
 var messages = map[int]string{
@@ -109,6 +113,9 @@ var messages = map[int]string{
 	TestDimensionQuestionsEmpty:      "test dimension questions empty",
 	TestScaleNotReady:                "test scale not ready",
 	TestStaffInvalid:                 "test staff invalid",
+	AnswerTokenInvalid:               "answer token invalid",
+	AnswerReplyInvalid:               "answer reply invalid",
+	AnswerIncomplete:                 "answer incomplete",
 }
 
 // Message 返回错误码对应文案，未注册返回 "error"。
