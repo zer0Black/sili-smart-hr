@@ -8,13 +8,16 @@ import type { JSX, KeyboardEvent } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { ErrCode } from '@/lib/contracts';
 import { AnswerApiError } from '../answer-api';
 import { useAnswerReply, useAnswerSubmit } from '../answer-hooks';
 import type { AnswerContextResult } from '../answer-types';
-import { applyReplySuccess, buildInitialMessages, isValidLocalInput, type ChatMessage } from '../script';
+import { applyReplySuccess, buildInitialMessages, isValidLocalInput, runeCount, type ChatMessage } from '../script';
 
-/** ai_mgmt 回复上限（specs §4.1.2 B）：计数器 + maxLength 双重预拦，服务端兜底 1902。 */
-const AIMGMT_MAX_CHARS = 500;
+/** ai_mgmt 回复上限（specs §4.1.2 B）：计数器 + maxLength 双重预拦，服务端兜底 1902。
+ *  上限按 rune 计数（与服务端 utf8.RuneCountInString 同口径），maxLength 由浏览器
+ *  按 code unit 生效，emoji 等增补平面字符以计数器与切片为准。 */
+const AIMGMT_MAX_RUNES = 500;
 
 export function AnswerChat({
   token,
@@ -37,9 +40,6 @@ export function AnswerChat({
 
   const [script, setScript] = useState(() => buildInitialMessages(t, ctx));
   const [input, setInput] = useState('');
-  // 当前题号：初值从记录推算（ctx.answered_count + 1），成功回复后以服务端回传题号对齐推进
-  //（specs §5.2.4 规则1：客户端题号仅展示，响应回传实际题号）。
-  const [currentSeq, setCurrentSeq] = useState(Math.min(ctx.answered_count + 1, ctx.question_total));
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const sending = replyMutation.isPending;
@@ -55,44 +55,27 @@ export function AnswerChat({
     const content = input;
     if (sending || phase === 'finished') return;
     if (!isValidLocalInput(ctx.test_type, content)) {
-      // 本地拦截（specs §5.2.5 提交前）：九型非 1-5 整数按剧本提示重答，停留本题。
-      if (ctx.test_type === 'enneagram') {
-        setScript((prev) => ({
-          ...prev,
-          messages: [
-            ...prev.messages,
-            { id: `local-${prev.messages.length}`, role: 'ai', lines: [t('script.invalidReply')] },
-          ],
-        }));
-      }
+      // 本地拦截（specs §5.2.5 提交前）：按 test_type 提示重答，停留本题。
+      appendInvalidLine();
       return;
     }
     replyMutation.mutate(
-      { content, questionSeq: currentSeq },
+      { content },
       {
         onSuccess: (reply) => {
           setInput('');
-          // 服务端题号权威：以响应回传 question_seq 对齐当前题，next_question 全文即对齐后的题面
-          //（specs §5.2.4 规则1 前端对齐义务）。
-          setCurrentSeq(reply.question_seq);
           // 进度以落库记录为准（specs §4.1.2 B/§4.1.5：每题确认后即时更新计数与进度条）。
           onAnsweredChange?.(reply.answered_count);
           setScript((prev) => applyReplySuccess(t, prev, ctx, reply, content));
         },
         onError: (err) => {
-          if (err instanceof AnswerApiError && err.code === 1902) {
-            // 服务端格式校验兜底（specs §4.1.5 / §5.2.4 规则2）：AI 剧本提示重答，输入保留。
-            setScript((prev) => ({
-              ...prev,
-              messages: [
-                ...prev.messages,
-                { id: `invalid-${prev.messages.length}`, role: 'ai', lines: [t('script.invalidReply')] },
-              ],
-            }));
+          if (err instanceof AnswerApiError && err.code === ErrCode.AnswerReplyInvalid) {
+            // 服务端格式校验兜底（specs §4.1.5 / §5.2.4 规则2）：按 test_type 剧本提示重答，输入保留。
+            appendInvalidLine();
             return;
           }
           // 令牌失效（作答中被取消/链接重发作废）：转页面失效态（specs §4.1.4 规则5 / §5.2.5）。
-          if (err instanceof AnswerApiError && err.code === 1901) {
+          if (err instanceof AnswerApiError && err.code === ErrCode.AnswerTokenInvalid) {
             onInvalid();
             return;
           }
@@ -100,6 +83,21 @@ export function AnswerChat({
         },
       },
     );
+  };
+
+  // 非法回复提示行：文案按 test_type 取剧本（九型数字指引 / ai_mgmt 通用指引）。
+  const appendInvalidLine = () => {
+    setScript((prev) => ({
+      ...prev,
+      messages: [
+        ...prev.messages,
+        {
+          id: `invalid-${prev.messages.length}`,
+          role: 'ai',
+          lines: [t(ctx.test_type === 'enneagram' ? 'script.invalidReply' : 'script.invalidReplyAIMgmt')],
+        },
+      ],
+    }));
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -114,12 +112,12 @@ export function AnswerChat({
     submitMutation.mutate(undefined, {
       onSuccess: (result) => onSubmitSuccess(result.task_no),
       onError: (err) => {
-        if (err instanceof AnswerApiError && err.code === 1903) {
+        if (err instanceof AnswerApiError && err.code === ErrCode.AnswerIncomplete) {
           // 完整性失败：toast 后回作答态断点续答（specs §4.1.3 / A3 错误码）。
           toast.error(t('error.incomplete'));
           return;
         }
-        if (err instanceof AnswerApiError && err.code === 1901) {
+        if (err instanceof AnswerApiError && err.code === ErrCode.AnswerTokenInvalid) {
           // 提交时令牌失效：转页面失效态（specs §5.3.5）。
           onInvalid();
           return;
@@ -134,6 +132,8 @@ export function AnswerChat({
     !sending && phase === 'asking' && (ctx.test_type === 'enneagram' ? input.length > 0 : input.trim().length > 0);
   const placeholder =
     ctx.test_type === 'enneagram' ? t('input.placeholderEnne') : t('input.placeholderAIMgmt');
+  // rune 口径截断：与后端 utf8.RuneCountInString 同口径，防 surrogate pair 被切半。
+  const clampAIMgmt = (value: string) => [...value].slice(0, AIMGMT_MAX_RUNES).join('');
 
   return (
     <section className="bg-muted/40 overflow-hidden rounded-xl border">
@@ -152,11 +152,10 @@ export function AnswerChat({
           <div className="relative flex-1">
             <Textarea
               value={input}
-              onChange={(e) => setInput(ctx.test_type === 'ai_mgmt' ? e.target.value.slice(0, AIMGMT_MAX_CHARS) : e.target.value)}
+              onChange={(e) => setInput(ctx.test_type === 'ai_mgmt' ? clampAIMgmt(e.target.value) : e.target.value)}
               onKeyDown={onKeyDown}
               disabled={sending}
-              // 发送中输入区禁用至响应（specs §4.1.3 加载状态）；ai_mgmt maxLength 双保险。
-              maxLength={ctx.test_type === 'ai_mgmt' ? AIMGMT_MAX_CHARS : undefined}
+              // 发送中输入区禁用至响应（specs §4.1.3 加载状态）。
               placeholder={placeholder}
               rows={ctx.test_type === 'enneagram' ? 1 : 2}
               className="field-sizing-fixed resize-none"
@@ -164,9 +163,9 @@ export function AnswerChat({
             />
             {ctx.test_type === 'ai_mgmt' && (
               <span
-                className={`text-muted-foreground pointer-events-none absolute right-2.5 bottom-2 text-[11px] tabular-nums ${input.length >= AIMGMT_MAX_CHARS ? 'text-destructive' : ''}`}
+                className={`text-muted-foreground pointer-events-none absolute right-2.5 bottom-2 text-[11px] tabular-nums ${runeCount(input) >= AIMGMT_MAX_RUNES ? 'text-destructive' : ''}`}
               >
-                {t('input.charCount', { count: input.length })}
+                {t('input.charCount', { count: runeCount(input) })}
               </span>
             )}
           </div>
@@ -201,8 +200,8 @@ function MessageBubble({ message }: { message: ChatMessage }): JSX.Element {
     <div className={`flex max-w-[88%] gap-2.5 ${isAI ? '' : 'ml-auto flex-row-reverse'}`}>
       <div
         aria-hidden
-        className={`flex size-8 shrink-0 items-center justify-center rounded-full text-white ${
-          isAI ? 'bg-primary' : 'bg-success'
+        className={`flex size-8 shrink-0 items-center justify-center rounded-full ${
+          isAI ? 'bg-primary text-primary-foreground' : 'bg-success text-success-foreground'
         }`}
       >
         {isAI ? <Bot className="size-[18px]" /> : <User className="size-[18px]" />}
@@ -228,7 +227,7 @@ function MessageBubble({ message }: { message: ChatMessage }): JSX.Element {
 function TypingBubble(): JSX.Element {
   return (
     <div className="flex max-w-[88%] gap-2.5">
-      <div aria-hidden className="bg-primary flex size-8 shrink-0 items-center justify-center rounded-full text-white">
+      <div aria-hidden className="bg-primary text-primary-foreground flex size-8 shrink-0 items-center justify-center rounded-full">
         <Bot className="size-[18px]" />
       </div>
       <div className="bg-card flex items-center gap-1 rounded-md rounded-tl-sm border px-4 py-3.5" role="status">

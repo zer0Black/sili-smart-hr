@@ -23,8 +23,7 @@ const instance: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// 令牌在 POST body 自证（specs §5.1.4 规则2 公开路由组），请求侧刻意不附 Authorization。
-instance.interceptors.request.use((config) => config);
+// 令牌在 POST body 自证（specs §5.1.4 规则2 公开路由组），本实例不附 Authorization。
 
 // 响应拦截器：统一结构解包，code!==0 抛 AnswerApiError。作答域无 401 语义（无 JWT，令牌失效走 1901），
 // 故无 1003/401 登出分支。
@@ -65,16 +64,11 @@ export async function fetchAnswerContext(token: string): Promise<AnswerContextRe
   return data;
 }
 
-/** POST /api/answer/reply：逐题作答回复（03 §3 A2）。question_seq 为客户端展示题号，服务端仅对齐用可省略。 */
-export async function sendAnswerReply(
-  token: string,
-  content: string,
-  questionSeq?: number,
-): Promise<AnswerReplyResult> {
+/** POST /api/answer/reply：逐题作答回复（03 §3 A2）。服务端按已落库记录数推算题号。 */
+export async function sendAnswerReply(token: string, content: string): Promise<AnswerReplyResult> {
   const { data } = await instance.post<AnswerReplyResult>('/answer/reply', {
     token,
     content,
-    question_seq: questionSeq,
   });
   return data;
 }

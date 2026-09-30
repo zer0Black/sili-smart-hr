@@ -144,20 +144,19 @@ describe('AnswerPage 三态编排（specs §6.1 / §5.1.5）', () => {
 });
 
 describe('AnswerSuccessCard（specs §4.3）', () => {
-  it('TestSuccessCard：任务号 font-mono 呈现，点击关闭按钮调用 onClose（§4.3.3/§4.3.2）', () => {
-    const onClose = vi.fn();
-    renderPage(<AnswerSuccessCard testType="ai_mgmt" taskNo="T202609290001" onClose={onClose} />);
+  it('TestSuccessCard：任务号 font-mono 呈现，点击关闭按钮调 window.close（§4.3.3/§4.3.2）', () => {
+    renderPage(<AnswerSuccessCard testType="ai_mgmt" taskNo="T202609290001" />);
 
     expect(screen.getByText(/T202609290001/)).toHaveClass('font-mono');
     expect(screen.getByText('作答已提交')).toBeInTheDocument();
     // i18next 插值在 {{title}} 前后留空格，断言用宽松匹配
     expect(screen.getByText(/感谢您的参与，AI 管理能力测评 ?已成功提交/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '关闭窗口' }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(window.close).toHaveBeenCalled();
   });
 
   it('TestSuccessCardCloseFallback：300ms 后窗口未关呈现手动关闭提示（§4.1.5 closeFallback）', async () => {
-    renderPage(<AnswerSuccessCard testType="enneagram" taskNo="E202609290001" onClose={() => {}} />);
+    renderPage(<AnswerSuccessCard testType="enneagram" taskNo="E202609290001" />);
     fireEvent.click(screen.getByRole('button', { name: '关闭窗口' }));
     expect(window.close).toHaveBeenCalled();
 
@@ -167,7 +166,7 @@ describe('AnswerSuccessCard（specs §4.3）', () => {
   });
 
   it('TestSuccessCardEnneagram：enneagram 呈现九型标题与任务号', () => {
-    renderPage(<AnswerSuccessCard testType="enneagram" taskNo="E202609290001" onClose={vi.fn()} />);
+    renderPage(<AnswerSuccessCard testType="enneagram" taskNo="E202609290001" />);
     expect(screen.getByText(/九型人格测评 ?已成功提交/)).toBeInTheDocument();
     expect(screen.getByText(/E202609290001/)).toBeInTheDocument();
   });

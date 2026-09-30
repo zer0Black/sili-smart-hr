@@ -61,8 +61,9 @@ type AssessmentTestTaskRepository interface {
 	// CancelTask 事务：任务条件更新（pending/in_progress/expired 集合）置 canceled +
 	// 当前 valid 链接置 invalid。返回 affected，0 映射状态非法（specs §4.1.4 规则2）。
 	CancelTask(ctx context.Context, taskID int64) (int64, error)
-	// MarkSessionStarted pending→in_progress 条件更新，幂等（specs §6.2）。
-	MarkSessionStarted(ctx context.Context, taskID int64) error
+	// MarkSessionStarted pending→in_progress 条件更新返回 affected（0 时调用方
+	// 复查终态竞态，specs §6.2）。
+	MarkSessionStarted(ctx context.Context, taskID int64) (int64, error)
 	// CountActiveByType 两类未终态任务计数：status ∈ {pending, in_progress} 或
 	//（status=completed 且 grading_status ∈ {waiting, grading}），排除 canceled（03 A2 口径）。
 	CountActiveByType(ctx context.Context) (aiMgmt, enneagram int64, err error)
@@ -160,7 +161,7 @@ func (r *assessmentTestTaskRepository) GetByID(ctx context.Context, id int64) (*
 // 首写时间显式 UTC（session_feature 范式）：autoCreate/autoUpdate 回调填本地时区
 // 会让同列混存两种偏移串。
 func (r *assessmentTestTaskRepository) CreateWithLink(ctx context.Context, task *domain.AssessmentTestTask, link *domain.AssessmentTestLink) error {
-	questionIDs, err := parseQuestionIDs(task.QuestionIDsJSON)
+	questionIDs, err := ParseQuestionIDs(task.QuestionIDsJSON)
 	if err != nil {
 		return err
 	}
@@ -178,9 +179,10 @@ func (r *assessmentTestTaskRepository) CreateWithLink(ctx context.Context, task 
 	})
 }
 
-// parseQuestionIDs 解析任务快照的题目 ID 数组，坏 JSON 显式报错（快照列为
-// service 层 json.Marshal 产物，残缺即上游组装缺陷）。
-func parseQuestionIDs(s string) ([]int64, error) {
+// ParseQuestionIDs 解析任务快照 question_ids_json 的题目 ID 数组，空串归空集；
+// 坏 JSON 显式报错（快照列为 service 层 json.Marshal 产物，残缺即上游组装缺陷）。
+// 单点导出：service/answer 与 engine/grading 同口径消费。
+func ParseQuestionIDs(s string) ([]int64, error) {
 	if s == "" {
 		return nil, nil
 	}
@@ -293,10 +295,12 @@ func (r *assessmentTestTaskRepository) CancelTask(ctx context.Context, taskID in
 }
 
 // MarkSessionStarted WHERE status='pending' 条件更新，in_progress 重复上报幂等。
-func (r *assessmentTestTaskRepository) MarkSessionStarted(ctx context.Context, taskID int64) error {
-	return r.db.WithContext(ctx).Model(&domain.AssessmentTestTask{}).
+// 返回 affected：0 时调用方复查任务状态区分幂等与终态竞态。
+func (r *assessmentTestTaskRepository) MarkSessionStarted(ctx context.Context, taskID int64) (int64, error) {
+	res := r.db.WithContext(ctx).Model(&domain.AssessmentTestTask{}).
 		Where("id = ? AND status = ?", taskID, domain.TestTaskStatusPending).
-		Update("status", domain.TestTaskStatusInProgress).Error
+		Update("status", domain.TestTaskStatusInProgress)
+	return res.RowsAffected, res.Error
 }
 
 // CountActiveByType 03 A2 口径两条计数：未终态（作答侧 + 阅卷在途的已完成）。

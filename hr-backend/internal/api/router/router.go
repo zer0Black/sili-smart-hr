@@ -77,21 +77,22 @@ func NewRouter(
 		systemHandler.GetSummary,
 	)
 	// 员工作答域：三接口挂公开路由组令牌自证（specs P2_TST_002 §4.1.6，无 JWT、
-	// 无 401 路径），三接口共享同一 IP 限流桶 30/min 收敛防令牌爆破（03 §2.1，
-	// specs §5.1.4 规则2；桶内计数覆盖整个作答会话：加载+逐题回复+提交）。
-	for _, route := range []struct {
-		path    string
-		handler gin.HandlerFunc
-	}{
-		{"/api/answer/context", answerHandler.Context},
-		{"/api/answer/reply", answerHandler.Reply},
-		{"/api/answer/submit", answerHandler.Submit},
-	} {
-		r.POST(route.path,
-			middleware.RateLimit(rdb, "sili-smart-hr:rl:answer:", middleware.ClientIPKey, 30, time.Minute),
-			route.handler,
-		)
-	}
+	// 无 401 路径），IP 限流收敛防令牌爆破（03 §2.1，specs §5.1.4 规则2；阈值
+	// 为注册处常量，规格授权实现期可调）。context/submit 低频维持 30/min；
+	// reply 单独放宽 120/min：组卷逐子能力启用题全取题量无上限（8 子能力各 5 题
+	// 即 40+ 次），30/min 会拦截合法连续作答。
+	r.POST("/api/answer/context",
+		middleware.RateLimit(rdb, "sili-smart-hr:rl:answer-ctx:", middleware.ClientIPKey, 30, time.Minute),
+		answerHandler.Context,
+	)
+	r.POST("/api/answer/reply",
+		middleware.RateLimit(rdb, "sili-smart-hr:rl:answer-reply:", middleware.ClientIPKey, 120, time.Minute),
+		answerHandler.Reply,
+	)
+	r.POST("/api/answer/submit",
+		middleware.RateLimit(rdb, "sili-smart-hr:rl:answer-submit:", middleware.ClientIPKey, 30, time.Minute),
+		answerHandler.Submit,
+	)
 
 	auth := r.Group("/api", middleware.JWT(jwtMgr))
 	auth.GET("/me", accountHandler.Me)

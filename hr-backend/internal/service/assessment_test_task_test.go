@@ -145,17 +145,18 @@ func (f *fakeTSTRepo) CancelTask(_ context.Context, taskID int64) (int64, error)
 }
 
 // MarkSessionStarted 模拟 WHERE status='pending' 条件更新：任务存在且 pending 时
-// 推进 in_progress 置 startAffected，其余（in_progress/completed/查无）幂等返回 nil。
-func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) error {
+// 推进 in_progress 置 startAffected 返 1，其余 affected=0 幂等返回。
+func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) (int64, error) {
 	f.gotStartID = taskID
 	if f.startErr != nil {
-		return f.startErr
+		return 0, f.startErr
 	}
 	if f.byID != nil && f.byID.ID == taskID && f.byID.Status == domain.TestTaskStatusPending {
 		f.byID.Status = domain.TestTaskStatusInProgress
 		f.startAffected = true
+		return 1, nil
 	}
-	return nil
+	return 0, nil
 }
 func (f *fakeTSTRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return f.activeAI, f.activeEnne, f.countErr
@@ -1287,6 +1288,22 @@ func TestServiceStartSessionHappy(t *testing.T) {
 	}
 	if !taskRepo.startAffected || task.Status != domain.TestTaskStatusInProgress {
 		t.Errorf("任务推进 = %q（affected=%v）, want in_progress", task.Status, taskRepo.startAffected)
+	}
+}
+
+// TestServiceStartSessionTerminalRace 核心断言：校验后任务被并发推进终态
+//（expired/canceled），affected=0 复查状态映射 1802 而非误当幂等成功。
+func TestServiceStartSessionTerminalRace(t *testing.T) {
+	for _, status := range []string{domain.TestTaskStatusExpired, domain.TestTaskStatusCanceled, domain.TestTaskStatusCompleted} {
+		task := &domain.AssessmentTestTask{ID: 7, Status: status}
+		taskRepo := &fakeTSTRepo{byID: task}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+
+		err := svc.StartSession(context.Background(), 7)
+		wantServiceErr(t, err, errcode.TestTaskStatusInvalid)
+		if taskRepo.startAffected {
+			t.Errorf("status=%s 终态任务不得被改写", status)
+		}
 	}
 }
 

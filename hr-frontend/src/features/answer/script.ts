@@ -49,13 +49,14 @@ function openingLines(t: TFunction, testType: AnswerTestType): string[] {
 
 /**
  * 题目包装消息：题号行 + 情境段 + 作答要求段（specs §4.1.5 多段呈现，原型同构）。
- * 九型 scenario 为题项陈述、requirement 为 1-5 级作答说明，语义随 test_type 切换。
+ * 九型两段结构（specs §4.1.5 字段表：题项陈述 + 1-5 级作答说明）：题号行已内插
+ * statement，不再追加 scenario；ai_mgmt 三段：题号行带子能力名 + 情境 + 要求。
  */
 function questionLines(t: TFunction, testType: AnswerTestType, question: AnswerQuestionItem): string[] {
-  const title =
-    testType === 'enneagram'
-      ? t('script.scaleTitle', { seq: question.seq, statement: question.scenario })
-      : t('script.questionTitle', { seq: question.seq, dimension: question.dimension_name });
+  if (testType === 'enneagram') {
+    return [t('script.scaleTitle', { seq: question.seq, statement: question.scenario }), question.requirement];
+  }
+  const title = t('script.questionTitle', { seq: question.seq, dimension: question.dimension_name });
   return [title, question.scenario, question.requirement];
 }
 
@@ -142,4 +143,10 @@ export function isValidLocalInput(testType: AnswerTestType, content: string): bo
 export function progressPercent(answered: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((answered / total) * 100);
+}
+
+/** rune 计数（与服务端 utf8.RuneCountInString 同口径）：emoji 等增补平面字符
+ *  在 UTF-16 占 2 个 code unit，长度上限与计数器须按 rune 口径防错位。 */
+export function runeCount(s: string): number {
+  return [...s].length;
 }

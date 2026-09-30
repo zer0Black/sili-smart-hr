@@ -517,24 +517,24 @@ func TestMarkSessionStarted(t *testing.T) {
 	ctx := context.Background()
 	task, _ := mustCreate(t, repo, "T202609280001", []domain.Question{seedQ(t, db, "Q-AG-0001")})
 
-	if err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
-		t.Fatalf("MarkSessionStarted: %v", err)
+	if affected, err := repo.MarkSessionStarted(ctx, task.ID); err != nil || affected != 1 {
+		t.Fatalf("MarkSessionStarted: affected=%d err=%v, want 1/nil", affected, err)
 	}
 	if got := loadTask(t, db, task.ID); got.Status != domain.TestTaskStatusInProgress {
 		t.Fatalf("status = %s, want in_progress", got.Status)
 	}
 	// 已 in_progress 再调：affected=0 幂等。
-	if err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
-		t.Fatalf("MarkSessionStarted idempotent: %v", err)
+	if affected, err := repo.MarkSessionStarted(ctx, task.ID); err != nil || affected != 0 {
+		t.Fatalf("MarkSessionStarted idempotent: affected=%d err=%v, want 0/nil", affected, err)
 	}
 	if got := loadTask(t, db, task.ID); got.Status != domain.TestTaskStatusInProgress {
 		t.Fatalf("status after replay = %s, want in_progress", got.Status)
 	}
-	// completed 任务调用：不推进终态。
+	// completed 任务调用：affected=0 不推进终态。
 	db.Model(&domain.AssessmentTestTask{}).Where("id = ?", task.ID).
 		Update("status", domain.TestTaskStatusCompleted)
-	if err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
-		t.Fatalf("MarkSessionStarted on completed: %v", err)
+	if affected, err := repo.MarkSessionStarted(ctx, task.ID); err != nil || affected != 0 {
+		t.Fatalf("MarkSessionStarted on completed: affected=%d err=%v, want 0/nil", affected, err)
 	}
 	if got := loadTask(t, db, task.ID); got.Status != domain.TestTaskStatusCompleted {
 		t.Fatalf("terminal status mutated: %s", got.Status)
@@ -891,7 +891,7 @@ func TestCompleteTaskInProgress(t *testing.T) {
 	ctx := context.Background()
 	q := seedQ(t, db, "Q-AG-0001")
 	task, link := mustCreate(t, repo, "T202609280001", []domain.Question{q})
-	if err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
+	if _, err := repo.MarkSessionStarted(ctx, task.ID); err != nil {
 		t.Fatalf("MarkSessionStarted: %v", err)
 	}
 	submittedAt := tUTC(2026, 9, 28, 12, 30)

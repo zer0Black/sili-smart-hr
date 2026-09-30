@@ -566,14 +566,19 @@ func (s *assessmentTestTaskService) CompleteTask(ctx context.Context, taskID int
 }
 
 // StartSession F8 会话上报：pending→in_progress 条件更新直通（specs §6.2），
-// 任务不存在 1801；幂等由 repo 守卫承载（affected=0 且任务存在即已在
-// in_progress/completed，返回 nil 不重复改写）。
+// 任务不存在 1801；affected=0 时复查任务状态：in_progress 为幂等成功，
+// 其余（expired/canceled/completed）为校验后竞态，映射 1802 交调用方收敛。
 func (s *assessmentTestTaskService) StartSession(ctx context.Context, taskID int64) error {
-	if _, err := s.loadTask(ctx, taskID); err != nil {
+	task, err := s.loadTask(ctx, taskID)
+	if err != nil {
 		return err
 	}
-	if err := s.taskRepo.MarkSessionStarted(ctx, taskID); err != nil {
+	affected, err := s.taskRepo.MarkSessionStarted(ctx, taskID)
+	if err != nil {
 		return fmt.Errorf("mark session started: %w", err)
+	}
+	if affected == 0 && task.Status != domain.TestTaskStatusInProgress {
+		return NewError(errcode.TestTaskStatusInvalid)
 	}
 	return nil
 }

@@ -10,9 +10,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -71,7 +71,7 @@ type AnswerSubmitResult struct {
 // AnswerService answer 域业务接口（03 §3 三接口）。
 type AnswerService interface {
 	Context(ctx context.Context, token string) (*AnswerContextResult, error)
-	Reply(ctx context.Context, token, content string, clientSeq int) (*AnswerReplyResult, error)
+	Reply(ctx context.Context, token, content string) (*AnswerReplyResult, error)
 	Submit(ctx context.Context, token string) (*AnswerSubmitResult, error)
 }
 
@@ -81,6 +81,7 @@ type answerService struct {
 	taskSvc      AssessmentTestTaskService
 	questionRepo repository.QuestionRepository
 	dimRepo      repository.DimensionRepository
+	now          func() time.Time
 }
 
 // NewAnswerService 构造 answer 域 service。taskRepo 只读消费 GetByID 点查任务行，
@@ -91,6 +92,7 @@ func NewAnswerService(
 	taskSvc AssessmentTestTaskService,
 	questionRepo repository.QuestionRepository,
 	dimRepo repository.DimensionRepository,
+	now func() time.Time,
 ) AnswerService {
 	return &answerService{
 		answerRepo:   answerRepo,
@@ -98,11 +100,12 @@ func NewAnswerService(
 		taskSvc:      taskSvc,
 		questionRepo: questionRepo,
 		dimRepo:      dimRepo,
+		now:          now,
 	}
 }
 
-// validateToken 令牌校验链（03 §4.1，三接口共享）：哈希点查 → 链接态 → 任务态。
-// 失败一律 1901 同文案（specs §4.2.4 规则1 防枚举）；Submit 传
+// validateToken 令牌校验链（03 §4.1，三接口共享）：哈希点查 → 链接态 → 到期判定
+// → 任务态。失败一律 1901 同文案（specs §4.2.4 规则1 防枚举）；Submit 传
 // allowCompletedIdempotent 放行「used + 任务 completed」幂等特例（03 §1.5）。
 func (s *answerService) validateToken(ctx context.Context, token string, allowCompletedIdempotent bool) (*domain.AssessmentTestTask, error) {
 	if token == "" {
@@ -116,6 +119,13 @@ func (s *answerService) validateToken(ctx context.Context, token string, allowCo
 	}
 	if link == nil || link.Status == domain.LinkStatusInvalid {
 		slog.Warn("answer token rejected", "token_hash_prefix", tokenHash[:8], "link_status", linkStatusOrEmpty(link))
+		return nil, NewError(errcode.AnswerTokenInvalid)
+	}
+	// 到期即时判定收口 tick 空窗：每分钟 ExpirePending 只扫 pending 任务，
+	// 先于此被作答救活的过期链接若不在此拦下，任务转 in_progress 后永不过期
+	//（ExpirePending 同口径 expires_at < now，specs §5.1.4）。
+	if link.ExpiresAt.Before(s.now()) {
+		slog.Warn("answer token expired", "token_hash_prefix", tokenHash[:8])
 		return nil, NewError(errcode.AnswerTokenInvalid)
 	}
 	task, err := s.taskRepo.GetByID(ctx, link.TaskID)
@@ -171,29 +181,26 @@ func (s *answerService) Context(ctx context.Context, token string) (*AnswerConte
 	if err != nil {
 		return nil, fmt.Errorf("list answers: %w", err)
 	}
-	count, err := s.answerRepo.CountByTask(ctx, task.ID)
-	if err != nil {
-		return nil, fmt.Errorf("count answers: %w", err)
-	}
+	// ListByTask 契约自带 question_seq 升序，rows 单次读取即计数与列表双来源。
 	res := &AnswerContextResult{
 		TaskNo:        task.TaskNo,
 		TestType:      task.TestType,
 		QuestionTotal: len(questionIDs),
-		AnsweredCount: int(count),
-		Finished:      int(count) >= len(questionIDs), // ≥ 口径（03 §1.7）
+		AnsweredCount: len(rows),
+		Finished:      len(rows) >= len(questionIDs), // ≥ 口径（03 §1.7）
 		Questions:     questions,
 		Replies:       make([]AnswerReplyItem, 0, len(rows)),
 	}
-	sort.Slice(rows, func(i, j int) bool { return rows[i].QuestionSeq < rows[j].QuestionSeq })
 	for _, r := range rows {
 		res.Replies = append(res.Replies, AnswerReplyItem{Seq: r.QuestionSeq, Content: r.Content})
 	}
 	return res, nil
 }
 
-// Reply A2（specs §5.2.2）：校验链 → 服务端推算题号 → 格式校验 → 落库 → 推进指令。
-// clientSeq 仅展示用，恒被忽略（specs §5.2.4 规则1）。
-func (s *answerService) Reply(ctx context.Context, token, content string, clientSeq int) (*AnswerReplyResult, error) {
+// Reply A2（specs §5.2.2）：校验链 → 服务端推算题号 → 格式校验 → 组装下一题 →
+// 落库 → 推进指令。组装先于落库：组装失败零落库，客户端重发仍落原题号，
+// 保证「按已落库记录数推算当前题」的推进单调（specs §5.2.4 规则1）。
+func (s *answerService) Reply(ctx context.Context, token, content string) (*AnswerReplyResult, error) {
 	task, err := s.validateToken(ctx, token, false)
 	if err != nil {
 		return nil, err
@@ -216,11 +223,6 @@ func (s *answerService) Reply(ctx context.Context, token, content string, client
 	if !validAnswerContent(task.TestType, trimmed) {
 		return nil, NewError(errcode.AnswerReplyInvalid)
 	}
-	row := &domain.AssessmentTestAnswer{TaskID: task.ID, QuestionSeq: seq, Content: trimmed}
-	if err := s.answerRepo.Insert(ctx, row); err != nil {
-		slog.Error("answer insert failed", "task_no", task.TaskNo, "err", err)
-		return nil, fmt.Errorf("insert answer: %w", err)
-	}
 	res := &AnswerReplyResult{
 		QuestionSeq:   seq,
 		AnsweredCount: int(answered) + 1,
@@ -234,8 +236,15 @@ func (s *answerService) Reply(ctx context.Context, token, content string, client
 			slog.Error("answer load next question failed", "task_no", task.TaskNo, "err", err)
 			return nil, err
 		}
-		res.Action = AnswerActionNext
 		res.NextQuestion = next
+	}
+	row := &domain.AssessmentTestAnswer{TaskID: task.ID, QuestionSeq: seq, Content: trimmed}
+	if err := s.answerRepo.Insert(ctx, row); err != nil {
+		slog.Error("answer insert failed", "task_no", task.TaskNo, "err", err)
+		return nil, fmt.Errorf("insert answer: %w", err)
+	}
+	if res.AnsweredCount < questionTotal {
+		res.Action = AnswerActionNext
 	}
 	return res, nil
 }
@@ -272,17 +281,10 @@ func (s *answerService) Submit(ctx context.Context, token string) (*AnswerSubmit
 	return &AnswerSubmitResult{TaskNo: task.TaskNo}, nil
 }
 
-// parseAnswerQuestionIDs 解析任务快照题目 ID 数组，空串归空集；坏 JSON 为上游
-// 组装缺陷，显式报错（repository.parseQuestionIDs 同口径，service 侧独立定义）。
+// parseAnswerQuestionIDs 解析任务快照题目 ID 数组：repository.ParseQuestionIDs
+// 单点实现，service 侧薄封装。
 func parseAnswerQuestionIDs(s string) ([]int64, error) {
-	if s == "" {
-		return nil, nil
-	}
-	var ids []int64
-	if err := json.Unmarshal([]byte(s), &ids); err != nil {
-		return nil, fmt.Errorf("parse question_ids_json: %w", err)
-	}
-	return ids, nil
+	return repository.ParseQuestionIDs(s)
 }
 
 // validAnswerContent 格式校验（specs §5.2.2 步骤2）：非空、ai_mgmt ≤500 rune、

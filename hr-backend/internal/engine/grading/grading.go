@@ -144,8 +144,8 @@ func (g *Grader) Run(ctx context.Context, taskID int64) error {
 // loadQuestions 展开题目快照现读全文（specs §5.1.4 规则2：集合以快照为准，
 // 文本经 Unscoped 现读，03 §4.6 注记）。
 func (g *Grader) loadQuestions(ctx context.Context, task *domain.AssessmentTestTask) ([]domain.Question, error) {
-	var ids []int64
-	if err := json.Unmarshal([]byte(task.QuestionIDsJSON), &ids); err != nil {
+	ids, err := repository.ParseQuestionIDs(task.QuestionIDsJSON)
+	if err != nil {
 		return nil, fmt.Errorf("grading: parse question_ids_json of task %d: %w", task.ID, err)
 	}
 	questions, err := g.questionRepo.ListByIDsUnscoped(ctx, ids)

@@ -7,43 +7,26 @@ import type { JSX } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { ErrCode } from '@/lib/contracts';
 import { AnswerApiError } from '../answer-api';
 import type { AnswerContextResult } from '../answer-types';
 import { useAnswerContext } from '../answer-hooks';
+import { progressPercent } from '../script';
 import { AnswerChat } from './answer-chat';
 import { AnswerHero } from './answer-hero';
 import { AnswerInvalidCard } from './answer-invalid';
 import { AnswerSuccessCard } from './answer-success';
 
-/** 内部状态机：error 为加载失败（可重试），invalid 为令牌失效终态（specs §5.1.5 前端面）。 */
-type Phase = 'loading' | 'answering' | 'invalid' | 'error' | 'success';
+/** 提交成功的置位标记：success 态在 ctx 数据之外唯一需记忆的事实（task_no 同源于 ctx）。 */
+type AnswerPageInnerState = { submitted: boolean; forceInvalid: boolean };
 
 export function AnswerPage({ token }: { token: string }): JSX.Element {
   const { t } = useTranslation('answer');
   const ctxQ = useAnswerContext(token);
-  const [phase, setPhase] = useState<Phase>('loading');
-  // 提交成功态参考编号：优先 submit 响应 task_no，兜底 context 的任务号。
-  const [submittedTaskNo, setSubmittedTaskNo] = useState<string | null>(null);
-  const queryError = ctxQ.error;
+  const [inner, setInner] = useState<AnswerPageInnerState>({ submitted: false, forceInvalid: false });
 
-  useEffect(() => {
-    if (ctxQ.isPending) {
-      setPhase('loading');
-      return;
-    }
-    if (queryError) {
-      // AnswerApiError code=1901 转 invalid（统一失效文案）；其余（含通道级 code=0）转 error 可重试。
-      const isInvalid = queryError instanceof AnswerApiError && queryError.code === 1901;
-      setPhase(isInvalid ? 'invalid' : 'error');
-      return;
-    }
-    if (ctxQ.data) {
-      // 校验通过即进作答态；context.finished 时对话区以完成待提交子阶段呈现（specs §4.1.3 对话恢复）。
-      setPhase('answering');
-    }
-  }, [ctxQ.isPending, ctxQ.data, queryError]);
-
-  // 提交成功后转 success 并滚动顶部（specs §4.1.5/§4.3.5）。
+  // 提交成功后滚动顶部（specs §4.1.5/§4.3.5）。
+  const phase = derivePhase(ctxQ, inner);
   useEffect(() => {
     if (phase === 'success') {
       window.scrollTo?.(0, 0);
@@ -78,19 +61,37 @@ export function AnswerPage({ token }: { token: string }): JSX.Element {
           <AnsweringState
             token={token}
             ctx={ctxQ.data}
-            onInvalid={() => setPhase('invalid')}
-            onSubmitSuccess={(taskNo) => {
-              setSubmittedTaskNo(taskNo);
-              setPhase('success');
-            }}
+            onInvalid={() => setInner((s) => ({ ...s, forceInvalid: true }))}
+            onSubmitSuccess={() => setInner((s) => ({ ...s, submitted: true }))}
           />
         )}
         {phase === 'success' && ctxQ.data && (
-          <AnswerSuccessCard testType={ctxQ.data.test_type} taskNo={submittedTaskNo ?? ctxQ.data.task_no} onClose={() => window.close()} />
+          <AnswerSuccessCard testType={ctxQ.data.test_type} taskNo={ctxQ.data.task_no} />
         )}
       </main>
     </div>
   );
+}
+
+/** 内部状态机：error 为加载失败（可重试），invalid 为令牌失效终态（specs §5.1.5 前端面）。 */
+type Phase = 'loading' | 'answering' | 'invalid' | 'error' | 'success';
+
+/** phase 单向派生：query 状态（isPending/error/data）不镜像进 state，真状态只有
+ *  submitted（提交成功）与 forceInvalid（作答中令牌失效）两枚置位标记。 */
+function derivePhase(
+  ctxQ: ReturnType<typeof useAnswerContext>,
+  inner: AnswerPageInnerState,
+): Phase {
+  if (inner.submitted && ctxQ.data) return 'success';
+  if (inner.forceInvalid) return 'invalid';
+  if (ctxQ.isPending) return 'loading';
+  if (ctxQ.error) {
+    // AnswerApiError code=1901 转 invalid（统一失效文案）；其余（含通道级 code=0）转 error 可重试。
+    return ctxQ.error instanceof AnswerApiError && ctxQ.error.code === ErrCode.AnswerTokenInvalid
+      ? 'invalid'
+      : 'error';
+  }
+  return 'answering';
 }
 
 /** 品牌头（specs §3.3 线框）：logo 方块 S + sili-smart-hr + 副标题，无导航。品牌名双语一致不进语言包。 */
@@ -172,7 +173,7 @@ function AnsweringState({
 
 /** 细进度条：radix Progress 原语的私有薄封装（components/ui 无 progress.tsx，任务内不越界新建公共件）。 */
 function Progress({ value, total }: { value: number; total: number }) {
-  const percent = total > 0 ? Math.round((value / total) * 100) : 0;
+  const percent = progressPercent(value, total);
   return (
     <div
       role="progressbar"

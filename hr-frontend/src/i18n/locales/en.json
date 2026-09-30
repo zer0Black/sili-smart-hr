@@ -1099,6 +1099,7 @@
       "ackAIMgmt": "Got it. Let's move to the next question.",
       "ackEnneagram": "Recorded. Next question.",
       "invalidReply": "Please reply with a number between 1 and 5.",
+      "invalidReplyAIMgmt": "Your reply doesn't meet the requirements. Please adjust and resend.",
       "finish1": "All questions have been answered.",
       "finish2": "I will make a comprehensive evaluation based on your answers throughout the conversation. Results will be fed back via the platform and are not shown on this page."
     },

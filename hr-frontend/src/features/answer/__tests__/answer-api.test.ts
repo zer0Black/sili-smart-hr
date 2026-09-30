@@ -142,7 +142,7 @@ describe('三请求函数 body 组装', () => {
     expect(JSON.parse(seen[0].data as string)).toEqual({ token });
   });
 
-  it('TestReplyBody：sendAnswerReply 发 POST /answer/reply，body 携带 token/content/question_seq', async () => {
+  it('TestReplyBody：sendAnswerReply 发 POST /answer/reply，body 只携带 token/content（服务端题号权威）', async () => {
     const seen = installAdapter(() => ({
       status: 200,
       data: {
@@ -157,14 +157,14 @@ describe('三请求函数 body 组装', () => {
         },
       },
     }));
-    const result = await sendAnswerReply(token, 'C', 3);
+    const result = await sendAnswerReply(token, 'C');
     expect(seen[0].url).toBe('/answer/reply');
-    expect(JSON.parse(seen[0].data as string)).toEqual({ token, content: 'C', question_seq: 3 });
+    expect(JSON.parse(seen[0].data as string)).toEqual({ token, content: 'C' });
     expect(result.action).toBe('next');
     expect(result.next_question?.seq).toBe(4);
   });
 
-  it('TestReplyBodyOptionalSeq：question_seq 省略时 body 不携带该字段', async () => {
+  it('TestReplyFinishedUnwrap：action=finished 解包 next_question=null', async () => {
     const seen = installAdapter(() => ({
       status: 200,
       data: {

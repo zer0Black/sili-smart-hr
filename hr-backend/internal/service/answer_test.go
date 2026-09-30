@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -64,7 +65,11 @@ func (f *fakeAnswerRepo) ListByTask(_ context.Context, _ int64) ([]domain.Assess
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
-	return f.rows, nil
+	// 对齐真实仓储契约：question_seq 升序返回。
+	sorted := make([]domain.AssessmentTestAnswer, len(f.rows))
+	copy(sorted, f.rows)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].QuestionSeq < sorted[j].QuestionSeq })
+	return sorted, nil
 }
 
 func (f *fakeAnswerRepo) FindLinkByTokenHash(_ context.Context, tokenHash string) (*domain.AssessmentTestLink, error) {
@@ -106,7 +111,9 @@ func (f *fakeAnswerTaskRepo) ReplaceLink(_ context.Context, _ int64, _ *domain.A
 	return nil
 }
 func (f *fakeAnswerTaskRepo) CancelTask(_ context.Context, _ int64) (int64, error) { return 0, nil }
-func (f *fakeAnswerTaskRepo) MarkSessionStarted(_ context.Context, _ int64) error  { return nil }
+func (f *fakeAnswerTaskRepo) MarkSessionStarted(_ context.Context, _ int64) (int64, error) {
+	return 0, nil
+}
 func (f *fakeAnswerTaskRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return 0, 0, nil
 }
@@ -303,10 +310,10 @@ func newAnswerFixture(t *testing.T) *answerFixture {
 	return newAnswerFixtureTask(t, answerAIMgmtTask())
 }
 
-// newAnswerFixtureTask 携指定任务装配。
+// newAnswerFixtureTask 携指定任务装配。链接固定未到期（过期判定用例自行改写）。
 func newAnswerFixtureTask(t *testing.T, task *domain.AssessmentTestTask) *answerFixture {
 	t.Helper()
-	link := &domain.AssessmentTestLink{ID: 90, TaskID: task.ID, TokenHash: answerTokenHash(), Status: domain.LinkStatusValid}
+	link := &domain.AssessmentTestLink{ID: 90, TaskID: task.ID, TokenHash: answerTokenHash(), Status: domain.LinkStatusValid, ExpiresAt: time.Now().Add(time.Hour)}
 	ansRepo := &fakeAnswerRepo{link: link}
 	taskRepo := &fakeAnswerTaskRepo{byID: task}
 	taskSvc := &fakeAnswerSvcTask{}
@@ -315,7 +322,7 @@ func newAnswerFixtureTask(t *testing.T, task *domain.AssessmentTestTask) *answer
 	if task.TestType == domain.TestTypeEnneagram {
 		qRepo.byIDs = answerScaleQuestions()
 	}
-	svc := service.NewAnswerService(ansRepo, taskRepo, taskSvc, qRepo, dimRepo)
+	svc := service.NewAnswerService(ansRepo, taskRepo, taskSvc, qRepo, dimRepo, func() time.Time { return time.Now() })
 	return &answerFixture{svc: svc, ansRepo: ansRepo, taskRepo: taskRepo, taskSvc: taskSvc, qRepo: qRepo, dimRepo: dimRepo}
 }
 
@@ -420,6 +427,9 @@ func TestContextResume(t *testing.T) {
 // TestContextFinished 回复数=题数：Finished=true 进完成待提交（03 §1.7 ≥ 口径）。
 func TestContextFinished(t *testing.T) {
 	fx := newAnswerFixture(t)
+	for i := 1; i <= 5; i++ {
+		fx.ansRepo.rows = append(fx.ansRepo.rows, domain.AssessmentTestAnswer{TaskID: 8001, QuestionSeq: i, Content: fmt.Sprintf("第%d题回复", i)})
+	}
 	fx.ansRepo.count = 5
 
 	res, err := fx.svc.Context(context.Background(), answerTokenPlain)
@@ -532,7 +542,7 @@ func TestContextEnneagram(t *testing.T) {
 func TestReplyEnneagramValid(t *testing.T) {
 	fx := newAnswerFixtureTask(t, answerEnneagramTask())
 
-	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "3", 0)
+	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "3")
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
@@ -558,7 +568,7 @@ func TestReplyEnneagramValid(t *testing.T) {
 func TestReplyEnneagramInvalid(t *testing.T) {
 	for _, content := range []string{"6", "abc", "3.5"} {
 		fx := newAnswerFixtureTask(t, answerEnneagramTask())
-		_, err := fx.svc.Reply(context.Background(), answerTokenPlain, content, 0)
+		_, err := fx.svc.Reply(context.Background(), answerTokenPlain, content)
 		wantAnswerErr(t, err, errcode.AnswerReplyInvalid)
 		if fx.ansRepo.insertCalled {
 			t.Errorf("content=%q 非法回复不得落库", content)
@@ -569,14 +579,14 @@ func TestReplyEnneagramInvalid(t *testing.T) {
 // TestReplyAIMgmtLength ai_mgmt 501 rune 拒绝、500 rune 放行（specs §5.2.2 步骤2）。
 func TestReplyAIMgmtLength(t *testing.T) {
 	fx := newAnswerFixture(t)
-	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, strings.Repeat("测", 501), 0)
+	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, strings.Repeat("测", 501))
 	wantAnswerErr(t, err, errcode.AnswerReplyInvalid)
 	if fx.ansRepo.insertCalled {
 		t.Error("501 rune 回复不得落库")
 	}
 
 	fx = newAnswerFixture(t)
-	if _, err := fx.svc.Reply(context.Background(), answerTokenPlain, strings.Repeat("测", 500), 0); err != nil {
+	if _, err := fx.svc.Reply(context.Background(), answerTokenPlain, strings.Repeat("测", 500)); err != nil {
 		t.Fatalf("500 rune 回复应放行: %v", err)
 	}
 	if !fx.ansRepo.insertCalled {
@@ -588,7 +598,7 @@ func TestReplyAIMgmtLength(t *testing.T) {
 func TestReplyBlank(t *testing.T) {
 	for _, content := range []string{"", "   ", "\t\n"} {
 		fx := newAnswerFixture(t)
-		_, err := fx.svc.Reply(context.Background(), answerTokenPlain, content, 0)
+		_, err := fx.svc.Reply(context.Background(), answerTokenPlain, content)
 		wantAnswerErr(t, err, errcode.AnswerReplyInvalid)
 		if fx.ansRepo.insertCalled {
 			t.Errorf("content=%q 空白回复不得落库", content)
@@ -599,7 +609,7 @@ func TestReplyBlank(t *testing.T) {
 // TestReplyTrimStored content 存 TrimSpace 后值（specs §5.2.2 步骤2 去首尾空格）。
 func TestReplyTrimStored(t *testing.T) {
 	fx := newAnswerFixture(t)
-	if _, err := fx.svc.Reply(context.Background(), answerTokenPlain, "  C，因为…  ", 0); err != nil {
+	if _, err := fx.svc.Reply(context.Background(), answerTokenPlain, "  C，因为…  "); err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
 	if fx.ansRepo.gotInsert.Content != "C，因为…" {
@@ -612,7 +622,7 @@ func TestReplyTrimStored(t *testing.T) {
 func TestReplyServerAuthoritative(t *testing.T) {
 	fx := newAnswerFixture(t)
 
-	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "选 C，理由如下", 9)
+	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "选 C，理由如下")
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
@@ -629,7 +639,7 @@ func TestReplyFinishedGuard(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.ansRepo.count = 5
 
-	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "多余回复", 0)
+	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "多余回复")
 	wantAnswerErr(t, err, errcode.AnswerReplyInvalid)
 	if fx.ansRepo.insertCalled {
 		t.Error("完成态兜底不得落库")
@@ -642,7 +652,7 @@ func TestReplyLastFinished(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.ansRepo.count = 4
 
-	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "最后一题回复", 5)
+	res, err := fx.svc.Reply(context.Background(), answerTokenPlain, "最后一题回复")
 	if err != nil {
 		t.Fatalf("Reply: %v", err)
 	}
@@ -660,12 +670,38 @@ func TestReplyLastFinished(t *testing.T) {
 	}
 }
 
+// TestContextTokenExpired 链接 valid 但已过 ExpiresAt：1901 即时拦截（收口每分钟
+// tick 的空窗，防过期链接被 StartSession 救活后永不过期）。
+func TestContextTokenExpired(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.ansRepo.link.ExpiresAt = time.Now().Add(-time.Minute)
+
+	_, err := fx.svc.Context(context.Background(), answerTokenPlain)
+	wantAnswerErr(t, err, errcode.AnswerTokenInvalid)
+	if fx.taskSvc.startCalls != 0 {
+		t.Error("过期链接不得触发 StartSession")
+	}
+}
+
+// TestReplyBuildFailNoInsert 组装下一题失败（题目现读 DB 抖动）：零落库返回内部
+// 错误，客户端重发仍落原题号（推进单调，specs §5.2.4 规则1）。
+func TestReplyBuildFailNoInsert(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.qRepo.byIDsEr = errors.New("db down")
+
+	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "回复")
+	wantNotServiceErr(t, err)
+	if fx.ansRepo.insertCalled {
+		t.Error("组装失败不得落库（先组装后落库，重发仍落原题号）")
+	}
+}
+
 // TestReplyTaskCanceled 作答中任务被取消：1901 拦截（specs §4.1.4 规则5）。
 func TestReplyTaskCanceled(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.taskRepo.byID.Status = domain.TestTaskStatusCanceled
 
-	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "回复", 0)
+	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "回复")
 	wantAnswerErr(t, err, errcode.AnswerTokenInvalid)
 	if fx.ansRepo.insertCalled {
 		t.Error("取消任务回复不得落库")
@@ -677,7 +713,7 @@ func TestReplyInsertFail(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.ansRepo.insertErr = errors.New("insert down")
 
-	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "回复", 0)
+	_, err := fx.svc.Reply(context.Background(), answerTokenPlain, "回复")
 	wantNotServiceErr(t, err)
 }
 
@@ -760,6 +796,6 @@ func TestSubmitTokenInvalid(t *testing.T) {
 
 	_, errA1 := fx.svc.Context(context.Background(), answerTokenPlain)
 	wantAnswerErr(t, errA1, errcode.AnswerTokenInvalid)
-	_, errA2 := fx.svc.Reply(context.Background(), answerTokenPlain, "回复", 0)
+	_, errA2 := fx.svc.Reply(context.Background(), answerTokenPlain, "回复")
 	wantAnswerErr(t, errA2, errcode.AnswerTokenInvalid)
 }

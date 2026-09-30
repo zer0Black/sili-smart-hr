@@ -105,7 +105,7 @@ describe('buildInitialMessages', () => {
     expect(titles).toBe(5);
   });
 
-  it('TestBuildInitialEnneagram：九型开场白与 scaleTitle 陈述包装', () => {
+  it('TestBuildInitialEnneagram：九型开场白与两段题面（题号行内插陈述 + 作答说明）', () => {
     const s = buildInitialMessages(
       t,
       ctx({
@@ -115,8 +115,8 @@ describe('buildInitialMessages', () => {
     );
     expect(s.messages[0].lines[0]).toContain('script.enne.opening1');
     const last = s.messages[s.messages.length - 1];
-    expect(last.lines[0]).toContain('script.scaleTitle');
-    expect(last.lines).toContain('我做事追求严谨和完美。');
+    // 两段结构：scaleTitle 内插陈述，第二段为 1-5 级作答说明；陈述不另起独立行。
+    expect(last.lines).toEqual(['script.scaleTitle{"seq":1,"statement":"我做事追求严谨和完美。"}', '请在 1（完全不符合）到 5（完全符合）之间回复']);
   });
 });
 

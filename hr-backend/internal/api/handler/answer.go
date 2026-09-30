@@ -26,11 +26,12 @@ type answerTokenReq struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// answerReplyReq 是 A2 的请求体：question_seq 可选，nil 表示未传（03 A2）。
+// answerReplyReq 是 A2 的请求体：token 缺失 1400；content 无 required 绑定，
+// 空串与纯空白经 service 格式校验归 1902（03 A2 错误码表：1400=字段缺失、
+// 1902=空串，两者是不同归类）。
 type answerReplyReq struct {
-	Token       string `json:"token" binding:"required"`
-	Content     string `json:"content" binding:"required"`
-	QuestionSeq *int   `json:"question_seq"`
+	Token   string `json:"token" binding:"required"`
+	Content string `json:"content"`
 }
 
 // Context 处理 POST /api/answer/context（A1 作答页上下文）。
@@ -48,19 +49,15 @@ func (h *AnswerHandler) Context(c *gin.Context) {
 	response.OKWithData(c, res)
 }
 
-// Reply 处理 POST /api/answer/reply（A2 逐题落库）。question_seq 仅展示用，
-// 服务端忽略（specs §5.2.4 规则1），此处只透传。
+// Reply 处理 POST /api/answer/reply（A2 逐题落库）。服务端按已落库记录数推算
+// 当前题（specs §5.2.4 规则1），请求体已无客户端题号字段。
 func (h *AnswerHandler) Reply(c *gin.Context) {
 	var req answerReplyReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		handleServiceError(c, service.NewError(errcode.BadRequest))
 		return
 	}
-	clientSeq := 0
-	if req.QuestionSeq != nil {
-		clientSeq = *req.QuestionSeq
-	}
-	res, err := h.svc.Reply(c.Request.Context(), req.Token, req.Content, clientSeq)
+	res, err := h.svc.Reply(c.Request.Context(), req.Token, req.Content)
 	if err != nil {
 		handleServiceError(c, err)
 		return

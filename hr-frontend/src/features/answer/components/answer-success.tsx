@@ -14,11 +14,9 @@ const CLOSE_FALLBACK_DELAY_MS = 300;
 export function AnswerSuccessCard({
   testType,
   taskNo,
-  onClose,
 }: {
   testType: AnswerTestType;
   taskNo: string;
-  onClose: () => void;
 }): JSX.Element {
   const { t } = useTranslation('answer');
   const [fallbackShown, setFallbackShown] = useState(false);
@@ -26,9 +24,8 @@ export function AnswerSuccessCard({
   const title = t(testType === 'enneagram' ? 'meta.enne.title' : 'meta.ai.title');
 
   const handleClose = () => {
-    // specs §4.3.3：window.close() 关闭标签页（纯浏览器行为），onClose 供父层追加处置。
+    // specs §4.3.3：window.close() 关闭标签页（纯浏览器行为，仅对脚本打开的窗口生效）。
     window.close();
-    onClose();
     window.setTimeout(() => setFallbackShown(true), CLOSE_FALLBACK_DELAY_MS);
   };
 

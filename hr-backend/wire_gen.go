@@ -95,7 +95,7 @@ func InitializeApp(configPath string) (*App, error) {
 	assessmentTestTaskService := NewAssessmentTestTaskServiceAdapter(assessmentTestTaskRepository, questionRepository, questionBatchRepository, dimensionRepository, userapiClient, integrationSecretRepository, v, nowFunc, asynqTestGradeEnqueuer)
 	assessmentTestTaskHandler := handler.NewAssessmentTestTaskHandler(assessmentTestTaskService)
 	assessmentTestAnswerRepository := repository.NewAssessmentTestAnswerRepository(db)
-	answerService := NewAnswerServiceAdapter(assessmentTestAnswerRepository, assessmentTestTaskRepository, assessmentTestTaskService, questionRepository, dimensionRepository)
+	answerService := NewAnswerServiceAdapter(assessmentTestAnswerRepository, assessmentTestTaskRepository, assessmentTestTaskService, questionRepository, dimensionRepository, nowFunc)
 	answerHandler := handler.NewAnswerHandler(answerService)
 	llmConfigService := service.NewLLMConfigService(llmConfigRepository, rsakeyManager, v)
 	llmConfigHandler := handler.NewLLMConfigHandler(llmConfigService)

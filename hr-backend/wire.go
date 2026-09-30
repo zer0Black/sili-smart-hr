@@ -132,7 +132,7 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAnswerServiceAdapter,
 		handler.NewAnswerHandler,
 		// AI 阅卷域（specs §5.2，02-T4）：result 仓储 + 阅卷专用 LLM 客户端
-		//（240s Timeout，独立 gate）+ Grader 十参装配 + assessment:test-grade
+		//（240s Timeout，独立 gate）+ Grader 十一参装配 + assessment:test-grade
 		// handler 经参数注入 NewMux + Asynq 投递适配器（service.TestGradeEnqueuer
 		// 窄接口，default 队列 MaxRetry 默认 25 不收紧，03 §4.5）。
 		repository.NewAssessmentTestResultRepository,

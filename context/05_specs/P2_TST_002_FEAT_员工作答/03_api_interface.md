@@ -64,7 +64,7 @@ specs §5.3.4 规则 1 的权威表述为「未答完不允许提交」（不等
 
 作答接口与主平台 JWT 体系物理隔离：不读 Authorization 头、不触发 401 登出链路（specs §2.1）。前端作答页专用请求通道不消费 auth store 的 httpClient 实例。
 
-**限流：** 三接口共享一个 IP 维度限流桶 `sili-smart-hr:rl:answer:`，30/min（复用平台 RateLimit 中间件，specs §5.1.4 规则2）。桶内计数覆盖整个作答会话交互（页面加载 + 逐题回复 + 提交）：ai_mgmt 全程约 7 次、enneagram 约 20 次，30/min 足够正常作答；超限返回 429，员工等待窗口后可继续。阈值为注册处常量，实现期可调，无在线配置。
+**限流：** IP 维度限流按端点分桶（复用平台 RateLimit 中间件，specs §5.1.4 规则2）：context/submit 各 30/min（`sili-smart-hr:rl:answer-ctx:` / `answer-submit:`），reply 单独 120/min（`sili-smart-hr:rl:answer-reply:`）。原设计三接口共享 30/min 单桶，实现评审发现组卷逐子能力启用题全取题量无上限（8 子能力各 5 题即 40+ 次调用），共享桶会拦截合法连续作答，按「阈值为注册处常量，实现期可调」授权调整为分桶口径。超限返回 429，员工等待窗口后可继续。
 
 ### 2.2 统一响应格式
 

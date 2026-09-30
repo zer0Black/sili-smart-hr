@@ -34,12 +34,11 @@ type fakeAnswerSvc struct {
 	contextTok    string
 	contextCalled bool
 
-	replyTok       string
-	replyContent   string
-	replyClientSeq int
-	replyCalled    bool
-	replyRes       *service.AnswerReplyResult
-	replyErr       error
+	replyTok     string
+	replyContent string
+	replyCalled  bool
+	replyRes     *service.AnswerReplyResult
+	replyErr     error
 
 	submitTok    string
 	submitCalled bool
@@ -54,11 +53,10 @@ func (f *fakeAnswerSvc) Context(_ context.Context, token string) (*service.Answe
 	return f.contextRes, f.contextErr
 }
 
-func (f *fakeAnswerSvc) Reply(_ context.Context, token, content string, clientSeq int) (*service.AnswerReplyResult, error) {
+func (f *fakeAnswerSvc) Reply(_ context.Context, token, content string) (*service.AnswerReplyResult, error) {
 	f.replyCalled = true
 	f.replyTok = token
 	f.replyContent = content
-	f.replyClientSeq = clientSeq
 	return f.replyRes, f.replyErr
 }
 
@@ -203,19 +201,17 @@ func TestAnswerRoutesRegistered(t *testing.T) {
 	}
 }
 
-// TestAnswerReplyBinding 核心断言：body 缺 content → HTTP 200 + code=1400；
-// question_seq 缺省时 svc 收到 clientSeq=0。
+// TestAnswerReplyBinding 核心断言：token 缺失/空串 → HTTP 200 + code=1400；
+// content 空串放行至 svc（1902 归类归 service 格式校验，03 A2 错误码表）。
 func TestAnswerReplyBinding(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeAnswerSvc{replyRes: &service.AnswerReplyResult{Action: service.AnswerActionNext}}
 	r := newAnswerRouter(svc)
 
 	for _, body := range []string{
-		``,                           // 空 body
-		`{"token":"x"}`,              // 缺 content
-		`{"content":"C"}`,            // 缺 token
-		`{"token":"","content":"C"}`, // token 空串
-		`{invalid json`,              // 非法 JSON
+		``,                 // 空 body
+		`{"content":"C"}`,  // 缺 token
+		`{invalid json`,    // 非法 JSON
 	} {
 		if code := doAnswerReq(t, r, "/api/answer/reply", body); code != errcode.BadRequest {
 			t.Fatalf("body=%q code = %d, want %d", body, code, errcode.BadRequest)
@@ -225,19 +221,12 @@ func TestAnswerReplyBinding(t *testing.T) {
 		t.Fatal("binding 失败不应触达 svc")
 	}
 
-	// question_seq 缺省：nil → clientSeq=0 透传。
-	if code := doAnswerReq(t, r, "/api/answer/reply", `{"token":"x","content":"C"}`); code != 0 {
-		t.Fatalf("code = %d, want 0", code)
+	// content 空串：handler 放行（1400=字段缺失，空串归 1902 由 service 判定）。
+	if code := doAnswerReq(t, r, "/api/answer/reply", `{"token":"x","content":""}`); code != 0 {
+		t.Fatalf("content 空串 code = %d, want 0（放行至 svc）", code)
 	}
-	if svc.replyClientSeq != 0 {
-		t.Fatalf("clientSeq = %d, want 0（question_seq 缺省）", svc.replyClientSeq)
-	}
-	// question_seq 显式传值透传（服务端忽略语义归 service，handler 只透传）。
-	if code := doAnswerReq(t, r, "/api/answer/reply", `{"token":"x","content":"C","question_seq":3}`); code != 0 {
-		t.Fatalf("code = %d, want 0", code)
-	}
-	if svc.replyClientSeq != 3 {
-		t.Fatalf("clientSeq = %d, want 3（question_seq 显式传值透传）", svc.replyClientSeq)
+	if !svc.replyCalled || svc.replyContent != "" {
+		t.Fatalf("svc 应收到空串 content，got called=%v content=%q", svc.replyCalled, svc.replyContent)
 	}
 }
 
@@ -270,33 +259,43 @@ func TestAnswerBusinessErrorPassthrough(t *testing.T) {
 	}
 }
 
-// TestAnswerRateLimit 核心断言：同 IP 第 31 次请求返回 429（miniredis，30/min 阈值，
-// 三接口共享同一桶前缀，03 §2.1）。
+// TestAnswerRateLimit 核心断言：按端点分桶（miniredis）——context/submit 各 30/min、
+// reply 120/min（03 §2.1 分桶口径）。context 第 31 次 429；reply 计数独立，三路
+// 交替各 30 次不互相挤占（reply 远未触顶）。
 func TestAnswerRateLimit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeAnswerSvc{contextRes: &service.AnswerContextResult{}}
 	engine := newAnswerEngine(t, svc)
 
-	// 三接口交替发 30 次：共享桶口径下三路合并计数，均 200。
+	doPost := func(path, body string) int {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// 三接口交替发 30 次：分桶口径下 reply 与 submit 各自计数未触顶，均 200。
 	paths := []string{"/api/answer/context", "/api/answer/reply", "/api/answer/submit"}
 	bodies := []string{`{"token":"x"}`, `{"token":"x","content":"C"}`, `{"token":"x"}`}
 	for i := 0; i < 30; i++ {
 		idx := i % 3
-		req := httptest.NewRequest(http.MethodPost, paths[idx], strings.NewReader(bodies[idx]))
-		req.Header.Set("Content-Type", "application/json")
-		w := httptest.NewRecorder()
-		engine.ServeHTTP(w, req)
-		if w.Code == http.StatusTooManyRequests {
-			t.Fatalf("req #%d unexpectedly rate-limited, body=%s", i+1, w.Body.String())
+		if code := doPost(paths[idx], bodies[idx]); code == http.StatusTooManyRequests {
+			t.Fatalf("req #%d unexpectedly rate-limited (path=%s)", i+1, paths[idx])
 		}
 	}
-	// 第 31 次（任意接口）同 IP 429。
-	req := httptest.NewRequest(http.MethodPost, "/api/answer/context", strings.NewReader(`{"token":"x"}`))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-	engine.ServeHTTP(w, req)
-	if w.Code != http.StatusTooManyRequests {
-		t.Fatalf("req #31: status = %d, want 429, body=%s", w.Code, w.Body.String())
+	// context 已耗 10 次，补足至 30 后下一次 429（脚本 n>limit 拦截，第 31 次计数 31）。
+	for i := 0; i < 20; i++ {
+		if code := doPost(paths[0], bodies[0]); code == http.StatusTooManyRequests {
+			t.Fatalf("context warm-up #%d unexpectedly rate-limited", i+1)
+		}
+	}
+	if code := doPost("/api/answer/context", `{"token":"x"}`); code != http.StatusTooManyRequests {
+		t.Fatalf("context req #31: status = %d, want 429", code)
+	}
+	// reply 桶独立计数：context 触顶后 reply 仍 200（120/min 未达）。
+	if code := doPost("/api/answer/reply", `{"token":"x","content":"C"}`); code != http.StatusOK {
+		t.Fatalf("reply after context exhausted: status = %d, want 200（分桶互不挤占）", code)
 	}
 }
 
