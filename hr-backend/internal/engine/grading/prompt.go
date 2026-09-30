@@ -11,8 +11,8 @@ import (
 )
 
 // PromptVersion 阅卷 prompt 模板版本（04 §3.3 prompt_version 列落库值），
-// 模板变更时 +1 同步本常量。
-const PromptVersion = "v1"
+// 模板变更时 +1 同步本常量。v2：作答对话段接入真实记录拼接（P2_TST_002 03 §4.3）。
+const PromptVersion = "v2"
 
 // aiMgmtSystemTemplate ai_mgmt 系统段：评分员角色 + JSON schema 约束。
 const aiMgmtSystemTemplate = `你是 AI 管理能力测评的评分员。基于下方维度口径、题目全文与员工作答对话，对每个子能力维度给出 0-100 整数分与评分理由。只输出一个 JSON 对象，不要输出其他文本。
@@ -35,9 +35,12 @@ const aiMgmtQuestionTemplate = `【题目 %s】
 情境：%s
 作答要求：%s`
 
-// emptyAnswerSectionPlaceholder 作答对话段占位（F8 作答记录未建前空段，
-// specs §5.2.3 数据来源归 F8 落库）。
+// emptyAnswerSectionPlaceholder 作答对话段空态兜底（理论不可达：提交门槛已
+// 保证全答，specs §5.2.3、P2_TST_002 03 §4.3）。
 const emptyAnswerSectionPlaceholder = "（暂无作答对话记录）"
+
+// answerLineTemplate 作答段条目：题号取行内 QuestionSeq（03 §4.3 逐题一行）。
+const answerLineTemplate = "第 %d 题作答：%s"
 
 // aiMgmtInstructionTail 输出要求复述段。
 const aiMgmtInstructionTail = `【输出要求】
@@ -45,8 +48,8 @@ const aiMgmtInstructionTail = `【输出要求】
 - rationale 理由 200 字以内。`
 
 // buildAIMgmtPrompt 组装 ai_mgmt 阅卷 prompt：系统段 + 维度段 + 题目段 +
-// 作答对话段（当前无来源空段占位）+ 输出要求段。
-func buildAIMgmtPrompt(dims []domain.Dimension, questions []domain.Question) string {
+// 作答对话段（全过程逐题行）+ 输出要求段。
+func buildAIMgmtPrompt(dims []domain.Dimension, questions []domain.Question, answers []domain.AssessmentTestAnswer) string {
 	return buildGradingPrompt(
 		aiMgmtSystemTemplate,
 		"【维度段】（评分口径，逐维度评分）\n",
@@ -60,6 +63,7 @@ func buildAIMgmtPrompt(dims []domain.Dimension, questions []domain.Question) str
 		func(b *strings.Builder, q domain.Question) {
 			fmt.Fprintf(b, aiMgmtQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
 		},
+		answers,
 		aiMgmtInstructionTail,
 	)
 }
@@ -89,8 +93,8 @@ const enneagramInstructionTail = `【输出要求】
 - rationale 判定依据 200 字以内。`
 
 // buildEnneagramPrompt 组装 enneagram 阅卷 prompt：判型师角色 + 量表题全文 +
-// 作答对话段（空段占位）+ 输出要求段。
-func buildEnneagramPrompt(questions []domain.Question) string {
+// 作答对话段（全过程逐题行）+ 输出要求段。
+func buildEnneagramPrompt(questions []domain.Question, answers []domain.AssessmentTestAnswer) string {
 	return buildGradingPrompt(
 		enneagramSystemTemplate,
 		"", // 无维度段：量表题自含计分键，型别维度口径不进 prompt（03 §4.4 2c）
@@ -100,12 +104,13 @@ func buildEnneagramPrompt(questions []domain.Question) string {
 		func(b *strings.Builder, q domain.Question) {
 			fmt.Fprintf(b, enneagramQuestionTemplate+"\n\n", q.QuestionNo, q.Scenario, q.Requirement)
 		},
+		answers,
 		enneagramInstructionTail,
 	)
 }
 
 // buildGradingPrompt 两类型 prompt 共享组装骨架：系统段 +（可选口径段）+ 题目段 +
-// 作答对话段占位 + 输出要求段。段文案差异由调用方模板承载，骨架单点防两处漂移。
+// 作答对话段 + 输出要求段。段文案差异由调用方模板承载，骨架单点防两处漂移。
 func buildGradingPrompt(
 	system string,
 	sectionHeader string,
@@ -113,6 +118,7 @@ func buildGradingPrompt(
 	questionHeader string,
 	questions []domain.Question,
 	questionItem func(*strings.Builder, domain.Question),
+	answers []domain.AssessmentTestAnswer,
 	tail string,
 ) string {
 	var b strings.Builder
@@ -131,7 +137,15 @@ func buildGradingPrompt(
 		questionItem(&b, q)
 	}
 	b.WriteString("\n【作答对话段】（员工作答对话全过程）\n")
-	b.WriteString(emptyAnswerSectionPlaceholder)
+	// 作答原文不脱敏进段（P2_TST_002 03 §4.3：脱敏约束落库 rationale，prompt
+	// 进程内一次性消费保留阅卷证据）；空记录占位兜底。
+	if len(answers) == 0 {
+		b.WriteString(emptyAnswerSectionPlaceholder)
+	} else {
+		for _, a := range answers {
+			fmt.Fprintf(&b, answerLineTemplate+"\n", a.QuestionSeq, a.Content)
+		}
+	}
 	b.WriteString("\n\n")
 	b.WriteString(tail)
 	return b.String()
