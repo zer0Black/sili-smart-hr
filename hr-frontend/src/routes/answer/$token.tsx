@@ -1,25 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { AnswerPage } from '@/features/answer/components/answer-page';
 
 export const Route = createFileRoute('/answer/$token')({
-  component: AnswerPage,
+  component: AnswerRoute,
 });
 
-function AnswerPage() {
+// 薄入口：令牌校验与三态编排全部在 AnswerPage（specs §4.1.1 一次性令牌鉴权）。
+function AnswerRoute() {
   const { token } = Route.useParams();
-
-  return (
-    <div className="bg-muted/40 flex min-h-svh items-center justify-center p-4">
-      <Card className="max-w-md">
-        <CardHeader>
-          <CardTitle>员工作答页</CardTitle>
-        </CardHeader>
-        <CardContent className="text-muted-foreground space-y-2 text-sm">
-          <p>B 档占位结构：一次性令牌鉴权，与主平台 JWT 体系隔离。</p>
-          <p>token: {token}</p>
-        </CardContent>
-      </Card>
-    </div>
-  );
+  return <AnswerPage token={token} />;
 }

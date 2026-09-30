@@ -1069,6 +1069,8 @@
         "purpose": "Helps you understand your personality tendency distribution as a reference for teamwork and personal development. Results are for reference only and are not used for performance evaluation.",
         "duration": "Approx. 10-15 minutes"
       },
+      "durationLabel": "Est. Duration",
+      "countLabel": "Questions",
       "questionCount": "{{count}} questions"
     },
     "notice": {
@@ -1118,7 +1120,7 @@
       "tip": "This answer link is no longer valid. The system will proceed to the grading stage; results will not be shown on this page. You can close this window now; no further action is needed.",
       "close": "Close Window",
       "closeFallback": "If the window does not close automatically, please close the browser tab manually",
-      "ref": "Reference No.: {{taskNo}}"
+      "refPrefix": "Reference No.: "
     },
     "error": {
       "loadFailed": "Failed to load, please retry",
