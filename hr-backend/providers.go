@@ -411,6 +411,18 @@ func NewAssessmentTestTaskServiceAdapter(
 		(func() time.Time)(now))
 }
 
+// NewAnswerServiceAdapter 是 Wire 装配适配器：内部转调 NewAnswerService 五参形态
+//（taskSvc 复用 F7 service 实例承载 StartSession/CompleteTask 两契约，03 §4.2）。
+func NewAnswerServiceAdapter(
+	answerRepo repository.AssessmentTestAnswerRepository,
+	taskRepo repository.AssessmentTestTaskRepository,
+	taskSvc service.AssessmentTestTaskService,
+	questionRepo repository.QuestionRepository,
+	dimRepo repository.DimensionRepository,
+) service.AnswerService {
+	return service.NewAnswerService(answerRepo, taskRepo, taskSvc, questionRepo, dimRepo)
+}
+
 // NewBatchTickHandlerTyped 构造 batch-tick handler（命名类型透出）。
 func NewBatchTickHandlerTyped(orch *pipeline.Orchestrator) BatchTickHandler {
 	return BatchTickHandler(task.NewBatchTickHandler(orch))

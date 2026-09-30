@@ -126,6 +126,11 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAssessmentTestTaskServiceAdapter,
 		NewTestExpireTickHandlerTyped,
 		handler.NewAssessmentTestTaskHandler,
+		// 员工作答域（specs P2_TST_002）：answer 仓储 + service（taskSvc 复用 F7
+		// 实例承载 StartSession/CompleteTask 契约）+ handler（03 §3 三接口挂公开路由组）。
+		repository.NewAssessmentTestAnswerRepository,
+		NewAnswerServiceAdapter,
+		handler.NewAnswerHandler,
 		// AI 阅卷域（specs §5.2，02-T4）：result 仓储 + 阅卷专用 LLM 客户端
 		//（240s Timeout，独立 gate）+ Grader 十参装配 + assessment:test-grade
 		// handler 经参数注入 NewMux + Asynq 投递适配器（service.TestGradeEnqueuer
