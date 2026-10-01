@@ -6,9 +6,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 sili-smart-hr 是综合人才测评平台：把兄弟系统 sili-smart-api（LLM 网关）沉淀的 AI 对话日志周期性转化为能力评分，叠加主动测试形成人才画像，用于能力盘点与培训提升。
 
-当前处于 B 档可运行脚手架阶段，account 登录链路（POST /api/login、GET /api/me）是首个样板，用户管理、维度配置、系统参数、大模型配置、集成密钥、题库管理等链路已前后端贯通。engine 在后端的 extractor（会话特征抽取）、activity（使用活跃度统计）、evaluator（跨会话综合评估）、scorer（多维聚合）、fallback（失败重试与告警兜底）、pipeline（跑批编排）、questiongen（AI 出题生成）、grading（AI 阅卷评分）八个子域已实现，questionbank（题库管理）域的台账维护、批次审核、量表引入与 AI 生成四条链路（题目列表/详情/编辑/启停/删除，待审批次卡、批量审核确认入库、批次作废、驳回题重新提交，内置九型量表候选列表与单事务引入建批，AI 出题经异步生成会话轮询进度后单事务建批入库）已前后端贯通，批次生产量表引入与 AI 生成两路全通，assessment_test 主动测试域（specs P2_TST_001）已前后端贯通：任务运营链路（三表 tasks/links、七运营接口（列表/轮询计数/发起/量表就绪/链接查询/重发/取消）、逾期 tick 每分钟判定、前端评测运营中心 AI 管理能力与九型人格两 tab、发起弹窗三类型激活（测评对象单选+子能力复选/量表只读）、作答链接弹窗）与 AI 阅卷链路（grading 阅卷引擎双类型分流：ai_mgmt 逐子能力评分落 dimension_scores source=active_test 并自调聚合、enneagram 判型落独立 results 表参考性口径不进聚合、CompleteTask/StartSession 服务契约（事务内三步推进+阅卷任务投递，F8 服务契约无 HTTP 面）、assessment:test-grade 任务重试耗尽降级）均已实现。answer 员工作答域（specs P2_TST_002）已前后端贯通：后端三公开接口（POST /api/answer/context|reply|submit，一次性令牌自证无 JWT、按端点分桶 IP 限流 reply 120/min 其余 30/min、错误码 1901-1903）、令牌校验链（哈希点查→链接态→任务态→到期即时判定且豁免 in_progress 顺延，防枚举同文案 1901）、规则化施测状态机（服务端按已落库记录数推算题号、先组装后落库保证推进单调、assessment_test_answers 表只增不改）、F8 作答页前端全链（routes/answer/$token 三态编排、script.ts 剧本纯函数、rune 口径计数器），员工作答提交经 CompleteTask 触发阅卷，F8→阅卷生产触发路径已闭合。profile / dashboard / workspace 等业务域前后端均未开工。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
+当前处于 B 档可运行脚手架阶段。各业务域的链路细节以对应端子文件为权威，本文件只维护域级索引。新增业务域时，account 全链路（后端 domain → repository → service → handler → router → wire，前端 feature → route）是参考样板。
 
-规格依据在 [context/](context/) 目录，[context/03_architecture/architecture.md](context/03_architecture/architecture.md) 是模块划分与依赖关系的权威来源，第 4 章承载运行时约定。
+| 业务域 | 后端 | 前端 | 规格依据 |
+| --- | --- | --- | --- |
+| account 登录与用户管理 | 贯通 | 贯通 | P1_ACC_001 |
+| system 初始化与系统状态 | 贯通 | 贯通 | P1_SYS_001 |
+| dimension 维度与权重 | 贯通 | 贯通 | P2_DIM_001 |
+| 系统参数 / 大模型配置 / 集成密钥 | 贯通 | 贯通 | P2_SYS_001 |
+| 周期批量评估运营（批次与跑批） | 贯通 | 贯通 | P2_ASM_001 |
+| questionbank 题库管理 | 贯通 | 贯通 | P2_QBN_001 |
+| assessment_test 主动测试（任务运营 + AI 阅卷） | 贯通 | 贯通 | P2_TST_001 |
+| answer 员工作答 | 贯通 | 贯通 | P2_TST_002 |
+| profile / dashboard / workspace | 未开工 | 未开工 | PRD 概念，规格未立 |
+
+engine 八个子域（extractor / activity / evaluator / scorer / fallback / pipeline / questiongen / grading）、integration 三客户端（conversationlog / llm / userapi）与 worker 三队列跑批通道均已实现，规格归集见上表与 [context/05_specs/](context/05_specs/)，链路细节见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
+
+规格依据在 [context/](context/) 目录：[context/03_architecture/architecture.md](context/03_architecture/architecture.md) 是模块划分与依赖关系的权威来源，第 4 章承载运行时约定；各 Feature 规格在 [context/05_specs/](context/05_specs/) 按 Feature ID 归档。
 
 ## 文档分层（披露式加载）
 
@@ -26,7 +40,7 @@ sili-smart-hr 是综合人才测评平台：把兄弟系统 sili-smart-api（LLM
 
 前端 React 19 + TypeScript：Rsbuild 构建、TanStack Router（文件路由）与 TanStack Query、Zustand、axios、shadcn/ui（new-york）、Tailwind 4、React Hook Form + Zod、Recharts、TanStack Table、i18next 双语。
 
-文档与实现的一处偏差：架构文档把 @base-ui/react 列为在用，但 package.json 尚未引入，属计划项；Recharts、TanStack Table、dayjs 同为预留依赖当前未用。
+文档与实现的一处偏差：架构文档把 @base-ui/react 列为在用，但 package.json 尚未引入，属计划项；Recharts、TanStack Table 为预留依赖当前未用（dayjs 已在用）。
 
 ## 本地启动
 
@@ -54,7 +68,7 @@ docker compose up -d
 
 装配链由 Wire 编排：config → db → redis → asynq → repository → service → handler → router，main 拿聚合的 App 结构驱动生命周期。改 provider 集合后 `go generate ./...` 再生 wire_gen.go。细节见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
 
-后端四层：API（handler/middleware/router）→ Service → Repository → Domain，engine、integration、worker 为横切能力层。Service 用接口定义依赖（如 AccountRepository、AccountService）便于注入 fake。integration 的 3 个客户端（conversationlog/userapi/llm）已全量实现，engine 的 extractor 子域已实现（会话特征抽取全链路与 Asynq 任务注册，判定链为通用层 + 客户端规则注册表并集，session_features 行携带探测的主客户端 client 列），activity 子域已实现（人群签名识别 IdentifyPopulation 纯函数 + StatPersonByKey/StatPerson 活跃度统计，纯规则不调 LLM，取数前移 7 天缓冲加末轮归属的口径，activity_stats 经仓储 Upsert 幂等落库），evaluator 子域已实现（跨会话综合评估：EvaluatePerson 原子入口编排活跃度→评估→聚合三表落库，Evaluate 幂等判定与 LLM 降级终态，档案集分层组装与五段 prompt），scorer 子域已实现（读同人同周期全部 source 评分行按 evidence_json 口径摘要聚合模块分与总览分，幂等 upsert），三者经评估专用 LLM client（180s Timeout 独立并发 gate）与 DimensionRepository 双适配器完成 Wire 全链装配；fallback 子域已实现（Retry 固定次数基准倍增退避重试器、BelowAlertThreshold 失败人数占比告警判定纯函数、AlertWriter 告警信号写入，specs P2_ASM_001 §5.3，已接入 Wire 装配），pipeline 子域已实现（schedule 纯函数与 Orchestrator 编排器：批次创建（all 模式落骨架批次由 batch-run 异步展开名单，建批同步路径不触上游翻页）、周期触发判定（触发点 2 分钟宽限窗 + 本周期已建批判定，判定查最近定时批次不限状态防快速终态后重复建批）、逐人评估与终态推进，specs P2_ASM_001 §5.1/§5.2），questiongen 子域已实现（AI 出题：维度轮转逐题 LLM 生成攒 staging 渐进落进度，FinishCompleted 单事务建 GENERATE 批插题分配编号，LLM 失败/超时/协作式取消一律终态化零残留，经 120s 超时专用 LLM client 装配），grading 子域已实现（AI 阅卷：终态守卫后题目快照现读与维度口径组装，单次 LLM 调用双类型分流落库——ai_mgmt 逐子能力写 dimension_scores source=active_test 后自调 scorer.Aggregate 聚合刷新（失败仅记 ERROR），enneagram 判型落独立 results 表不进聚合，rationale 落库前 Redact 脱敏，经 240s 超时专用 LLM client 装配，specs P2_TST_001 §5.2），worker 已实现跑批通道并注册健康任务、会话抽取任务、单人评估任务（engine:person-evaluate，任务级超时 1050s）、批次任务（engine:batch-tick 每分钟周期判定、engine:batch-run 批次编排）、AI 出题任务（questionbank:generate，任务级超时 2h）、主动测试逾期判定任务（assessment:test-expire-tick 每分钟扫 pending 任务到期推进 expired）与阅卷任务（assessment:test-grade，任务级超时 300s，重试耗尽降级 degraded），任务按 default/batch/extract 三队列 StrictPriority 严格优先级分流防互饿（队列名常量单点在 task 包）。
+后端四层：API（handler/middleware/router）→ Service → Repository → Domain，engine、integration、worker 为横切能力层，均已实现。Service 用接口定义依赖（如 AccountRepository、AccountService）便于注入 fake。各子域职责、任务清单与超时口径见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
 
 多库切换在 model/db.go 的 chooseDB，按 SQL_DSN 前缀选 dialector，glebarez/sqlite 纯 Go 实现支撑 CGO_ENABLED=0 静态编译。迁移由 migrateDB 编排，AutoMigrate 为主，类型变更与数据回填补手写幂等迁移。方言工具（QuoteIdent/BoolLit）与三段式迁移见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
 
@@ -62,7 +76,7 @@ docker compose up -d
 
 ## 关键约束
 
-登录反枚举。账号不存在、密码错误、账号禁用三条路径都返回 InvalidCredentials（1001），并各执行一次等效 bcrypt 比对收敛时序侧信道（顺序敏感：先 bcrypt 再判 Enabled）。errcode 定义了 AccountDisabled（1002）但登录路径刻意不返回。前端登录页只识别凭证错误与通用错误两类。
+登录反枚举。账号不存在、密码错误、账号禁用、RSA 解密失败四条路径都返回 InvalidCredentials（1001），并各执行一次等效 bcrypt 比对收敛时序侧信道（顺序敏感：先 bcrypt 再判 Enabled）。errcode 定义了 AccountDisabled（1002）但登录路径刻意不返回。前端登录页只识别凭证错误与通用错误两类。
 
 开发 JWT 密钥公开可 forge。config 默认密钥已随源码公开，生产（非 SQLite）启动若未由 JWT_SECRET 覆盖，main.go 直接拒绝启动。系统无预置账号，所有库（含 SQLite）首启均空 accounts 与 system_initializations，首个账号经 /setup 向导创建并写入初始化记录锁定状态。
 
@@ -74,8 +88,8 @@ AI 测评对话式施测。主动测试不把选项结构化写进任务，员�
 
 雪花 ID 与前端精度坑。主键用雪花 ID（应用层生成，int64），GORM 全局 Create 回调为任何带 `ID int64` 且为 0 的模型透明赋值，新模型零配置即用。雪花值超 2^53 过 JS 安全整数上限，凡承载雪花 ID 的字段（主键 ID、外键如 account_id、service DTO 转运字段）json tag 一律带 `,string`，domain 与 DTO 是两条独立序列化路径须双层覆盖，前端类型用 string；漏打会让 JSON.parse 低位归零、ID 指错对象。account 链路（domain.Account 与 service.AccountDTO 双层 string 化）是样板，细则见 [AGENTS_DATABASE_API_RULE.md](AGENTS_DATABASE_API_RULE.md) 1.2。
 
-前端鉴权与文案约定。鉴权态用 Zustand persist 落 localStorage（key `sili-smart-hr-auth`），`_authenticated` 布局在 beforeLoad 本地校验 token 过期；401 或 HTTP 200 + code 1003 都触发登出（清 token、清 query 缓存、跳 /login）。可见文案走 i18next，命名空间 common（默认）/ auth / account，zh.json 与 en.json 同步维护。前端不硬编码后端地址，dev 走 rsbuild proxy，生产走 Nginx 同域反代。细节见 [hr-frontend/CLAUDE.md](hr-frontend/CLAUDE.md)。
+前端鉴权与文案约定。鉴权态用 Zustand persist 落 localStorage（key `sili-smart-hr-auth`），`_authenticated` 布局在 beforeLoad 本地校验 token 过期；401 或 HTTP 200 + code 1003 都触发登出（清 token、清 query 缓存、跳 /login）。可见文案走 i18next，命名空间按业务域划分（common 默认，另有 auth、account、assessment、questionBank、answer 等 14 个），清单见 [hr-frontend/CLAUDE.md](hr-frontend/CLAUDE.md)，zh.json 与 en.json 同步维护。前端不硬编码后端地址，dev 走 rsbuild proxy，生产走 Nginx 同域反代。细节见 [hr-frontend/CLAUDE.md](hr-frontend/CLAUDE.md)。
 
 注释密度。函数 doc 注释不超过 4 行，只写非显然的约定与坑位；禁止复述代码行为、罗列错误分类矩阵或把 specs 依据整段搬进注释，同一函数 specs 引用最多 1 处。字段级行内注释一行一个语义是合理密度，膨胀的 doc 注释按此精简。
 
-规约文档随实现同步。模块从占位变实现、能力清单、路由或错误码集合变化时，同一变更集必须同步更新对应 CLAUDE.md（根文件与前后端子文件）的状态描述；已被代码证伪的陈述（如仍写着占位、路由清单缺新接口）会误导后续会话的改动决策。
+规约文档随实现同步。域级链路细节只在对应端子文件维护一份（后端域归 hr-backend/CLAUDE.md，前端域归 hr-frontend/CLAUDE.md），本根文件只在域状态变化时更新索引表，不复制子文件内容；已被代码证伪的陈述（如仍写着占位、路由清单缺新接口）会误导后续会话的改动决策。
