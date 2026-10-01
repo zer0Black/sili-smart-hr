@@ -1109,7 +1109,7 @@
       "send": "Send",
       "finishTip": "You have completed this assessment. You can submit to finish.",
       "submit": "Submit and Finish",
-      "charCount": "{{count}}/500"
+      "charCount": "{{count}}/{{max}}"
     },
     "invalid": {
       "title": "Answer Link Unavailable",
@@ -1127,7 +1127,8 @@
       "loadFailed": "Failed to load, please retry",
       "retry": "Retry",
       "incomplete": "Some questions are unanswered; please continue",
-      "submitFailed": "Submit failed, please retry"
+      "submitFailed": "Submit failed, please retry",
+      "network": "Network error, please retry later"
     }
   }
 }

@@ -131,7 +131,7 @@ function AnsweringState({
   token: string;
   ctx: AnswerContextResult;
   onInvalid: () => void;
-  onSubmitSuccess: (taskNo: string) => void;
+  onSubmitSuccess: () => void;
 }): JSX.Element {
   const { t } = useTranslation('answer');
   const [answered, setAnswered] = useState(ctx.answered_count);

@@ -209,9 +209,10 @@ func TestAnswerReplyBinding(t *testing.T) {
 	r := newAnswerRouter(svc)
 
 	for _, body := range []string{
-		``,                 // 空 body
-		`{"content":"C"}`,  // 缺 token
-		`{invalid json`,    // 非法 JSON
+		``,                // 空 body
+		`{"content":"C"}`, // 缺 token
+		`{invalid json`,   // 非法 JSON
+		`{"token":"x"}`,   // content 键缺失（03 A2：1400 字段缺失）
 	} {
 		if code := doAnswerReq(t, r, "/api/answer/reply", body); code != errcode.BadRequest {
 			t.Fatalf("body=%q code = %d, want %d", body, code, errcode.BadRequest)

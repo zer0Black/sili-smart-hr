@@ -15,7 +15,11 @@ type HeroMeta = {
 };
 
 /** 按 testType 取 i18n 预设文案与类型图标（specs §4.1.2：系统预设按 test_type 分支）。 */
-function heroMeta(testType: AnswerTestType, t: (key: string, opts?: Record<string, unknown>) => string): HeroMeta {  if (testType === 'enneagram') {
+function heroMeta(
+  testType: AnswerTestType,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): HeroMeta {
+  if (testType === 'enneagram') {
     return {
       tag: t('meta.enne.tag'),
       title: t('meta.enne.title'),

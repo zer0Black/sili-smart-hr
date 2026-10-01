@@ -24,19 +24,14 @@ export interface ScriptState {
   phase: ScriptPhase;
 }
 
-/** 消息 id：一次页面会话内自增即可，消息流只增不改（specs §5.2.4 规则3）。 */
-let seq = 0;
-function nextId(): string {
-  seq += 1;
-  return `msg-${seq}`;
+/** 消息 id：由所在消息流位置派生（消息流只增不改，specs §5.2.4 规则3），
+ *  同一流内天然唯一，纯函数无模块级状态。 */
+function msgId(messages: ChatMessage[], role: ChatRole): string {
+  return `msg-${messages.length}-${role}`;
 }
 
-function ai(lines: string[]): ChatMessage {
-  return { id: nextId(), role: 'ai', lines };
-}
-
-function user(lines: string[]): ChatMessage {
-  return { id: nextId(), role: 'user', lines };
+function appendMessage(messages: ChatMessage[], role: ChatRole, lines: string[]): ChatMessage[] {
+  return [...messages, { id: msgId(messages, role), role, lines }];
 }
 
 /** 开场白两段（specs §4.1.4 规则1：按 test_type 取系统预设剧本）。 */
@@ -75,27 +70,27 @@ function finishLines(t: TFunction): string[] {
  * 结构：开场白 → 逐条回放（user 回复 / 题间确认 / 已答题包装）→ 当前题或完成提示。
  */
 export function buildInitialMessages(t: TFunction, ctx: AnswerContextResult): ScriptState {
-  const messages: ChatMessage[] = [ai(openingLines(t, ctx.test_type))];
+  let messages: ChatMessage[] = appendMessage([], 'ai', openingLines(t, ctx.test_type));
   const bySeq = new Map(ctx.questions.map((question) => [question.seq, question]));
 
   for (const reply of ctx.replies) {
     // 回放顺序：本题题面（重进仍可见上文）→ 员工回复 → 题间确认。
     const question = bySeq.get(reply.seq);
     if (question) {
-      messages.push(ai(questionLines(t, ctx.test_type, question)));
+      messages = appendMessage(messages, 'ai', questionLines(t, ctx.test_type, question));
     }
-    messages.push(user([reply.content]));
-    messages.push(ai([ackLine(t, ctx.test_type)]));
+    messages = appendMessage(messages, 'user', [reply.content]);
+    messages = appendMessage(messages, 'ai', [ackLine(t, ctx.test_type)]);
   }
 
   if (ctx.finished) {
     // 完成态重进：全部题已回放，仅补完成提示（输入区由组件转提交形态）。
-    return { messages: [...messages, ai(finishLines(t))], phase: 'finished' };
+    return { messages: appendMessage(messages, 'ai', finishLines(t)), phase: 'finished' };
   }
   // 断点续答：当前题为下一未作答题（服务端权威 answered_count + 1）。
   const current = bySeq.get(ctx.answered_count + 1) ?? ctx.questions[ctx.answered_count];
   if (current) {
-    messages.push(ai(questionLines(t, ctx.test_type, current)));
+    messages = appendMessage(messages, 'ai', questionLines(t, ctx.test_type, current));
   }
   return { messages, phase: 'asking' };
 }
@@ -112,9 +107,9 @@ export function applyReplySuccess(
   reply: AnswerReplyResult,
   content: string,
 ): ScriptState {
-  const messages = [...prev.messages, user([content])];
+  let messages = appendMessage(prev.messages, 'user', [content]);
   if (reply.action === 'finished') {
-    return { messages: [...messages, ai(finishLines(t))], phase: 'finished' };
+    return { messages: appendMessage(messages, 'ai', finishLines(t)), phase: 'finished' };
   }
   // 服务端 question_seq 对齐：响应携带的 next_question 即服务端推算的实际下一题（specs §5.2.4 规则1）。
   const next = reply.next_question;
@@ -122,10 +117,9 @@ export function applyReplySuccess(
     ? questionLines(t, ctx.test_type, next)
     : // 防御分支：action=next 必带 next_question（03 §3 A2），缺题时仅呈现确认避免崩页。
       [ackLine(t, ctx.test_type)];
-  return {
-    messages: [...messages, ai([ackLine(t, ctx.test_type)]), ai(lines)],
-    phase: 'asking',
-  };
+  messages = appendMessage(messages, 'ai', [ackLine(t, ctx.test_type)]);
+  messages = appendMessage(messages, 'ai', lines);
+  return { messages, phase: 'asking' };
 }
 
 /**

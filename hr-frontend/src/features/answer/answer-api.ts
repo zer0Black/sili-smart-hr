@@ -1,6 +1,7 @@
 // 员工作答页专用请求通道（specs §4.1.6：不读 auth store、不触发 401 登出跳转）。
 // httpClient 的无鉴权变体：复制 {code,message,data} 解包，去掉 Authorization 附头与 1003/401 登出分支。
 import axios, { type AxiosInstance, type AxiosResponse } from 'axios';
+import i18n from '@/i18n/config';
 
 import { ErrCode, type Response } from '@/lib/contracts';
 
@@ -45,7 +46,8 @@ instance.interceptors.response.use(
     // 429 限流与网络错误是通道级错误，保留 code=0（429 响应体携带的统一结构 code 不代表业务语义）。
     if (status === 429 || !resp) {
       const msg = status === 429 ? resp?.data?.message : undefined;
-      return Promise.reject(new AnswerApiError(0, msg || '网络异常，请稍后重试'));
+      // 拦截器在 React 外，经 i18n 实例直取（config 同步 init，语言偏好已就绪）。
+      return Promise.reject(new AnswerApiError(0, msg || i18n.t('answer:error.network', { ns: 'answer' })));
     }
     // 其余 HTTP 错误但响应体仍是统一结构：读出业务码构造 AnswerApiError。
     const body = resp?.data as Response | undefined;

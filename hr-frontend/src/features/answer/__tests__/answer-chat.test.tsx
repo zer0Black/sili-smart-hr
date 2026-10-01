@@ -105,7 +105,7 @@ describe('AnswerChat（specs §4.1.2 B / §4.1.3 / §4.1.5）', () => {
     expect(screen.getByText('请回复 1 到 5 之间的数字。')).toBeInTheDocument();
   });
 
-  it('TestChatSubmitSuccess：提交成功回调携带响应 task_no（specs §4.1.3 提交并结束）', async () => {
+  it('TestChatSubmitSuccess：提交成功触发置位回调（specs §4.1.3 提交并结束，task_no 同源于 ctx）', async () => {
     submitMock.mockResolvedValue({ task_no: 'T202609290009' });
     const onSuccess = vi.fn();
     renderChat(
@@ -117,7 +117,7 @@ describe('AnswerChat（specs §4.1.2 B / §4.1.3 / §4.1.5）', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: '提交并结束' }));
-    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith('T202609290009'));
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith());
   });
 
   it('TestChatReplyTokenInvalid：reply 收到 1901 调 onInvalid 转页面失效态（specs §4.1.4 规则5 / §5.2.5）', async () => {

@@ -257,15 +257,15 @@ var _ repository.SystemParamReader = (*fakeSysParams)(nil)
 
 // fakeAnswerRepo 作答记录读取 fake：记录调用与收到的 taskID，可编程返回错误。
 type fakeAnswerRepo struct {
-	answers  []domain.AssessmentTestAnswer
-	err      error
-	called   bool
-	taskIDs  int64
+	answers []domain.AssessmentTestAnswer
+	err     error
+	called  bool
+	taskID  int64
 }
 
 func (f *fakeAnswerRepo) ListByTask(ctx context.Context, taskID int64) ([]domain.AssessmentTestAnswer, error) {
 	f.called = true
-	f.taskIDs = taskID
+	f.taskID = taskID
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -644,8 +644,8 @@ func TestRunLoadsAnswers(t *testing.T) {
 	if !f.answers.called {
 		t.Fatal("Run 未调用 answers.ListByTask")
 	}
-	if f.answers.taskIDs != f.task.ID {
-		t.Errorf("ListByTask 收到 taskID=%d, want %d", f.answers.taskIDs, f.task.ID)
+	if f.answers.taskID != f.task.ID {
+		t.Errorf("ListByTask 收到 taskID=%d, want %d", f.answers.taskID, f.task.ID)
 	}
 	if f.llm.calls != 1 || len(f.llm.prompts) != 1 {
 		t.Fatalf("LLM 调用 %d 次 prompt %d 条, want 1/1", f.llm.calls, len(f.llm.prompts))

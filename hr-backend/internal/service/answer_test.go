@@ -86,7 +86,8 @@ func (f *fakeAnswerRepo) FindLinkByTokenHash(_ context.Context, tokenHash string
 var _ repository.AssessmentTestAnswerRepository = (*fakeAnswerRepo)(nil)
 
 // fakeAnswerTaskRepo 是 repository.AssessmentTestTaskRepository 的窄假实现：
-// answer 域只消费 GetByID，其余方法零行为。
+// answer 域只消费 GetByID，其余方法零行为。byID 可在调用间被改写，模拟
+// 并发推进后的任务行。
 type fakeAnswerTaskRepo struct {
 	byID   *domain.AssessmentTestTask
 	byIDEr error
@@ -130,7 +131,8 @@ func (f *fakeAnswerTaskRepo) MarkGradingTerminal(_ context.Context, _ int64, _ s
 var _ repository.AssessmentTestTaskRepository = (*fakeAnswerTaskRepo)(nil)
 
 // fakeAnswerSvcTask 是 service.AssessmentTestTaskService 的窄假实现：
-// answer 域只消费 StartSession/CompleteTask。
+// answer 域只消费 StartSession/CompleteTask。onComplete 在 CompleteTask 失败
+//（终态守卫 1802）时回调，供竞态用例同步改写任务行模拟并发推进。
 type fakeAnswerSvcTask struct {
 	startErr       error
 	startCalls     int
@@ -138,6 +140,7 @@ type fakeAnswerSvcTask struct {
 	completeCalls  int
 	gotCompleteID  int64
 	completeStatus string // CompleteTask 成功后模拟落库状态
+	onGuardReject  func()
 }
 
 func (f *fakeAnswerSvcTask) List(_ context.Context, _ service.ListTestTaskFilter) ([]service.TestTaskListDTO, int64, error) {
@@ -165,6 +168,9 @@ func (f *fakeAnswerSvcTask) CompleteTask(_ context.Context, taskID int64) error 
 	f.completeCalls++
 	f.gotCompleteID = taskID
 	if f.completeErr != nil {
+		if f.onGuardReject != nil {
+			f.onGuardReject()
+		}
 		return f.completeErr
 	}
 	f.completeStatus = domain.TestTaskStatusCompleted
@@ -499,21 +505,46 @@ func TestContextQuestionReadFail(t *testing.T) {
 	wantNotServiceErr(t, err)
 }
 
-// TestContextSnapshotAuthoritative 快照内 ID 未命中题库：跳过该题，集合恒定
-//（specs §5.1.3 快照现读口径）。
-func TestContextSnapshotAuthoritative(t *testing.T) {
+// TestContextSnapshotMissingQuestion 快照内 ID 未命中题库：按题目现读失败处理，
+// 返回内部错误 1500（specs §5.1.5 异常表，前端加载失败与重试）。
+func TestContextSnapshotMissingQuestion(t *testing.T) {
 	fx := newAnswerFixture(t)
 	delete(fx.qRepo.byIDs, 603)
+
+	_, err := fx.svc.Context(context.Background(), answerTokenPlain)
+	wantNotServiceErr(t, err)
+	if fx.ansRepo.insertCalled {
+		t.Error("题目现读失败不得落库")
+	}
+}
+
+// TestContextTokenExpiredInProgress 链接过期但任务已 in_progress：豁免放行，
+// 断点续答可用（specs §4.1.3 进行中任务到期顺延、链接保持可用）。
+func TestContextTokenExpiredInProgress(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.taskRepo.byID.Status = domain.TestTaskStatusInProgress
+	fx.ansRepo.link.ExpiresAt = time.Now().Add(-time.Minute)
 
 	res, err := fx.svc.Context(context.Background(), answerTokenPlain)
 	if err != nil {
 		t.Fatalf("Context: %v", err)
 	}
-	if len(res.Questions) != 4 {
-		t.Errorf("len(Questions) = %d, want 4（未命中 ID 跳过）", len(res.Questions))
+	if res.QuestionTotal != 5 {
+		t.Errorf("QuestionTotal = %d, want 5", res.QuestionTotal)
 	}
-	if res.Questions[2].Seq != 4 { // 603 缺位后第三条是原第 4 题
-		t.Errorf("Questions[2].Seq = %d, want 4（快照原序号）", res.Questions[2].Seq)
+}
+
+// TestReplyTokenExpiredInProgress 回复侧同口径：in_progress 任务过期链接放行落库。
+func TestReplyTokenExpiredInProgress(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.taskRepo.byID.Status = domain.TestTaskStatusInProgress
+	fx.ansRepo.link.ExpiresAt = time.Now().Add(-time.Minute)
+
+	if _, err := fx.svc.Reply(context.Background(), answerTokenPlain, "过期后续答"); err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+	if !fx.ansRepo.insertCalled {
+		t.Error("in_progress 过期链接回复应落库")
 	}
 }
 
@@ -670,8 +701,8 @@ func TestReplyLastFinished(t *testing.T) {
 	}
 }
 
-// TestContextTokenExpired 链接 valid 但已过 ExpiresAt：1901 即时拦截（收口每分钟
-// tick 的空窗，防过期链接被 StartSession 救活后永不过期）。
+// TestContextTokenExpired 链接 valid、已过 ExpiresAt 且任务 pending：1901 即时
+// 拦截（收口每分钟 tick 的空窗，防过期链接被 StartSession 救活后永不过期）。
 func TestContextTokenExpired(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.ansRepo.link.ExpiresAt = time.Now().Add(-time.Minute)
@@ -768,7 +799,8 @@ func TestSubmitIdempotent(t *testing.T) {
 	}
 }
 
-// TestSubmitGuardRejected F7 终态守卫 1802：统一收敛 1901（specs §5.3.4 规则2）。
+// TestSubmitGuardRejected F7 终态守卫 1802 且任务真非 completed（如 canceled）：
+// 统一收敛 1901（specs §5.3.4 规则2）。
 func TestSubmitGuardRejected(t *testing.T) {
 	fx := newAnswerFixture(t)
 	fx.ansRepo.count = 5
@@ -776,6 +808,30 @@ func TestSubmitGuardRejected(t *testing.T) {
 
 	_, err := fx.svc.Submit(context.Background(), answerTokenPlain)
 	wantAnswerErr(t, err, errcode.AnswerTokenInvalid)
+}
+
+// TestSubmitConcurrentRace 并发提交竞态：校验链读到 pending 而 CompleteTask 落地
+// 时任务已被并发推 completed，重读任务态后仍返回成功（specs §5.3.4 规则2
+// 已 completed 返回成功结果，员工视角页面转成功态）。
+func TestSubmitConcurrentRace(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.ansRepo.count = 5
+	// 模拟竞态：校验链读到 pending，CompleteTask 因终态守卫返回 1802 的同时
+	// 另一请求已把任务行推 completed。
+	now := time.Now()
+	fx.taskSvc.completeErr = service.NewError(errcode.TestTaskStatusInvalid)
+	fx.taskSvc.onGuardReject = func() {
+		fx.taskRepo.byID.Status = domain.TestTaskStatusCompleted
+		fx.taskRepo.byID.CompletedAt = &now
+	}
+
+	res, err := fx.svc.Submit(context.Background(), answerTokenPlain)
+	if err != nil {
+		t.Fatalf("Submit 竞态: %v", err)
+	}
+	if res.TaskNo != "T202609290001" {
+		t.Errorf("TaskNo = %q, want T202609290001", res.TaskNo)
+	}
 }
 
 // TestSubmitCompleteFail 其余事务失败：内部错误包裹上抛（specs §5.3.5 第三行）。
@@ -798,4 +854,24 @@ func TestSubmitTokenInvalid(t *testing.T) {
 	wantAnswerErr(t, errA1, errcode.AnswerTokenInvalid)
 	_, errA2 := fx.svc.Reply(context.Background(), answerTokenPlain, "回复")
 	wantAnswerErr(t, errA2, errcode.AnswerTokenInvalid)
+}
+
+// TestSubmitExpiredInProgressSubmit in_progress 任务过期链接提交：豁免到期判定，
+// 完整性通过即正常完成（specs §4.1.3 顺延至提交）。
+func TestSubmitExpiredInProgressSubmit(t *testing.T) {
+	fx := newAnswerFixture(t)
+	fx.taskRepo.byID.Status = domain.TestTaskStatusInProgress
+	fx.ansRepo.link.ExpiresAt = time.Now().Add(-time.Minute)
+	fx.ansRepo.count = 5
+
+	res, err := fx.svc.Submit(context.Background(), answerTokenPlain)
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if res.TaskNo != "T202609290001" {
+		t.Errorf("TaskNo = %q, want T202609290001", res.TaskNo)
+	}
+	if fx.taskSvc.completeCalls != 1 {
+		t.Errorf("completeCalls = %d, want 1", fx.taskSvc.completeCalls)
+	}
 }

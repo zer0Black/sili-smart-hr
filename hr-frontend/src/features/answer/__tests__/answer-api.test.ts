@@ -204,13 +204,14 @@ describe('通道级错误保留 code=0（429 与网络错误）', () => {
     expect((err as AnswerApiError).message).toBe('too many requests');
   });
 
-  it('TestNetworkErrorKeepsZeroCode：无响应的网络错误归一为 code=0 的 AnswerApiError', async () => {
+  it('TestNetworkErrorKeepsZeroCode：无响应的网络错误归一为 code=0 的 AnswerApiError，文案走 i18n 随语言切换', async () => {
     installAdapter(() => {
       throw new axios.AxiosError('Network Error', axios.AxiosError.ERR_NETWORK);
     });
     const err = await fetchAnswerContext(token).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AnswerApiError);
     expect((err as AnswerApiError).code).toBe(0);
-    expect((err as AnswerApiError).message).toContain('网络');
+    // 兜底文案来自 answer:error.network（zh/en 各一条），断言非空即可，语言由检测顺序决定。
+    expect((err as AnswerApiError).message.length).toBeGreaterThan(0);
   });
 });

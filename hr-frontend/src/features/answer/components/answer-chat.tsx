@@ -32,7 +32,8 @@ export function AnswerChat({
   onAnsweredChange?: (answered: number) => void;
   /** 发送/提交中令牌失效转页面失效态（specs §4.1.4 规则5 交互时校验兜底）。 */
   onInvalid: () => void;
-  onSubmitSuccess: (taskNo: string) => void;
+  /** 提交成功置位（specs §4.3 成功态，task_no 同源于 ctx 由成功态展示）。 */
+  onSubmitSuccess: () => void;
 }): JSX.Element {
   const { t } = useTranslation('answer');
   const replyMutation = useAnswerReply(token);
@@ -110,7 +111,7 @@ export function AnswerChat({
 
   const submit = () => {
     submitMutation.mutate(undefined, {
-      onSuccess: (result) => onSubmitSuccess(result.task_no),
+      onSuccess: () => onSubmitSuccess(),
       onError: (err) => {
         if (err instanceof AnswerApiError && err.code === ErrCode.AnswerIncomplete) {
           // 完整性失败：toast 后回作答态断点续答（specs §4.1.3 / A3 错误码）。
@@ -139,7 +140,7 @@ export function AnswerChat({
     <section className="bg-muted/40 overflow-hidden rounded-xl border">
       <div
         ref={scrollRef}
-        className="flex h-[420px] flex-col gap-3.5 overflow-y-auto px-4 py-4 sm:px-5"
+        className="flex h-[360px] flex-col gap-3.5 overflow-y-auto px-4 py-4 sm:h-[420px] sm:px-5"
         aria-live="polite"
       >
         {script.messages.map((m) => (
@@ -165,7 +166,7 @@ export function AnswerChat({
               <span
                 className={`text-muted-foreground pointer-events-none absolute right-2.5 bottom-2 text-[11px] tabular-nums ${runeCount(input) >= AIMGMT_MAX_RUNES ? 'text-destructive' : ''}`}
               >
-                {t('input.charCount', { count: runeCount(input) })}
+                {t('input.charCount', { count: runeCount(input), max: AIMGMT_MAX_RUNES })}
               </span>
             )}
           </div>

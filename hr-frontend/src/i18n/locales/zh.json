@@ -1109,7 +1109,7 @@
       "send": "发送",
       "finishTip": "本次作答已完成，可提交结束。",
       "submit": "提交并结束",
-      "charCount": "{{count}}/500"
+      "charCount": "{{count}}/{{max}}"
     },
     "invalid": {
       "title": "作答链接不可用",
@@ -1127,7 +1127,8 @@
       "loadFailed": "加载失败，请重试",
       "retry": "重试",
       "incomplete": "存在未作答题目，请继续作答",
-      "submitFailed": "提交失败，请重试"
+      "submitFailed": "提交失败，请重试",
+      "network": "网络异常，请稍后重试"
     }
   }
 }

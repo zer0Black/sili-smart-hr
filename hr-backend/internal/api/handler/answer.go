@@ -26,12 +26,12 @@ type answerTokenReq struct {
 	Token string `json:"token" binding:"required"`
 }
 
-// answerReplyReq 是 A2 的请求体：token 缺失 1400；content 无 required 绑定，
-// 空串与纯空白经 service 格式校验归 1902（03 A2 错误码表：1400=字段缺失、
-// 1902=空串，两者是不同归类）。
+// answerReplyReq 是 A2 的请求体：token 缺失 1400；content 用指针区分键缺失
+//（nil → 1400，03 A2 错误码表「字段缺失」）与空串（非空校验归 service 格式
+//校验 1902，与「空串」归类对齐）。
 type answerReplyReq struct {
-	Token   string `json:"token" binding:"required"`
-	Content string `json:"content"`
+	Token   string  `json:"token" binding:"required"`
+	Content *string `json:"content"`
 }
 
 // Context 处理 POST /api/answer/context（A1 作答页上下文）。
@@ -53,11 +53,11 @@ func (h *AnswerHandler) Context(c *gin.Context) {
 // 当前题（specs §5.2.4 规则1），请求体已无客户端题号字段。
 func (h *AnswerHandler) Reply(c *gin.Context) {
 	var req answerReplyReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil || req.Content == nil {
 		handleServiceError(c, service.NewError(errcode.BadRequest))
 		return
 	}
-	res, err := h.svc.Reply(c.Request.Context(), req.Token, req.Content)
+	res, err := h.svc.Reply(c.Request.Context(), req.Token, *req.Content)
 	if err != nil {
 		handleServiceError(c, err)
 		return

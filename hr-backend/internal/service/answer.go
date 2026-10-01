@@ -104,9 +104,11 @@ func NewAnswerService(
 	}
 }
 
-// validateToken 令牌校验链（03 §4.1，三接口共享）：哈希点查 → 链接态 → 到期判定
-// → 任务态。失败一律 1901 同文案（specs §4.2.4 规则1 防枚举）；Submit 传
+// validateToken 令牌校验链（03 §4.1，三接口共享）：哈希点查 → 链接态 → 任务态
+// → 到期判定。失败一律 1901 同文案（specs §4.2.4 规则1 防枚举）；Submit 传
 // allowCompletedIdempotent 放行「used + 任务 completed」幂等特例（03 §1.5）。
+// 到期判定豁免 in_progress：已建会话的任务顺延至提交或取消，链接保持可用
+//（specs §4.1.3 / F7 specs §5.3.4）。
 func (s *answerService) validateToken(ctx context.Context, token string, allowCompletedIdempotent bool) (*domain.AssessmentTestTask, error) {
 	if token == "" {
 		return nil, NewError(errcode.AnswerTokenInvalid)
@@ -121,20 +123,23 @@ func (s *answerService) validateToken(ctx context.Context, token string, allowCo
 		slog.Warn("answer token rejected", "token_hash_prefix", tokenHash[:8], "link_status", linkStatusOrEmpty(link))
 		return nil, NewError(errcode.AnswerTokenInvalid)
 	}
-	// 到期即时判定收口 tick 空窗：每分钟 ExpirePending 只扫 pending 任务，
-	// 先于此被作答救活的过期链接若不在此拦下，任务转 in_progress 后永不过期
-	//（ExpirePending 同口径 expires_at < now，specs §5.1.4）。
-	if link.ExpiresAt.Before(s.now()) {
-		slog.Warn("answer token expired", "token_hash_prefix", tokenHash[:8])
-		return nil, NewError(errcode.AnswerTokenInvalid)
-	}
+	// 到期即时判定收口 tick 空窗：ExpirePending 只扫 pending 任务，先于 tick 被
+	// 作答救活的过期链接若不在此拦下，任务转 in_progress 后永不过期（同
+	// ExpirePending 的 expires_at < now 口径）。判定放任务读取之后、仅对 pending
+	// 生效：in_progress 已建会话，顺延至提交或取消，链接保持可用（specs §4.1.3）。
 	task, err := s.taskRepo.GetByID(ctx, link.TaskID)
 	if err != nil {
-		slog.Error("answer validate get task failed", "task_no", "", "err", err)
+		slog.Error("answer validate get task failed", "err", err)
 		return nil, fmt.Errorf("get test task: %w", err)
 	}
 	if task == nil { // 链接孤儿，理论不可达
 		slog.Warn("answer token rejected", "token_hash_prefix", tokenHash[:8], "link_status", link.Status)
+		return nil, NewError(errcode.AnswerTokenInvalid)
+	}
+	if link.ExpiresAt.Before(s.now()) && task.Status != domain.TestTaskStatusInProgress {
+		// 过期且任务未建立会话（pending/expired 等）：1901。expired 任务的链接
+		// 恒为 invalid 由上方链接态拦下，此处是 tick 空窗内的 pending 兜底。
+		slog.Warn("answer token expired", "token_hash_prefix", tokenHash[:8])
 		return nil, NewError(errcode.AnswerTokenInvalid)
 	}
 	switch task.Status {
@@ -167,7 +172,7 @@ func (s *answerService) Context(ctx context.Context, token string) (*AnswerConte
 		slog.Error("answer start session failed", "task_no", task.TaskNo, "err", err)
 		return nil, fmt.Errorf("start session: %w", err)
 	}
-	questionIDs, err := parseAnswerQuestionIDs(task.QuestionIDsJSON)
+	questionIDs, err := repository.ParseQuestionIDs(task.QuestionIDsJSON)
 	if err != nil {
 		slog.Error("answer parse question ids failed", "task_no", task.TaskNo, "err", err)
 		return nil, err
@@ -205,7 +210,7 @@ func (s *answerService) Reply(ctx context.Context, token, content string) (*Answ
 	if err != nil {
 		return nil, err
 	}
-	questionIDs, err := parseAnswerQuestionIDs(task.QuestionIDsJSON)
+	questionIDs, err := repository.ParseQuestionIDs(task.QuestionIDsJSON)
 	if err != nil {
 		slog.Error("answer parse question ids failed", "task_no", task.TaskNo, "err", err)
 		return nil, err
@@ -223,6 +228,8 @@ func (s *answerService) Reply(ctx context.Context, token, content string) (*Answ
 	if !validAnswerContent(task.TestType, trimmed) {
 		return nil, NewError(errcode.AnswerReplyInvalid)
 	}
+	// 未到末题先组装下一题（组装失败零落库，重发仍落原题号），action 由 answered+1
+	// 与 questionTotal 一次比较定音（specs §5.2.4 规则1 推进单调）。
 	res := &AnswerReplyResult{
 		QuestionSeq:   seq,
 		AnsweredCount: int(answered) + 1,
@@ -230,21 +237,20 @@ func (s *answerService) Reply(ctx context.Context, token, content string) (*Answ
 		Action:        AnswerActionFinished,
 		NextQuestion:  nil,
 	}
-	if res.AnsweredCount < questionTotal {
+	hasNext := res.AnsweredCount < questionTotal
+	if hasNext {
 		next, err := s.buildQuestionItem(ctx, task, questionIDs[res.AnsweredCount], res.AnsweredCount+1)
 		if err != nil {
 			slog.Error("answer load next question failed", "task_no", task.TaskNo, "err", err)
 			return nil, err
 		}
 		res.NextQuestion = next
+		res.Action = AnswerActionNext
 	}
 	row := &domain.AssessmentTestAnswer{TaskID: task.ID, QuestionSeq: seq, Content: trimmed}
 	if err := s.answerRepo.Insert(ctx, row); err != nil {
 		slog.Error("answer insert failed", "task_no", task.TaskNo, "err", err)
 		return nil, fmt.Errorf("insert answer: %w", err)
-	}
-	if res.AnsweredCount < questionTotal {
-		res.Action = AnswerActionNext
 	}
 	return res, nil
 }
@@ -258,7 +264,7 @@ func (s *answerService) Submit(ctx context.Context, token string) (*AnswerSubmit
 	if task.Status == domain.TestTaskStatusCompleted { // 幂等短路：不重复进事务（03 §1.5）
 		return &AnswerSubmitResult{TaskNo: task.TaskNo}, nil
 	}
-	questionIDs, err := parseAnswerQuestionIDs(task.QuestionIDsJSON)
+	questionIDs, err := repository.ParseQuestionIDs(task.QuestionIDsJSON)
 	if err != nil {
 		slog.Error("answer parse question ids failed", "task_no", task.TaskNo, "err", err)
 		return nil, err
@@ -272,19 +278,19 @@ func (s *answerService) Submit(ctx context.Context, token string) (*AnswerSubmit
 	}
 	if err := s.taskSvc.CompleteTask(ctx, task.ID); err != nil {
 		if serr, ok := err.(*Error); ok && serr.Code == errcode.TestTaskStatusInvalid {
-			// F7 终态守卫 1802 收敛为令牌不可用（specs §5.3.4 规则2，03 §1.5）
+			// 并发提交竞态：校验链读到 pending 而 CompleteTask 落地时任务已被另
+			// 一请求推 completed，重读任务态，completed 仍返回成功（specs §5.3.4
+			// 规则2）；其余终态收敛 1901（03 §1.5）。
+			fresh, rerr := s.taskRepo.GetByID(ctx, task.ID)
+			if rerr == nil && fresh != nil && fresh.Status == domain.TestTaskStatusCompleted {
+				return &AnswerSubmitResult{TaskNo: task.TaskNo}, nil
+			}
 			return nil, NewError(errcode.AnswerTokenInvalid)
 		}
 		slog.Error("answer complete task failed", "task_no", task.TaskNo, "err", err)
 		return nil, fmt.Errorf("complete task: %w", err)
 	}
 	return &AnswerSubmitResult{TaskNo: task.TaskNo}, nil
-}
-
-// parseAnswerQuestionIDs 解析任务快照题目 ID 数组：repository.ParseQuestionIDs
-// 单点实现，service 侧薄封装。
-func parseAnswerQuestionIDs(s string) ([]int64, error) {
-	return repository.ParseQuestionIDs(s)
 }
 
 // validAnswerContent 格式校验（specs §5.2.2 步骤2）：非空、ai_mgmt ≤500 rune、
@@ -308,7 +314,8 @@ func validAnswerContent(testType, content string) bool {
 }
 
 // loadQuestionItems 题目全集组装（specs §5.1.3 快照现读口径）：ListByIDsUnscoped
-// 现读全文，未命中 ID 跳过；ai_mgmt 维度名经快照 codes 取 {ID→Name} 映射，
+// 现读全文，快照 ID 未命中（题目被物理删除等异常）报错走 1500 加载失败重试
+//（specs §5.1.5 异常表）；ai_mgmt 维度名经快照 codes 取 {ID→Name} 映射，
 // enneagram 恒空串。seq 按快照数组下标 1-based，与现读返回顺序解耦。
 func (s *answerService) loadQuestionItems(ctx context.Context, task *domain.AssessmentTestTask, questionIDs []int64) ([]AnswerQuestionItem, error) {
 	dimNames := map[int64]string{}
@@ -331,7 +338,7 @@ func (s *answerService) loadQuestionItems(ctx context.Context, task *domain.Asse
 	for i, id := range questionIDs {
 		q, ok := byID[id]
 		if !ok {
-			continue // 快照集合权威，缺行跳过（物理删除异常态）
+			return nil, fmt.Errorf("question %d in snapshot missing", id)
 		}
 		items = append(items, AnswerQuestionItem{
 			Seq:           i + 1,
@@ -343,14 +350,11 @@ func (s *answerService) loadQuestionItems(ctx context.Context, task *domain.Asse
 	return items, nil
 }
 
-// buildQuestionItem 组装单条题目条目：快照指定 ID 现读，未命中（理论不可达）报错。
+// buildQuestionItem 组装单条题目条目：快照指定 ID 现读，未命中报错走 1500。
 func (s *answerService) buildQuestionItem(ctx context.Context, task *domain.AssessmentTestTask, questionID int64, seq int) (*AnswerQuestionItem, error) {
 	items, err := s.loadQuestionItems(ctx, task, []int64{questionID})
 	if err != nil {
 		return nil, err
-	}
-	if len(items) == 0 {
-		return nil, fmt.Errorf("next question %d missing", questionID)
 	}
 	item := items[0]
 	item.Seq = seq
