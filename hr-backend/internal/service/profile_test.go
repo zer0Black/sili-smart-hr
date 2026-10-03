@@ -7,7 +7,9 @@
 //   - 短板维度筛选：included_json 判据、最低分并列全入选、failed 行不计分（specs §4.1.4 规则4、03 §1.9）
 //   - 仅看未使用覆盖活跃度筛选（specs §4.1.2 A）
 //   - 姓名升序排序与内存分页（specs §8.3 偏离记录）
-//   - B1 详情：区间并集/selected 校验/评分卡状态优先级/置信度/走势/公司均分/空画像/姓名回退（specs §5.2）
+//   - 跨页去重、空名单短路仓储、降权同周期口径（specs §4.1.4 规则1/3/5、03 §1.9）
+//   - B1 详情：区间并集/selected 校验/评分卡状态优先级/置信度/走势/公司均分/空画像/姓名回退/
+//     区间含止日双界换算/区间仅一期 change_vs_prev nil（specs §5.2、03 §1.4/§1.5）
 package service_test
 
 import (
@@ -97,6 +99,7 @@ var _ repository.AggregateScoreRepository = (*fakeProfileAggScores)(nil)
 type fakeProfileActivityStats struct {
 	latest  []domain.ActivityStat
 	byToken []domain.ActivityStat
+	called  bool
 	err     error
 }
 
@@ -109,6 +112,7 @@ func (f *fakeProfileActivityStats) ListByToken(_ context.Context, _ string) ([]d
 }
 
 func (f *fakeProfileActivityStats) ListLatestByTokens(_ context.Context, _ []string) ([]domain.ActivityStat, error) {
+	f.called = true
 	return f.latest, f.err
 }
 
@@ -117,6 +121,7 @@ var _ repository.ActivityStatRepository = (*fakeProfileActivityStats)(nil)
 // fakeProfileResults 是 repository.AssessmentTestResultRepository 的测试假实现。
 type fakeProfileResults struct {
 	byStaff map[string]domain.AssessmentTestResult
+	called  bool
 	err     error
 }
 
@@ -129,6 +134,7 @@ func (f *fakeProfileResults) DegradeTask(context.Context, int64, bool) error {
 }
 
 func (f *fakeProfileResults) ListLatestScoredByStaffNames(_ context.Context, _ []string) (map[string]domain.AssessmentTestResult, error) {
+	f.called = true
 	return f.byStaff, f.err
 }
 
@@ -561,6 +567,110 @@ func TestProfileList_DedupStaffNames(t *testing.T) {
 	findProfileItem(t, res, "李四")
 }
 
+// TestProfileList_DedupAcrossPages 验证上游翻页跨页同人名去重：满页翻到第二页、
+// 第二页出现第一页已有姓名时按姓名去重，total 计去重后人数而非上游原始行数。
+func TestProfileList_DedupAcrossPages(t *testing.T) {
+	// 第一页满 100 行（张敏 + 99 个填充名）才触发翻页；第二页短页：张敏重复 + 李四新增。
+	page1 := make([]userapi.Staff, 0, userapi.StaffPageSize)
+	page1 = append(page1, userapi.Staff{StaffID: "1", StaffName: "张敏"})
+	for i := 1; i < userapi.StaffPageSize; i++ {
+		page1 = append(page1, userapi.Staff{StaffID: fmt.Sprintf("%d", i+1), StaffName: fmt.Sprintf("员%03d", i)})
+	}
+	page2 := []userapi.Staff{
+		{StaffID: "999", StaffName: "张敏"},
+		{StaffID: "200", StaffName: "李四"},
+	}
+	ua := &fakeUserapiClient{pages: [][]userapi.Staff{page1, page2}, total: 102}
+	svc := newProfileSvc(&fakeProfileDimensionRepo{}, &fakeProfileDimScores{},
+		&fakeProfileAggScores{}, &fakeProfileActivityStats{}, &fakeProfileResults{}, ua)
+
+	res, err := svc.List(context.Background(), service.ProfileFilter{PageSize: 100})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	// 原始行数 102（张敏跨页出现两次），去重后 101。姓名升序序：员001..员099 < 张敏 < 李四，
+	// 第一页末位（index 99）是张敏（跨页同人仅出现一次），第二页仅李四。
+	if res.Total != 101 {
+		t.Fatalf("跨页去重后 total want 101 而非 102, got %d", res.Total)
+	}
+	seen := map[string]struct{}{}
+	for _, it := range res.List {
+		if _, dup := seen[it.StaffName]; dup {
+			t.Fatalf("list 出现重复姓名 %s", it.StaffName)
+		}
+		seen[it.StaffName] = struct{}{}
+	}
+	if got := res.List[len(res.List)-1].StaffName; got != "张敏" {
+		t.Fatalf("第一页末位 want 张敏（跨页去重保首见）, got %s", got)
+	}
+	res2, err := svc.List(context.Background(), service.ProfileFilter{Page: 2, PageSize: 100})
+	if err != nil {
+		t.Fatalf("List page2: %v", err)
+	}
+	if len(res2.List) != 1 || res2.List[0].StaffName != "李四" {
+		t.Fatalf("第 2 页 want 仅李四, got %+v", res2.List)
+	}
+}
+
+// TestProfileList_EmptyNames_SkipRepoQueries 验证名单为空时四仓储批量查询短路不触达
+//（specs §4.1.4 规则1：空名单为合法空态，非错误）。
+func TestProfileList_EmptyNames_SkipRepoQueries(t *testing.T) {
+	ua := &fakeUserapiClient{staffs: []userapi.Staff{}, total: 0}
+	ds := &fakeProfileDimScores{}
+	ag := &fakeProfileAggScores{}
+	ac := &fakeProfileActivityStats{}
+	rs := &fakeProfileResults{}
+	res, err := newProfileSvc(&fakeProfileDimensionRepo{}, ds, ag, ac, rs, ua).
+		List(context.Background(), service.ProfileFilter{})
+	if err != nil {
+		t.Fatalf("空名单应为合法空态, got err %v", err)
+	}
+	if res.Total != 0 || len(res.List) != 0 {
+		t.Fatalf("want total 0 / len 0, got %d / %d", res.Total, len(res.List))
+	}
+	if ds.called || ag.called || ac.called || rs.called {
+		t.Fatalf("名单为空不应触达仓储: ds=%v ag=%v ac=%v rs=%v", ds.called, ag.called, ac.called, rs.called)
+	}
+}
+
+// TestProfileList_DegradedSamePeriodOnly 验证降权判据限模块最新聚合周期同窗维度行
+//（03 §1.9）：insufficient/failed 维度行周期与聚合行错位时不触发降权。
+func TestProfileList_DegradedSamePeriodOnly(t *testing.T) {
+	p0s, p0e := profileWeek(0)
+	p1s, p1e := profileWeek(-1)
+	usageScore, mgmtScore := 82.0, 66.0
+	ds := &fakeProfileDimScores{latest: []domain.DimensionScore{
+		// AI_USAGE 维度行全在 w-1（与聚合行 w0 错位）→ 不降权。
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, DimensionCode: "A", Score: 60,
+			Status: domain.ScoreStatusSuccess, Insufficient: true, PeriodStartAt: p1s, PeriodEndAt: p1e},
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, DimensionCode: "A", Score: 0,
+			Status: domain.ScoreStatusFailed, PeriodStartAt: p1s, PeriodEndAt: p1e},
+		// AI_MGMT failed 维度行与聚合行同在 w0 → 降权。
+		{TokenName: "张敏", Module: domain.ModuleAIMgmt, DimensionCode: "M1", Score: 0,
+			Status: domain.ScoreStatusFailed, PeriodStartAt: p0s, PeriodEndAt: p0e},
+	}}
+	ag := &fakeProfileAggScores{latest: []domain.AggregateScore{
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, ModuleScore: &usageScore, PeriodStartAt: p0s, PeriodEndAt: p0e},
+		{TokenName: "张敏", Module: domain.ModuleAIMgmt, ModuleScore: &mgmtScore, PeriodStartAt: p0s, PeriodEndAt: p0e},
+	}}
+	ua := &fakeUserapiClient{staffs: []userapi.Staff{{StaffID: "1", StaffName: "张敏"}}, total: 1}
+	res, err := newProfileSvc(&fakeProfileDimensionRepo{}, ds, ag,
+		&fakeProfileActivityStats{}, &fakeProfileResults{}, ua).List(context.Background(), service.ProfileFilter{})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	zm := findProfileItem(t, res, "张敏")
+	if zm.AIUsageDegraded {
+		t.Fatal("AI_USAGE 维度行与聚合周期错位不应降权（03 §1.9 同窗判据）")
+	}
+	if !zm.AIMGMTDegraded {
+		t.Fatal("AI_MGMT 同周期 failed 维度行应降权")
+	}
+	if zm.AIUsageScore == nil || *zm.AIUsageScore != 82 || zm.AIMGMTScore == nil || *zm.AIMGMTScore != 66 {
+		t.Fatalf("分数不受降权标注影响: %+v", zm)
+	}
+}
+
 // TestProfileList_DegradedFailedRow 验证 failed 维度行同样触发模块降权标记（specs §4.1.4 规则3）。
 func TestProfileList_DegradedFailedRow(t *testing.T) {
 	ps, pe := profilePeriod()
@@ -822,6 +932,67 @@ func TestProfileDetail_ChangeVsPrev_Rounding(t *testing.T) {
 	}
 	if res.Modules[0].ChangeVsPrev != nil {
 		t.Fatalf("无下一区间 change_vs_prev 应 nil, got %v", *res.Modules[0].ChangeVsPrev)
+	}
+}
+
+// TestProfileDetail_PeriodEndBoundaryInclusive 验证区间含止日换算（03 §1.4）：
+// period_end 传 "2026-09-28" 按次日 00:00（09-29）与落库行 PeriodEndAt 双界精确匹配；
+// 若换算少加一日则区间反而 2001。
+func TestProfileDetail_PeriodEndBoundaryInclusive(t *testing.T) {
+	p0s, p0e := profileWeek(0) // 落库行 PeriodEndAt = 2026-09-29 00:00（Local）
+	score := 82.35
+	dims, ds, ag, ac, rs, ua := detailEnv()
+	ag.byToken = []domain.AggregateScore{
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, ModuleScore: &score, PeriodStartAt: p0s, PeriodEndAt: p0e},
+	}
+	ds.byToken = []domain.DimensionScore{
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, DimensionCode: "A", Score: 85,
+			Status: domain.ScoreStatusSuccess, PeriodStartAt: p0s, PeriodEndAt: p0e, Source: domain.ScoreSourceConversation},
+	}
+	res, err := newProfileSvc(dims, ds, ag, ac, rs, ua).Detail(context.Background(), "张敏", "2026-09-22", "2026-09-28")
+	if err != nil {
+		t.Fatalf("period_end=09-28 应按 09-29 00:00 精确匹配落库行: %v", err)
+	}
+	if res.SelectedPeriod == nil || res.SelectedPeriod.PeriodStart != "2026-09-22" || res.SelectedPeriod.PeriodEnd != "2026-09-28" {
+		t.Fatalf("selected want 2026-09-22~2026-09-28, got %+v", res.SelectedPeriod)
+	}
+	if res.Modules[0].Score == nil || *res.Modules[0].Score != 82.35 {
+		t.Fatalf("所选区间应命中 w0 聚合行 82.35, got %v", res.Modules[0].Score)
+	}
+	// 换算后的查询上界探针：公司均分查询 end 入参须为 09-29 00:00（次日）。
+	if got := ds.companyIn["end"].In(time.Local).Format("2006-01-02"); got != "2026-09-29" {
+		t.Fatalf("区间换算 end 入参 want 次日 09-29, got %s", got)
+	}
+
+	// 反证：end 传 09-29（换算 09-30 00:00）不匹配落库行 09-29 00:00 → 2001。
+	_, err = newProfileSvc(dims, ds, ag, ac, rs, ua).Detail(context.Background(), "张敏", "2026-09-22", "2026-09-29")
+	wantCode(t, err, errcode.ProfilePeriodInvalid)
+}
+
+// TestProfileDetail_SinglePeriod_ChangeVsPrevNilBothModules 验证区间列表仅 1 期时
+// 两模块 change_vs_prev 均 nil（03 §1.5：任一期缺失为 null，无上一区间可取）。
+func TestProfileDetail_SinglePeriod_ChangeVsPrevNilBothModules(t *testing.T) {
+	p0s, p0e := profileWeek(0)
+	usageScore, mgmtScore := 82.35, 76.0
+	dims, ds, ag, ac, rs, ua := detailEnv()
+	ag.byToken = []domain.AggregateScore{
+		{TokenName: "张敏", Module: domain.ModuleAIUsage, ModuleScore: &usageScore, PeriodStartAt: p0s, PeriodEndAt: p0e},
+		{TokenName: "张敏", Module: domain.ModuleAIMgmt, ModuleScore: &mgmtScore, PeriodStartAt: p0s, PeriodEndAt: p0e},
+	}
+	res, err := newProfileSvc(dims, ds, ag, ac, rs, ua).Detail(context.Background(), "张敏", "", "")
+	if err != nil {
+		t.Fatalf("Detail: %v", err)
+	}
+	if len(res.Periods) != 1 {
+		t.Fatalf("区间列表 want 1 期, got %d", len(res.Periods))
+	}
+	for _, m := range res.Modules {
+		if m.ChangeVsPrev != nil {
+			t.Fatalf("区间仅 1 期 %s change_vs_prev want nil, got %v", m.Module, *m.ChangeVsPrev)
+		}
+		if m.Score == nil {
+			t.Fatalf("本期聚合行存在 %s score 不应 nil", m.Module)
+		}
 	}
 }
 
