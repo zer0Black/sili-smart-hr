@@ -43,6 +43,8 @@ var exportHeaders = []string{"姓名", "活跃度", "AI 使用能力", "AI 管�
 
 // Export 按筛选条件全量导出 xlsx（03 A2）：共享 assembleRows 链路（跳过分页），
 // 返回 xlsx 二进制流与文件名 "人员画像名单_YYYYMMDD.xlsx"（日期取服务器当日）。
+// 行数不设上限守卫：上游名单上限 1 万人（WalkStaffPages 100 页×100 行），
+// 远低于 xlsx 单 sheet 1048575 数据行上限，全量口径（BR1）不截断。
 func (s *profileService) Export(ctx context.Context, f ProfileFilter) ([]byte, string, error) {
 	items, err := s.assembleRows(ctx, f)
 	if err != nil {

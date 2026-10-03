@@ -635,7 +635,7 @@ func (s *profileService) buildModuleCards(aggRows []domain.AggregateScore, dimRo
 
 		// change_vs_prev：区间列表下一项（更旧一期）的该模块聚合行，取整分差（BR2）。
 		if cur != nil {
-			if prev := prevPeriodAggRow(aggRows, bounds, selStart, module); prev != nil && prev.ModuleScore != nil && cur.ModuleScore != nil {
+			if prev := prevPeriodAggRow(aggRows, bounds, selStart, selEnd, module); prev != nil && prev.ModuleScore != nil && cur.ModuleScore != nil {
 				delta := int(math.Round(*cur.ModuleScore)) - int(math.Round(*prev.ModuleScore))
 				card.ChangeVsPrev = &delta
 			}
@@ -646,9 +646,10 @@ func (s *profileService) buildModuleCards(aggRows []domain.AggregateScore, dimRo
 }
 
 // prevPeriodAggRow 在区间列表中找 selected 的下一项（更旧一期）对应聚合行。
-func prevPeriodAggRow(aggRows []domain.AggregateScore, bounds []profilePeriodBound, selStart time.Time, module string) *domain.AggregateScore {
+// 匹配键为 (start, end) 二元组，防同 start 不同 end 的窗口形态漏判。
+func prevPeriodAggRow(aggRows []domain.AggregateScore, bounds []profilePeriodBound, selStart, selEnd time.Time, module string) *domain.AggregateScore {
 	for i, b := range bounds {
-		if b.start.Unix() != selStart.Unix() {
+		if b.start.Unix() != selStart.Unix() || b.end.Unix() != selEnd.Unix() {
 			continue
 		}
 		if i+1 >= len(bounds) {

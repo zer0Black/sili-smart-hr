@@ -46,7 +46,7 @@ function ModuleCard(props: { module: ProfileModuleCard }): JSX.Element {
                 <span
                   className={cn(
                     'inline-flex items-center gap-0.5 font-medium',
-                    module.change_vs_prev > 0 ? 'text-chart-2' : 'text-chart-1',
+                    module.change_vs_prev > 0 ? 'text-chart-2' : 'text-warning',
                   )}
                 >
                   {module.change_vs_prev > 0 ? (

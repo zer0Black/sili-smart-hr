@@ -712,7 +712,9 @@ export interface ProfileEvidence {
   source: 'conversation' | 'active_test';
   /** 评分行落库时刻 yyyy-MM-dd HH:mm，原样渲染。 */
   time: string; confidence: 'high' | 'medium' | 'low';
-  session_count: number; summary: Record<string, number>;
+  session_count: number;
+  /** 键值随评估口径版本而异（03 §1.9），后端透传 map[string]any，当前落库值为整数。 */
+  summary: Record<string, unknown>;
 }
 export interface ProfileTrendPoint { period_start: string; period_end: string; score: number; }
 export interface ProfileDimensionRow {

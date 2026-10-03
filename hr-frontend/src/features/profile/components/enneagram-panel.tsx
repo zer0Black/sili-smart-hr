@@ -1,7 +1,15 @@
 // 九型人格参考区（specs P2_PRF_001 §4.2.2 E / §4.2.4 规则6）：辅助维度标注参考性。
 // enneagram null 整区显示未参与提示不渲染空图表；主型柱高亮；无显著翼型落库为空串（'0' 兼容），显示「无显著翼型」。
 import { useTranslation } from 'react-i18next';
-import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import type { JSX } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -72,15 +80,18 @@ function EnneagramDistribution(props: {
     value: props.distribution[k] ?? 0,
   }));
   return (
-    <BarChart data={data} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
-      <CartesianGrid vertical={false} />
-      <XAxis dataKey="type" tickLine={false} axisLine={true} tickMargin={8} />
-      <YAxis tickLine={false} axisLine={false} tickMargin={4} unit="%" domain={[0, 100]} />
-      <Bar dataKey="value" radius={2}>
-        {data.map((d) => (
-          <Cell key={d.type} fill={d.type === props.mainType ? MAIN_BAR_COLOR : BAR_COLOR} />
-        ))}
-      </Bar>
-    </BarChart>
+    // BarChart 需包 ResponsiveContainer 提供 width/height，否则不渲染 SVG（同 dimension-panel）
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart data={data} margin={{ top: 4, right: 4, left: -18, bottom: 0 }}>
+        <CartesianGrid vertical={false} />
+        <XAxis dataKey="type" tickLine={false} axisLine={true} tickMargin={8} />
+        <YAxis tickLine={false} axisLine={false} tickMargin={4} unit="%" domain={[0, 100]} />
+        <Bar dataKey="value" radius={2}>
+          {data.map((d) => (
+            <Cell key={d.type} fill={d.type === props.mainType ? MAIN_BAR_COLOR : BAR_COLOR} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 }

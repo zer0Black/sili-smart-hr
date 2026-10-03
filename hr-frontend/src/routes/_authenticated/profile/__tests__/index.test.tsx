@@ -123,7 +123,7 @@ const ZH_PROFILE = {
     notParticipated: '未参与九型人格测评',
     noWing: '无显著翼型',
     type1: '完美型', type2: '助人型', type3: '成就型', type4: '自我型',
-    type5: '思考型', type6: '忠诚型', type7: '活跃型', type8: '领袖型', type9: '和平型',
+    type5: '智慧型', type6: '忠诚型', type7: '活跃型', type8: '领袖型', type9: '和平型',
   },
   dataStatus: { complete: '数据完整', degraded: '部分维度已降权', missing: '部分维度缺失', pending: '待评估' },
   evidenceSource: { conversation: '对话分析', active_test: '主动测试' },
@@ -466,7 +466,7 @@ describe('详情页 /profile/$staffName（specs §4.2）', () => {
 
     expect(await screen.findByText('九型人格参考')).toBeInTheDocument();
     // 主型 5 型名在概览条与九型区各出现一次
-    expect(screen.getAllByText('思考型').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('智慧型').length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText('无显著翼型')).toBeInTheDocument();
   });
 

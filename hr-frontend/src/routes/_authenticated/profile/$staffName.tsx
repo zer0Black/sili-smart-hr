@@ -89,7 +89,6 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
 
   function onTabChange(tab: ProfileTabKey) {
     setActiveTab(tab);
-    if (tab === 'aiMgmt') setMgmtMounted(true);
   }
 
   function goBack() {

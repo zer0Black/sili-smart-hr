@@ -86,11 +86,10 @@ func upsertResult(db *gorm.DB, row *domain.AssessmentTestResult) error {
 	}).Create(row).Error
 }
 
-// ListLatestScoredByStaffNames 两段查询（04 §3：先按 idx_staff_name 圈任务，再按
-// uk_result_task 点查结果行）：tasks 圈 staff_name IN + test_type=enneagram 的任务
-// 主键，results 侧按 task_id IN 取 scored 且 main_type<>'' 行，同人取 created_at
-// 最新；降级行被过滤自然跳过（03 §1.8）。批量 IN 单条 SQL，禁止逐人查询
-// （specs P2_PRF_001 §5.1.4 规则2）。
+// ListLatestScoredByStaffNames 两段查询（04 §3：tasks 按 idx_staff_name 圈
+// staff_name IN + enneagram 任务主键，results 按 task_id IN 取 scored 且
+// main_type<>''，同人取 created_at 最新，降级行被过滤）。批量 IN 单条 SQL，
+// 禁止逐人查询（specs P2_PRF_001 §5.1.4 规则2）。
 func (r *assessmentTestResultRepository) ListLatestScoredByStaffNames(ctx context.Context, staffNames []string) (map[string]domain.AssessmentTestResult, error) {
 	latest := make(map[string]domain.AssessmentTestResult)
 	if len(staffNames) == 0 {
