@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "feature_id": "P2_PRF_001_FEAT_个人画像",
+  "subplans": {
+    "01": {
+      "base_sha": "9094689478e9aedfe76bebdc5b3242fda6bf3e37",
+      "plan_digest": "2a25638eee0bce8af87703077d60b3de3d8920a2cdf4b873233fe8275e3ea507",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "70d2229a15251dd44d0345ecc956c46268e0928fffb3e909135e59d454b54fc9",
+        "../03_api_interface.md": "4a128850a66c4886e400f4868742ce9a86ae6c3200c946c3474b16087a08ac3a",
+        "../04_model_interface.md": "458f6a89dcd99141aab8b51107853dd4d68d276663388222940afafc996decfd"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T1",
+          "status": "verified",
+          "base_sha": "9094689478e9aedfe76bebdc5b3242fda6bf3e37",
+          "head_sha": "64538e45a584f5dacb14741b7694df45be1673d5",
+          "verification": {
+            "path": "execution-evidence/01_T1_64538e4.md",
+            "digest": "9c17a358a52d81127e3f4540e0158bd42fbe31c9e70aeb74dd22bb125ca768f6",
+            "head_sha": "64538e45a584f5dacb14741b7694df45be1673d5",
+            "recorded_at": "2026-10-03T06:44:10Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T2",
+          "status": "verified",
+          "base_sha": "64538e45a584f5dacb14741b7694df45be1673d5",
+          "head_sha": "f7eda08749bd9499d0223ab79be6b4efd3071fa9",
+          "verification": {
+            "path": "execution-evidence/01_T2_f7eda08.md",
+            "digest": "5d35a22f0449fe80562019136bba7729fe1419f316363b9ace7cc208b150c1ab",
+            "head_sha": "f7eda08749bd9499d0223ab79be6b4efd3071fa9",
+            "recorded_at": "2026-10-03T06:51:58Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T3",
+          "status": "verified",
+          "base_sha": "f7eda08749bd9499d0223ab79be6b4efd3071fa9",
+          "head_sha": "eb0a4a64f663381385959d05d36f922d453b1bad",
+          "verification": {
+            "path": "execution-evidence/01_T3_eb0a4a6.md",
+            "digest": "9dfd3cecf5b74c232c5d1aeeb2f4b93f3fffa591cebe8e476949d82da562df11",
+            "head_sha": "eb0a4a64f663381385959d05d36f922d453b1bad",
+            "recorded_at": "2026-10-03T07:10:04Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T4",
+          "status": "verified",
+          "base_sha": "eb0a4a64f663381385959d05d36f922d453b1bad",
+          "head_sha": "c152011c1da409f6b6fccf95b8e9f0aa4a986667",
+          "verification": {
+            "path": "execution-evidence/01_T4_c152011.md",
+            "digest": "ba8453acde423845f8154de8d0036a48291d542cbfb19b41fca46177fba9462d",
+            "head_sha": "c152011c1da409f6b6fccf95b8e9f0aa4a986667",
+            "recorded_at": "2026-10-03T07:29:35Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T5",
+          "status": "verified",
+          "base_sha": "c152011c1da409f6b6fccf95b8e9f0aa4a986667",
+          "head_sha": "6342ec4520469aee76321e82c5b26ec4f1a122b6",
+          "verification": {
+            "path": "execution-evidence/01_T5_6342ec4.md",
+            "digest": "34fa970a3e74d4e09552fbd596b8f0936ef6021696843f7cf8c3cb6f956f653f",
+            "head_sha": "6342ec4520469aee76321e82c5b26ec4f1a122b6",
+            "recorded_at": "2026-10-03T07:34:56Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T6",
+          "status": "verified",
+          "base_sha": "6342ec4520469aee76321e82c5b26ec4f1a122b6",
+          "head_sha": "18b240c4a35bb9eca60a0a260283f6fc0f8202a6",
+          "verification": {
+            "path": "execution-evidence/01_T6_18b240c.md",
+            "digest": "f540564b6c18414e4e4be2e6cf1d6b8b3d9460d8a6ab41f50c7f3a149b140c20",
+            "head_sha": "18b240c4a35bb9eca60a0a260283f6fc0f8202a6",
+            "recorded_at": "2026-10-03T07:50:17Z",
+            "deferred_reason": null
+          }
+        },
+        "T7": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T7",
+          "status": "verified",
+          "base_sha": "18b240c4a35bb9eca60a0a260283f6fc0f8202a6",
+          "head_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+          "verification": {
+            "path": "execution-evidence/01_T7_c52f5b6.md",
+            "digest": "28798e5f3cc8a6b031f16e846389fa503796852a727142d09c16f1b8d54340c9",
+            "head_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+            "recorded_at": "2026-10-03T07:59:41Z",
+            "deferred_reason": null
+          }
+        },
+        "T8": {
+          "key": "P2_PRF_001_FEAT_个人画像/01/T8",
+          "status": "verified",
+          "base_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+          "head_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+          "verification": {
+            "path": "execution-evidence/01_T8_regression.md",
+            "digest": "a6fa425a8d8f413aa8b85aebeaccb45fb53cccda6718d341dac35e6ce79b6c68",
+            "head_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+            "recorded_at": "2026-10-03T08:01:50Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01_review_passed.md",
+        "digest": "041e3bb4079458945446d059a4bb68852eb70a6c139a714227fcf65c838f38ed",
+        "head_sha": "c52f5b6e2eb9a3055751921106322d2a49ddd50e",
+        "base_sha": "9094689478e9aedfe76bebdc5b3242fda6bf3e37",
+        "passed": true,
+        "recorded_at": "2026-10-03T08:13:16Z"
+      },
+      "review_failures": 0
+    }
+  },
+  "updated_at": "2026-10-03T08:13:16Z"
+}
