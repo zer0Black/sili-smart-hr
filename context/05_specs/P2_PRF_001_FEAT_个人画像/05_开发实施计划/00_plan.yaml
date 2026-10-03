@@ -29,7 +29,7 @@ sub_plans:
   - id: "02"
     name: "前端画像页"
     file: "02_前端画像页.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
