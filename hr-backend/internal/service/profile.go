@@ -191,11 +191,8 @@ type profileModKey struct {
 	module string
 }
 
-// List 编排：校验 → 密钥 → 全量名单 → 批量 IN 四表 → 内存组装/筛选/排序/分页（03 §4.3）。
+// List 编排：校验分页 → 共享组装链路 → 内存分页（03 §4.3）。
 func (s *profileService) List(ctx context.Context, f ProfileFilter) (*ProfileListResult, error) {
-	if f.ActivityLevel != "" && !validProfileActivityLevel(f.ActivityLevel) {
-		return nil, NewError(errcode.BadRequest)
-	}
 	page, pageSize := f.Page, f.PageSize
 	if pageSize <= 0 {
 		pageSize = profileDefaultPageSize
@@ -205,6 +202,35 @@ func (s *profileService) List(ctx context.Context, f ProfileFilter) (*ProfileLis
 	}
 	if page <= 0 {
 		page = 1
+	}
+
+	items, err := s.assembleRows(ctx, f)
+	if err != nil {
+		return nil, err
+	}
+
+	// 姓名升序（specs §8.3 偏离记录）+ 内存分页。
+	offset := (page - 1) * pageSize
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return &ProfileListResult{
+		List:     items[offset:end],
+		Total:    int64(len(items)),
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// assembleRows A1/A2 共享查询链路（specs §5.1.4 规则2）：
+// 校验 → 密钥 → 全量名单 → 批量 IN 四表 → 内存组装/筛选/排序，不分页。
+func (s *profileService) assembleRows(ctx context.Context, f ProfileFilter) ([]ProfileListItem, error) {
+	if f.ActivityLevel != "" && !validProfileActivityLevel(f.ActivityLevel) {
+		return nil, NewError(errcode.BadRequest)
 	}
 
 	// 短板筛选 code 合法性：启用且 module ∈ {AI_USAGE, AI_MGMT}（03 A1）。
@@ -250,7 +276,7 @@ func (s *profileService) List(ctx context.Context, f ProfileFilter) (*ProfileLis
 		names = kept
 	}
 	if len(names) == 0 {
-		return &ProfileListResult{List: []ProfileListItem{}, Total: 0, Page: page, PageSize: pageSize}, nil
+		return []ProfileListItem{}, nil
 	}
 
 	// 批量 IN 四表（specs §5.1.4 规则2：禁止逐人查询）。
@@ -321,22 +347,9 @@ func (s *profileService) List(ctx context.Context, f ProfileFilter) (*ProfileLis
 		items = append(items, item)
 	}
 
-	// 姓名升序（specs §8.3 偏离记录）+ 内存分页。
+	// 姓名升序（specs §8.3 偏离记录）。
 	sort.SliceStable(items, func(i, j int) bool { return items[i].StaffName < items[j].StaffName })
-	offset := (page - 1) * pageSize
-	if offset > len(items) {
-		offset = len(items)
-	}
-	end := offset + pageSize
-	if end > len(items) {
-		end = len(items)
-	}
-	return &ProfileListResult{
-		List:     items[offset:end],
-		Total:    int64(len(items)),
-		Page:     page,
-		PageSize: pageSize,
-	}, nil
+	return items, nil
 }
 
 // Detail 编排（03 §4.3 B1 链路）：校验区间参数 → 三表 ListByToken 归并区间并集 →
@@ -448,11 +461,6 @@ func (s *profileService) Detail(ctx context.Context, staffName string, periodSta
 	}
 	dto.StaffName = name
 	return dto, nil
-}
-
-// Export 按筛选条件全量导出 xlsx（03 A2），实现见 profile_export.go。
-func (s *profileService) Export(ctx context.Context, f ProfileFilter) ([]byte, string, error) {
-	panic("not implemented")
 }
 
 // profilePeriodBound 区间双界（start 含 / end 不含，与落库行同构）。
