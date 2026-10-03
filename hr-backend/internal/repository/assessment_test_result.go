@@ -19,6 +19,11 @@ type AssessmentTestResultRepository interface {
 	// DegradeTask 降级终态单事务：enneagram 先落降级行再推任务行 grading_status
 	// degraded（ai_mgmt 无判型行仅推任务行），两步原子防半降级（specs §5.2.5）。
 	DegradeTask(ctx context.Context, taskID int64, enneagram bool) error
+	// ListLatestScoredByStaffNames 批量取每人最新 scored 判型行：JOIN
+	// assessment_test_tasks（staff_name IN + test_type=enneagram）圈任务，再逐任务
+	// 取 grading_status='scored' 且 main_type <> '' 的最新行（created_at DESC，同人
+	// 多任务取最新），降级占位行视为无判型（03 §1.8）。
+	ListLatestScoredByStaffNames(ctx context.Context, staffNames []string) (map[string]domain.AssessmentTestResult, error)
 }
 
 type assessmentTestResultRepository struct {
@@ -79,4 +84,48 @@ func upsertResult(db *gorm.DB, row *domain.AssessmentTestResult) error {
 		Columns:   []clause.Column{{Name: "task_id"}},
 		DoUpdates: clause.AssignmentColumns(resultUpsertColumns),
 	}).Create(row).Error
+}
+
+// ListLatestScoredByStaffNames 两段查询（04 §3：先按 idx_staff_name 圈任务，再按
+// uk_result_task 点查结果行）：tasks 圈 staff_name IN + test_type=enneagram 的任务
+// 主键，results 侧按 task_id IN 取 scored 且 main_type<>'' 行，同人取 created_at
+// 最新；降级行被过滤自然跳过（03 §1.8）。批量 IN 单条 SQL，禁止逐人查询
+// （specs P2_PRF_001 §5.1.4 规则2）。
+func (r *assessmentTestResultRepository) ListLatestScoredByStaffNames(ctx context.Context, staffNames []string) (map[string]domain.AssessmentTestResult, error) {
+	latest := make(map[string]domain.AssessmentTestResult)
+	if len(staffNames) == 0 {
+		return latest, nil
+	}
+	var tasks []domain.AssessmentTestTask
+	if err := r.db.WithContext(ctx).
+		Where("staff_name IN ? AND test_type = ?", staffNames, domain.TestTypeEnneagram).
+		Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	if len(tasks) == 0 {
+		return latest, nil
+	}
+	taskStaff := make(map[int64]string, len(tasks))
+	taskIDs := make([]int64, 0, len(tasks))
+	for _, t := range tasks {
+		taskStaff[t.ID] = t.StaffName
+		taskIDs = append(taskIDs, t.ID)
+	}
+	var rows []domain.AssessmentTestResult
+	if err := r.db.WithContext(ctx).
+		Where("task_id IN ? AND grading_status = ? AND main_type <> ''",
+			taskIDs, domain.GradingStatusScored).
+		Order("created_at ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	// created_at ASC 遍历，同人后行覆盖前行，收敛为每人最新 scored 行。
+	for _, row := range rows {
+		staff, ok := taskStaff[row.TaskID]
+		if !ok {
+			continue
+		}
+		latest[staff] = row
+	}
+	return latest, nil
 }
