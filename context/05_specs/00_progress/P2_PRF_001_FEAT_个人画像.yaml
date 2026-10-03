@@ -13,7 +13,7 @@ dependencies:
 feature_name: 个人画像
 creator: lixuetao
 created_at: '2026-10-01T02:18:15Z'
-updated_at: '2026-10-02T12:47:22Z'
+updated_at: '2026-10-03T06:18:45Z'
 stages:
   specs:
     status: completed
@@ -21,18 +21,18 @@ stages:
     completed_at: '2026-10-02T12:47:22Z'
     check_owner: lixuetao
   interface:
-    status: in_progress
+    status: completed
     started_at: '2026-10-02T12:47:22Z'
-    completed_at: null
-    check_owner: null
+    completed_at: '2026-10-02T15:09:45Z'
+    check_owner: lixuetao
   dev_plan:
-    status: pending
-    started_at: null
-    completed_at: null
-    check_owner: null
+    status: completed
+    started_at: '2026-10-02T15:09:45Z'
+    completed_at: '2026-10-03T06:18:45Z'
+    check_owner: lixuetao
   dev_exec:
-    status: pending
-    started_at: null
+    status: in_progress
+    started_at: '2026-10-03T06:18:45Z'
     completed_at: null
     check_owner: null
 rollback_history:
@@ -52,3 +52,21 @@ rollback_history:
   affected_stages:
   - specs
   - interface
+- timestamp: '2026-10-02T15:09:45Z'
+  type: advance
+  from_stage: interface
+  to_stage: interface
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - interface
+  - dev_plan
+- timestamp: '2026-10-03T06:18:45Z'
+  type: advance
+  from_stage: dev_plan
+  to_stage: dev_plan
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - dev_plan
+  - dev_exec

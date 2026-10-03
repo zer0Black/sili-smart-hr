@@ -124,7 +124,7 @@ Handler 错误映射沿用 `handleServiceError`：成功 HTTP 200；code 1003 �
 
 | 参数 | 类型 | 必填 | 默认 | 说明 |
 |------|------|------|------|------|
-| name | string | 否 | 空 | 姓 名模糊匹配；前端去首尾空格后提交（specs §4.1.2 A），匹配经 likeescape.EscapeLike 转义（内存包含匹配同口径按字面比较） |
+| name | string | 否 | 空 | 姓名模糊匹配；前端去首尾空格后提交（specs §4.1.2 A）。名单为上游拉回后内存过滤：keyword 透传上游模糊过滤，拉回后按字面包含校验兜底（无 SQL LIKE 场景，不涉及转义） |
 | activity_level | string | 否 | 空（全部） | 活跃度筛选 [可选值：active/low_freq/unused]，按本期（每人最新落库周期）活跃分级 |
 | dimension_code | string | 否 | 空（全部） | 短板维度筛选：仅「该维度 ∈ 本期短板集合」的人命中（specs §4.1.4 规则4）。取值须为当前启用且 module ∈ {AI_USAGE, AI_MGMT} 的维度 code，否则 1400 |
 | unused_only | boolean | 否 | false | 仅看未使用；true 时忽略 activity_level 强制按 unused 筛选（specs §4.1.2 A：与活跃度筛选叠加时以未使用为准） |

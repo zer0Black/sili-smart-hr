@@ -1,0 +1,39 @@
+feature_id: "P2_PRF_001_FEAT_个人画像"
+spec_kind: "business"
+spec_kind_basis: "ID 类型段为 FEAT，进度文件 type: FEAT，模块依赖矩阵 PRF 归业务功能"
+name: "个人画像"
+created_at: "2026-10-02"
+finalized: false
+closeout_result: null
+
+design_inputs:
+  api:
+    status: "applicable"
+    path: "../03_api_interface.md"
+    basis: "specs §4.1/§4.2 页面功能与 §5.1/§5.2 聚合接口对应 3 个新接口（A1/A2/B1）；§5.3 画像数据接口为预留契约（03 §4.1 转记），首期不实现不注册路由不占用开发任务"
+  model:
+    status: "not_applicable"
+    path: "../04_model_interface.md"
+    basis: "specs §1.1 纯只读消费域，无新表无扩列（04 §1 适用性结论）；04 承载消费表清单与查询口径契约，作为仓储扩展任务的取数依据"
+
+sub_plans:
+  - id: "01"
+    name: "后端画像域"
+    file: "01_后端画像域.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+      - "../04_model_interface.md"
+
+  - id: "02"
+    name: "前端画像页"
+    file: "02_前端画像页.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+
+execution_order:
+  - "01"
+  - "02"
