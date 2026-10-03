@@ -37,6 +37,7 @@ func NewRouter(
 	questionBatchHandler *handler.QuestionBatchHandler,
 	questionGenerationHandler *handler.QuestionGenerationHandler,
 	scaleHandler *handler.ScaleHandler,
+	profileHandler *handler.ProfileHandler,
 	rdb *redis.Client,
 ) *gin.Engine {
 	r := gin.New()
@@ -170,6 +171,12 @@ func NewRouter(
 	// 量表引入域：两接口 JWT 鉴权挂 auth 组（specs §2.3 鉴权矩阵量表两行）。
 	auth.GET("/scales", scaleHandler.List)
 	auth.POST("/scales/import", scaleHandler.Import)
+	// 个人画像域：三接口 JWT 鉴权挂 auth 组，全 GET 查询语义（specs §2.1/§2.2 +
+	// 03 §1.2/§2.1 / BR1、BR3）。/profiles 根路由与 export/detail 静态子路径不冲突
+	//（Gin 静态优先），无单独限流（03 §2.1 沿用受保护组既有策略）。
+	auth.GET("/profiles", profileHandler.List)
+	auth.GET("/profiles/export", profileHandler.Export)
+	auth.GET("/profiles/detail", profileHandler.Detail)
 
 	return r
 }

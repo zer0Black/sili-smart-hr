@@ -673,3 +673,69 @@ export interface GenerationProgress {
   /** LLM_FAILED / LLM_TIMEOUT / CANCELED / INTERNAL（03 §3.14 枚举）。 */
   error_code?: string;
 }
+
+// 个人画像域契约（与后端 profile service DTO 同构，03_api_interface §3 A1/A2/B1）
+
+/** GET /api/profiles 响应 data。 */
+export interface ProfileListItem {
+  staff_name: string;
+  activity_level: 'active' | 'low_freq' | 'unused';
+  /** 本期模块分原始浮点值（每模块各自最新聚合行，03 §1.9）；无聚合行为 null（待评估，不渲染为 0 分）。 */
+  ai_usage_score: number | null;
+  /** 降权标记：只标注不改分值，无聚合行时恒 false。 */
+  ai_usage_degraded: boolean;
+  ai_mgmt_score: number | null;
+  ai_mgmt_degraded: boolean;
+  /** 九型主型数字串 "1"-"9"（最新 scored 判型行）；无判型行为 null，型名映射由前端 i18n 承载。 */
+  enneagram_main_type: string | null;
+}
+
+export interface ProfileListPage { list: ProfileListItem[]; total: number; page: number; page_size: number; }
+export interface ProfilePeriod { period_start: string; period_end: string; is_current: boolean; }
+export interface ProfilePeriodRange { period_start: string; period_end: string; }
+export interface ProfileEnneagram {
+  main_type: string; wing_type: string;
+  /** 9 型倾向分布原样透传，键 "1"-"9" 值百分比，主型柱高亮由前端按 main_type 渲染。 */
+  distribution: Record<string, number>; rationale: string;
+}
+export interface ProfileModuleCard {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  /** 模块分原始浮点值（等级映射与展示取整由前端承载，03 §1.5）；无聚合行为 null。 */
+  score: number | null; change_vs_prev: number | null;
+  /** 聚合行周期终点前一日 yyyy-MM-dd；无聚合行为 null。 */
+  evaluated_at: string | null;
+  /** 判定优先级 pending > missing > degraded > complete。 */
+  data_status: 'complete' | 'degraded' | 'missing' | 'pending';
+  insufficient_count: number; failed_count: number; missing_count: number;
+}
+export interface ProfileEvidence {
+  source: 'conversation' | 'active_test';
+  /** 评分行落库时刻 yyyy-MM-dd HH:mm，原样渲染。 */
+  time: string; confidence: 'high' | 'medium' | 'low';
+  session_count: number; summary: Record<string, number>;
+}
+export interface ProfileTrendPoint { period_start: string; period_end: string; score: number; }
+export interface ProfileDimensionRow {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  dimension_code: string; dimension_name: string;
+  /** 分组仅 AI_USAGE 非 null。 */
+  group_code: 'BASE' | 'UPPER' | null;
+  /** insufficient 行照常有分；failed 与无行维度为 null，不渲染 0 分占位。 */
+  score: number | null;
+  status: 'normal' | 'insufficient' | 'missing';
+  rationale: string; evidences: ProfileEvidence[];
+  trend: ProfileTrendPoint[]; company_avg: number | null;
+}
+/** GET /api/profiles/detail 响应 data。区间与日期字段均为含止日 yyyy-MM-dd，原样渲染无换算。 */
+export interface ProfileDetail {
+  staff_name: string; periods: ProfilePeriod[];
+  selected_period: ProfilePeriodRange | null;
+  activity_level: 'active' | 'low_freq' | 'unused';
+  enneagram: ProfileEnneagram | null;
+  modules: ProfileModuleCard[]; dimensions: ProfileDimensionRow[];
+}
+/** 列表筛选（A1/A2 共用，03 A1 查询参数）。 */
+export interface ProfileFilter {
+  name?: string; activity_level?: string; dimension_code?: string;
+  unused_only?: boolean; page: number; page_size: number;
+}

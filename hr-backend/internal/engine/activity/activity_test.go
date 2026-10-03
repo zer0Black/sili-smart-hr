@@ -117,6 +117,15 @@ func (f *fakeStatRepo) Upsert(ctx context.Context, rec *domain.ActivityStat) err
 	return nil
 }
 
+// 画像只读查询 fake：activity 链路不消费，stub 满足接口。
+func (f *fakeStatRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
+func (f *fakeStatRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
 var _ repository.ActivityStatRepository = (*fakeStatRepo)(nil)
 
 // ---- 测试辅助 ----

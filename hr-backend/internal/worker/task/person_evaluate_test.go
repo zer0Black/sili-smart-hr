@@ -160,6 +160,17 @@ func (r *evalScoreRepo) SaveAll(ctx context.Context, tokenName string, start, en
 	return nil
 }
 
+// 画像只读查询 fake：worker 链路不消费，stub 满足接口。
+func (r *evalScoreRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+func (r *evalScoreRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+func (r *evalScoreRepo) ListByPeriodAllCompany(ctx context.Context, start, end int64) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+
 // evalSysParams 参数读取 fake：空集（脱敏走 Redact 出厂回退）。
 type evalSysParams struct{}
 
@@ -173,11 +184,28 @@ type evalActRepo struct{}
 
 func (r *evalActRepo) Upsert(ctx context.Context, rec *domain.ActivityStat) error { return nil }
 
+// 画像只读查询 fake：跑批链路不消费，stub 满足接口。
+func (r *evalActRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
+func (r *evalActRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
 // evalAggRepo 聚合仓储 fake。
 type evalAggRepo struct{}
 
 func (r *evalAggRepo) UpsertAll(ctx context.Context, tokenName string, start, end int64, rows []domain.AggregateScore) error {
 	return nil
+}
+
+func (r *evalAggRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.AggregateScore, error) {
+	return nil, nil
+}
+
+func (r *evalAggRepo) ListLatestModuleRowsByTokens(ctx context.Context, tokenNames []string) ([]domain.AggregateScore, error) {
+	return nil, nil
 }
 
 // evalModelProvider 启用模型 fake：恒错误（零档案路径不解析模型）。

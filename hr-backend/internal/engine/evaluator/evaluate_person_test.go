@@ -47,6 +47,15 @@ func (f *fakeActivityRepo) Upsert(ctx context.Context, rec *domain.ActivityStat)
 	return nil
 }
 
+// 画像只读查询 fake：evaluator 链路不消费，stub 满足接口。
+func (f *fakeActivityRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
+func (f *fakeActivityRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.ActivityStat, error) {
+	return nil, nil
+}
+
 var _ repository.ActivityStatRepository = (*fakeActivityRepo)(nil)
 
 // fakeListFetcher 会话列表拉取 fake：可配置行集与错误，探针记录调用与窗口。
@@ -101,6 +110,15 @@ func (f *fakeAggRepo) UpsertAll(ctx context.Context, tokenName string, start, en
 	copy(snap, rows)
 	f.upserts = append(f.upserts, aggUpsertRecord{token: tokenName, start: start, end: end, rows: snap})
 	return nil
+}
+
+// 画像只读查询 fake：evaluator 链路不消费，stub 满足接口。
+func (f *fakeAggRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.AggregateScore, error) {
+	return nil, nil
+}
+
+func (f *fakeAggRepo) ListLatestModuleRowsByTokens(ctx context.Context, tokenNames []string) ([]domain.AggregateScore, error) {
+	return nil, nil
 }
 
 var _ repository.AggregateScoreRepository = (*fakeAggRepo)(nil)

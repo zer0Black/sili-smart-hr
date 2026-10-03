@@ -56,6 +56,19 @@ func (f *fakeScoreRepo) SaveAll(ctx context.Context, tokenName string, start, en
 	return nil
 }
 
+// 画像只读查询 fake：scorer 链路不消费，stub 满足接口。
+func (f *fakeScoreRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+
+func (f *fakeScoreRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+
+func (f *fakeScoreRepo) ListByPeriodAllCompany(ctx context.Context, start, end int64) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+
 var _ repository.DimensionScoreRepository = (*fakeScoreRepo)(nil)
 
 // upsertRecord 单次 UpsertAll 收到的行集快照。
@@ -82,6 +95,15 @@ func (f *fakeAggRepo) UpsertAll(ctx context.Context, tokenName string, start, en
 	copy(snap, rows)
 	f.upserts = append(f.upserts, upsertRecord{token: tokenName, start: start, end: end, rows: snap})
 	return nil
+}
+
+// 画像只读查询 fake：scorer 链路不消费，stub 满足接口。
+func (f *fakeAggRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.AggregateScore, error) {
+	return nil, nil
+}
+
+func (f *fakeAggRepo) ListLatestModuleRowsByTokens(ctx context.Context, tokenNames []string) ([]domain.AggregateScore, error) {
+	return nil, nil
 }
 
 var _ repository.AggregateScoreRepository = (*fakeAggRepo)(nil)

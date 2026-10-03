@@ -37,13 +37,18 @@ export function NavMenu() {
 
   const entries: Entry[] = [
     {
+      label: t('nav.insight'),
+      children: [
+        { label: t('nav.profileStaff'), to: '/profile' },
+      ],
+    },
+    {
       label: t('nav.dashboard'),
       children: [
         { label: t('nav.dashboardOverview'), feature: 'F10' },
         { label: t('nav.dashboardTrend'), feature: 'F10' },
       ],
     },
-    { label: t('nav.profile'), feature: 'F9' },
     {
       label: t('nav.assessment'),
       children: [

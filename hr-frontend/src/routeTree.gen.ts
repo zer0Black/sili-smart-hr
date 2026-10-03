@@ -15,6 +15,8 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AnswerTokenRouteImport } from './routes/answer/$token'
 import { Route as AuthenticatedAssessmentIndexRouteImport } from './routes/_authenticated/assessment/index'
+import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
+import { Route as AuthenticatedProfileStaffNameRouteImport } from './routes/_authenticated/profile/$staffName'
 import { Route as AuthenticatedQuestionBankIndexRouteImport } from './routes/_authenticated/question-bank/index'
 import { Route as AuthenticatedQuestionBankGenerateRouteImport } from './routes/_authenticated/question-bank/generate'
 import { Route as AuthenticatedSystemParamsRouteImport } from './routes/_authenticated/system/params'
@@ -51,6 +53,18 @@ const AuthenticatedAssessmentIndexRoute =
   AuthenticatedAssessmentIndexRouteImport.update({
     id: '/assessment/',
     path: '/assessment/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProfileIndexRoute =
+  AuthenticatedProfileIndexRouteImport.update({
+    id: '/profile/',
+    path: '/profile/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedProfileStaffNameRoute =
+  AuthenticatedProfileStaffNameRouteImport.update({
+    id: '/profile/$staffName',
+    path: '/profile/$staffName',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedQuestionBankIndexRoute =
@@ -101,10 +115,12 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
+  '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment/': typeof AuthenticatedAssessmentIndexRoute
+  '/profile/': typeof AuthenticatedProfileIndexRoute
   '/question-bank/': typeof AuthenticatedQuestionBankIndexRoute
   '/system/dimension/': typeof AuthenticatedSystemDimensionIndexRoute
   '/system/llm/': typeof AuthenticatedSystemLlmIndexRoute
@@ -115,10 +131,12 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
   '/': typeof AuthenticatedIndexRoute
+  '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment': typeof AuthenticatedAssessmentIndexRoute
+  '/profile': typeof AuthenticatedProfileIndexRoute
   '/question-bank': typeof AuthenticatedQuestionBankIndexRoute
   '/system/dimension': typeof AuthenticatedSystemDimensionIndexRoute
   '/system/llm': typeof AuthenticatedSystemLlmIndexRoute
@@ -131,10 +149,12 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/_authenticated/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/_authenticated/system/params': typeof AuthenticatedSystemParamsRoute
   '/_authenticated/system/status': typeof AuthenticatedSystemStatusRoute
   '/_authenticated/assessment/': typeof AuthenticatedAssessmentIndexRoute
+  '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/question-bank/': typeof AuthenticatedQuestionBankIndexRoute
   '/_authenticated/system/dimension/': typeof AuthenticatedSystemDimensionIndexRoute
   '/_authenticated/system/llm/': typeof AuthenticatedSystemLlmIndexRoute
@@ -147,10 +167,12 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/answer/$token'
+    | '/profile/$staffName'
     | '/question-bank/generate'
     | '/system/params'
     | '/system/status'
     | '/assessment/'
+    | '/profile/'
     | '/question-bank/'
     | '/system/dimension/'
     | '/system/llm/'
@@ -161,10 +183,12 @@ export interface FileRouteTypes {
     | '/setup'
     | '/answer/$token'
     | '/'
+    | '/profile/$staffName'
     | '/question-bank/generate'
     | '/system/params'
     | '/system/status'
     | '/assessment'
+    | '/profile'
     | '/question-bank'
     | '/system/dimension'
     | '/system/llm'
@@ -176,10 +200,12 @@ export interface FileRouteTypes {
     | '/setup'
     | '/answer/$token'
     | '/_authenticated/'
+    | '/_authenticated/profile/$staffName'
     | '/_authenticated/question-bank/generate'
     | '/_authenticated/system/params'
     | '/_authenticated/system/status'
     | '/_authenticated/assessment/'
+    | '/_authenticated/profile/'
     | '/_authenticated/question-bank/'
     | '/_authenticated/system/dimension/'
     | '/_authenticated/system/llm/'
@@ -237,6 +263,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAssessmentIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/profile/': {
+      id: '/_authenticated/profile/'
+      path: '/profile'
+      fullPath: '/profile/'
+      preLoaderRoute: typeof AuthenticatedProfileIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/profile/$staffName': {
+      id: '/_authenticated/profile/$staffName'
+      path: '/profile/$staffName'
+      fullPath: '/profile/$staffName'
+      preLoaderRoute: typeof AuthenticatedProfileStaffNameRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/question-bank/': {
       id: '/_authenticated/question-bank/'
       path: '/question-bank'
@@ -291,10 +331,12 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedProfileStaffNameRoute: typeof AuthenticatedProfileStaffNameRoute
   AuthenticatedQuestionBankGenerateRoute: typeof AuthenticatedQuestionBankGenerateRoute
   AuthenticatedSystemParamsRoute: typeof AuthenticatedSystemParamsRoute
   AuthenticatedSystemStatusRoute: typeof AuthenticatedSystemStatusRoute
   AuthenticatedAssessmentIndexRoute: typeof AuthenticatedAssessmentIndexRoute
+  AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedQuestionBankIndexRoute: typeof AuthenticatedQuestionBankIndexRoute
   AuthenticatedSystemDimensionIndexRoute: typeof AuthenticatedSystemDimensionIndexRoute
   AuthenticatedSystemLlmIndexRoute: typeof AuthenticatedSystemLlmIndexRoute
@@ -303,11 +345,13 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedProfileStaffNameRoute: AuthenticatedProfileStaffNameRoute,
   AuthenticatedQuestionBankGenerateRoute:
     AuthenticatedQuestionBankGenerateRoute,
   AuthenticatedSystemParamsRoute: AuthenticatedSystemParamsRoute,
   AuthenticatedSystemStatusRoute: AuthenticatedSystemStatusRoute,
   AuthenticatedAssessmentIndexRoute: AuthenticatedAssessmentIndexRoute,
+  AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedQuestionBankIndexRoute: AuthenticatedQuestionBankIndexRoute,
   AuthenticatedSystemDimensionIndexRoute:
     AuthenticatedSystemDimensionIndexRoute,

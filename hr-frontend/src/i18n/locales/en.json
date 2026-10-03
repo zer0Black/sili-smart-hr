@@ -19,11 +19,12 @@
     "cancel": "Cancel",
     "nav": {
       "workspace": "Workspace",
+      "insight": "Insights",
+      "profileStaff": "Staff Profiles",
       "assessment": "Assessment",
       "assessmentConversation": "Assessment Center",
       "assessmentTest": "Active Test",
       "questionbank": "Question Bank",
-      "profile": "Profiles",
       "dashboard": "Team Dashboard",
       "dashboardOverview": "Overview",
       "dashboardTrend": "Ability Trend",
@@ -1129,6 +1130,150 @@
       "incomplete": "Some questions are unanswered; please continue",
       "submitFailed": "Submit failed, please retry",
       "network": "Network error, please retry later"
+    }
+  },
+  "profile": {
+    "page": {
+      "title": "Staff Profiles",
+      "subtitle": "Organization-wide profile search and individual ability panorama"
+    },
+    "list": {
+      "title": "Staff Profile List",
+      "nameLabel": "Name",
+      "namePlaceholder": "Search by name",
+      "filterActivity": "Activity",
+      "filterActivityAll": "All",
+      "filterDimension": "Weakness Dimension",
+      "filterDimensionAll": "All",
+      "unusedOnly": "Unused only",
+      "query": "Query",
+      "reset": "Reset",
+      "export": "Export List",
+      "exporting": "Exporting…",
+      "exportFailed": "Export failed, please retry later",
+      "colName": "Name",
+      "colActivity": "Activity",
+      "colAiUsage": "AI Usage Ability",
+      "colAiMgmt": "AI Management Ability",
+      "colEnneagram": "Enneagram Main Type",
+      "colActions": "Actions",
+      "actionView": "View Profile",
+      "pendingScore": "Pending",
+      "degradedUsage": "Insufficient conversation data; this score has been degraded",
+      "degradedMgmt": "Some sub-abilities degraded due to insufficient answer data",
+      "loadError": "Failed to load data, please retry",
+      "retry": "Retry",
+      "empty": "No staff data",
+      "emptyFiltered": "No matching staff; try adjusting the filters",
+      "total": "{{total}} staff in total",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageSize": "{{n}} / page",
+      "pageSizeLabel": "Page size"
+    },
+    "activityLevel": {
+      "active": "Active",
+      "low_freq": "Low Frequency",
+      "unused": "Unused"
+    },
+    "module": {
+      "aiUsage": "AI Usage Ability",
+      "aiMgmt": "AI Management Ability"
+    },
+    "summary": {
+      "pending": "Pending",
+      "changeVsPrev": "vs. previous",
+      "evaluatedAt": "Evaluated at",
+      "grade": {
+        "excellent": "Excellent",
+        "good": "Good",
+        "medium": "Medium",
+        "poor": "Needs Improvement"
+      }
+    },
+    "conclusion": {
+      "title": "Key Conclusions",
+      "headline": "Usage ability {{usageGrade}}, management ability {{mgmtGrade}}; top dimension {{topDimensionName}}",
+      "limited": "Available data is limited; conclusions are for reference only",
+      "strength": "{{name}} {{score}} points, a strength dimension",
+      "weakness": "{{name}} {{score}} points, a weakness dimension",
+      "riskCounts": "{{module}}: {{degraded}} dimension(s) degraded, {{missing}} missing",
+      "riskMgmtPending": "AI Management Ability pending",
+      "trendUp": "{{module}} up {{change}} points vs. previous period",
+      "trendDown": "{{module}} down {{change}} points vs. previous period"
+    },
+    "panel": {
+      "tabsLabel": "Ability dimensions",
+      "companyAvg": "Company avg",
+      "personal": "Personal",
+      "noTrend": "No trend data",
+      "noEvidence": "No evidence sources",
+      "trendScore": "Score",
+      "sessionCount": "{{count}} session(s)",
+      "group": {
+        "base": "Basic Conversation Skills",
+        "upper": "Advanced Generation Skills",
+        "mgmt": "Management Sub-abilities"
+      }
+    },
+    "periodSelect": {
+      "label": "Evaluation period",
+      "placeholder": "Select period",
+      "current": "Current"
+    },
+    "enneagram": {
+      "title": "Enneagram Reference",
+      "reference": "Auxiliary dimension; excluded from hard scoring aggregation",
+      "mainType": "Main type",
+      "wingType": "Wing type",
+      "noWing": "No significant wing",
+      "rationale": "Typing rationale",
+      "notParticipated": "Has not taken the enneagram assessment",
+      "type1": "Perfectionist",
+      "type2": "Helper",
+      "type3": "Achiever",
+      "type4": "Individualist",
+      "type5": "Investigator",
+      "type6": "Loyalist",
+      "type7": "Enthusiast",
+      "type8": "Challenger",
+      "type9": "Peacemaker"
+    },
+    "dataStatus": {
+      "complete": "Data complete",
+      "degraded": "Some dimensions degraded",
+      "missing": "Some dimensions missing",
+      "pending": "Pending"
+    },
+    "evidenceSource": {
+      "conversation": "Conversation Analysis",
+      "active_test": "Active Test",
+      "unknown": "Unknown source"
+    },
+    "confidence": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "dimensionStatus": {
+      "normal": "Normal",
+      "insufficient": "Degraded",
+      "missing": "Missing"
+    },
+    "detail": {
+      "back": "Back to list",
+      "loading": "Loading…",
+      "loadError": "Failed to load profile data, please retry",
+      "retry": "Retry",
+      "empty": "No profile data for this staff member",
+      "emptyBack": "Back to list",
+      "periodInvalid": "Selected period is invalid; fell back to the latest period"
+    },
+    "overview": {
+      "activityLabel": "Activity",
+      "enneagramLabel": "Enneagram Main Type",
+      "enneagramNone": "-",
+      "periodLabel": "Current period"
     }
   }
 }

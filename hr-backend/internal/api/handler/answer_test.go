@@ -129,6 +129,7 @@ func newAnswerEngine(t *testing.T, svc *fakeAnswerSvc) http.Handler {
 		nil, // questionBatchHandler
 		nil, // questionGenerationHandler
 		nil, // scaleHandler
+		nil, // profileHandler
 		rdb,
 	)
 }

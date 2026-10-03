@@ -66,8 +66,10 @@ func (f *fakeAssessmentConfigRepo) UpdateWithMembers(_ context.Context, cfg *dom
 var _ repository.AssessmentConfigRepository = (*fakeAssessmentConfigRepo)(nil)
 
 // fakeUserapiClient 是 userapi 客户端的测试假实现，鸭子类型满足 service.userapiClient。
+// pages 非空时按页号返回（模拟跨页重复名单），否则单页恒返 staffs。
 type fakeUserapiClient struct {
 	staffs []userapi.Staff
+	pages  [][]userapi.Staff
 	total  int64
 	err    error
 
@@ -84,6 +86,12 @@ func (f *fakeUserapiClient) ListStaffs(_ context.Context, secret, keyword string
 	f.lastKW = keyword
 	f.lastPage = page
 	f.lastPSize = pageSize
+	if f.pages != nil {
+		if page-1 < len(f.pages) {
+			return f.pages[page-1], f.total, f.err
+		}
+		return nil, f.total, f.err
+	}
 	return f.staffs, f.total, f.err
 }
 

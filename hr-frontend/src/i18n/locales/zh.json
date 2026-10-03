@@ -19,11 +19,12 @@
     "cancel": "取消",
     "nav": {
       "workspace": "工作台",
+      "insight": "结果洞察",
+      "profileStaff": "人员画像",
       "assessment": "评估运营",
       "assessmentConversation": "评测运营中心",
       "assessmentTest": "主动测试",
       "questionbank": "题库",
-      "profile": "个人画像",
       "dashboard": "团队看板",
       "dashboardOverview": "整体看板",
       "dashboardTrend": "能力趋势",
@@ -1129,6 +1130,150 @@
       "incomplete": "存在未作答题目，请继续作答",
       "submitFailed": "提交失败，请重试",
       "network": "网络异常，请稍后重试"
+    }
+  },
+  "profile": {
+    "page": {
+      "title": "人员画像",
+      "subtitle": "全员画像检索与单人能力全景"
+    },
+    "list": {
+      "title": "人员画像名单",
+      "nameLabel": "姓名",
+      "namePlaceholder": "按姓名搜索",
+      "filterActivity": "活跃度",
+      "filterActivityAll": "全部",
+      "filterDimension": "短板维度",
+      "filterDimensionAll": "全部",
+      "unusedOnly": "仅看未使用",
+      "query": "查询",
+      "reset": "重置",
+      "export": "导出名单",
+      "exporting": "导出中…",
+      "exportFailed": "导出失败，请稍后重试",
+      "colName": "姓名",
+      "colActivity": "活跃度",
+      "colAiUsage": "AI 使用能力",
+      "colAiMgmt": "AI 管理能力",
+      "colEnneagram": "九型主型",
+      "colActions": "操作",
+      "actionView": "查看画像",
+      "pendingScore": "待评估",
+      "degradedUsage": "对话数据不足，该总分已降权处理",
+      "degradedMgmt": "部分子能力因作答数据不足降权",
+      "loadError": "数据加载失败，请重试",
+      "retry": "重试",
+      "empty": "暂无人员数据",
+      "emptyFiltered": "未找到匹配人员，请尝试调整筛选条件",
+      "total": "共 {{total}} 人",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageSize": "{{n}} 条/页",
+      "pageSizeLabel": "每页条数"
+    },
+    "activityLevel": {
+      "active": "活跃",
+      "low_freq": "低频",
+      "unused": "未使用"
+    },
+    "module": {
+      "aiUsage": "AI 使用能力",
+      "aiMgmt": "AI 管理能力"
+    },
+    "summary": {
+      "pending": "待评估",
+      "changeVsPrev": "较上期",
+      "evaluatedAt": "评估时间",
+      "grade": {
+        "excellent": "优秀",
+        "good": "良好",
+        "medium": "中等",
+        "poor": "待提升"
+      }
+    },
+    "conclusion": {
+      "title": "核心结论",
+      "headline": "使用能力{{usageGrade}}、管理能力{{mgmtGrade}}，最高分维度{{topDimensionName}}",
+      "limited": "当前可用数据有限，结论仅供参考",
+      "strength": "{{name}} {{score}} 分，为优势维度",
+      "weakness": "{{name}} {{score}} 分，为短板维度",
+      "riskCounts": "{{module}}：{{degraded}} 个维度降权、{{missing}} 个维度缺失",
+      "riskMgmtPending": "AI 管理能力待评估",
+      "trendUp": "{{module}} 较上期上升 {{change}} 分",
+      "trendDown": "{{module}} 较上期下降 {{change}} 分"
+    },
+    "panel": {
+      "tabsLabel": "能力维度",
+      "companyAvg": "公司均分",
+      "personal": "个人",
+      "noTrend": "暂无走势数据",
+      "noEvidence": "暂无证据来源",
+      "trendScore": "分数",
+      "sessionCount": "{{count}} 次会话",
+      "group": {
+        "base": "基础对话能力",
+        "upper": "高级生成能力",
+        "mgmt": "管理子能力"
+      }
+    },
+    "periodSelect": {
+      "label": "评估区间",
+      "placeholder": "选择区间",
+      "current": "本期"
+    },
+    "enneagram": {
+      "title": "九型人格参考",
+      "reference": "辅助维度，不进入硬性评分聚合",
+      "mainType": "主型",
+      "wingType": "翼型",
+      "noWing": "无显著翼型",
+      "rationale": "判型理由",
+      "notParticipated": "未参与九型人格测评",
+      "type1": "完美型",
+      "type2": "助人型",
+      "type3": "成就型",
+      "type4": "自我型",
+      "type5": "智慧型",
+      "type6": "忠诚型",
+      "type7": "活跃型",
+      "type8": "领袖型",
+      "type9": "和平型"
+    },
+    "dataStatus": {
+      "complete": "数据完整",
+      "degraded": "部分维度已降权",
+      "missing": "部分维度缺失",
+      "pending": "待评估"
+    },
+    "evidenceSource": {
+      "conversation": "对话分析",
+      "active_test": "主动测试",
+      "unknown": "未知来源"
+    },
+    "confidence": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "dimensionStatus": {
+      "normal": "正常",
+      "insufficient": "已降权",
+      "missing": "数据缺失"
+    },
+    "detail": {
+      "back": "返回列表",
+      "loading": "加载中…",
+      "loadError": "画像数据加载失败，请重试",
+      "retry": "重试",
+      "empty": "该人员暂无画像数据",
+      "emptyBack": "返回列表",
+      "periodInvalid": "所选区间无效，已回落最新区间"
+    },
+    "overview": {
+      "activityLabel": "活跃度",
+      "enneagramLabel": "九型主型",
+      "enneagramNone": "-",
+      "periodLabel": "当前区间"
     }
   }
 }
