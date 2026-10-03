@@ -160,6 +160,17 @@ func (r *evalScoreRepo) SaveAll(ctx context.Context, tokenName string, start, en
 	return nil
 }
 
+// 画像只读查询 fake：worker 链路不消费，stub 满足接口。
+func (r *evalScoreRepo) ListByToken(ctx context.Context, tokenName string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+func (r *evalScoreRepo) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+func (r *evalScoreRepo) ListByPeriodAllCompany(ctx context.Context, start, end int64) ([]domain.DimensionScore, error) {
+	return nil, nil
+}
+
 // evalSysParams 参数读取 fake：空集（脱敏走 Redact 出厂回退）。
 type evalSysParams struct{}
 

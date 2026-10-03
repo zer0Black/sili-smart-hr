@@ -24,6 +24,16 @@ type DimensionScoreRepository interface {
 	// token_name 与双界周期以入参为权威回填，存在同键行则 UPDATE 全业务列（map 形态，
 	// 空串与 false 须写入）。
 	SaveAll(ctx context.Context, tokenName string, start, end int64, rows []domain.DimensionScore) error
+	// ListByToken 按人全量读各期评分行（含全部 status/source），period_start_at ASC，
+	// 供 B1 区间并集与 trend 组装。
+	ListByToken(ctx context.Context, tokenName string) ([]domain.DimensionScore, error)
+	// ListLatestByTokens 批量取每人每模块各自最新聚合周期的维度行：先按 (token_name, module)
+	// 取 max(period_start_at) 对应周期，再取该 (人, 模块, 周期) 全部维度行。供 A1 降权计数
+	// 与短板集合。
+	ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.DimensionScore, error)
+	// ListByPeriodAllCompany 按双界精确匹配取全公司维度行（含 insufficient/failed 行，
+	// 过滤在 service 层做），供 B1 公司均分。
+	ListByPeriodAllCompany(ctx context.Context, start, end int64) ([]domain.DimensionScore, error)
 }
 
 type dimensionScoreRepository struct {
@@ -93,4 +103,57 @@ func (r *dimensionScoreRepository) SaveAll(ctx context.Context, tokenName string
 			}),
 		}).
 		Create(&rows).Error
+}
+
+// ListByToken 按人全量各期行，period_start_at ASC；同人内同期同码多行时
+// dimension_code 次序稳定（specs P2_PRF_001 §5.2.2 步骤4）。
+func (r *dimensionScoreRepository) ListByToken(ctx context.Context, tokenName string) ([]domain.DimensionScore, error) {
+	var list []domain.DimensionScore
+	err := r.db.WithContext(ctx).
+		Where("token_name = ?", tokenName).
+		Order("period_start_at ASC, dimension_code ASC").
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// ListLatestByTokens 批量 IN 单条 SQL 取每人每模块最新周期行（specs P2_PRF_001
+// §5.1.4 规则2：禁止逐人循环查询）。分组子查询 (token_name, module, MAX(period_start_at))
+// 自连接回主表：两模块最新周期可各自错位（§4.1.4 规则5），每 (人, 模块, 周期) 的
+// 全部维度行整期返回。
+func (r *dimensionScoreRepository) ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.DimensionScore, error) {
+	if len(tokenNames) == 0 {
+		return []domain.DimensionScore{}, nil
+	}
+	sub := r.db.WithContext(ctx).
+		Model(&domain.DimensionScore{}).
+		Select("token_name, module, MAX(period_start_at) AS period_start_at").
+		Where("token_name IN ?", tokenNames).
+		Group("token_name, module")
+	var list []domain.DimensionScore
+	err := r.db.WithContext(ctx).
+		Where("(token_name, module, period_start_at) IN (?)", sub).
+		Order("token_name ASC, module ASC, dimension_code ASC").
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
+}
+
+// ListByPeriodAllCompany 双界精确匹配全公司行（= 与 =），insufficient 与 failed
+// 行一并返回，status 过滤归 service 层（specs P2_PRF_001 §5.2.2 步骤5）。
+func (r *dimensionScoreRepository) ListByPeriodAllCompany(ctx context.Context, start, end int64) ([]domain.DimensionScore, error) {
+	var list []domain.DimensionScore
+	err := r.db.WithContext(ctx).
+		Where("period_start_at = ? AND period_end_at = ?",
+			time.Unix(start, 0).UTC(), time.Unix(end, 0).UTC()).
+		Order("token_name ASC, dimension_code ASC").
+		Find(&list).Error
+	if err != nil {
+		return nil, err
+	}
+	return list, nil
 }
