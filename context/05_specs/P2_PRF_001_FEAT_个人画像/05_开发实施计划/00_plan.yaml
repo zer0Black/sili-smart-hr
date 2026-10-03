@@ -3,8 +3,8 @@ spec_kind: "business"
 spec_kind_basis: "ID 类型段为 FEAT，进度文件 type: FEAT，模块依赖矩阵 PRF 归业务功能"
 name: "个人画像"
 created_at: "2026-10-02"
-finalized: false
-closeout_result: null
+finalized: true
+closeout_result: "merged_to_main:8dab373"
 
 design_inputs:
   api:
