@@ -329,7 +329,7 @@ describe('buildConclusion 参与聚合判据（03 §1.9 三条件）', () => {
 });
 
 describe('buildConclusion 风险与趋势补充边界', () => {
-  it('风险计数摘要携带 N/M 与 module 键', () => {
+  it('风险计数摘要携带 N/M 与 module 键（M = missing + failed）', () => {
     const d = detail({
       modules: [
         moduleCard({
@@ -344,9 +344,25 @@ describe('buildConclusion 风险与趋势补充边界', () => {
     expect(risks).toHaveLength(2);
     const usage = risks.find((r) => JSON.stringify(r.text).includes('AI_USAGE'));
     expect(usage).toBeDefined();
-    expect(JSON.stringify(usage!.text)).toContain('2');
-    expect(JSON.stringify(usage!.text)).toContain('3');
-    expect(JSON.stringify(usage!.text)).not.toContain('1');
+    expect(JSON.parse(usage!.text).params.degraded).toBe(2);
+    expect(JSON.parse(usage!.text).params.missing).toBe(4);
+  });
+
+  it('仅 failed 维度（无降权无无行）也产出风险条目（specs §4.2.4 规则8）', () => {
+    const d = detail({
+      modules: [
+        moduleCard({
+          module: 'AI_USAGE', score: 70, data_status: 'missing',
+          insufficient_count: 0, failed_count: 1, missing_count: 0,
+        }),
+        moduleCard({ module: 'AI_MGMT', score: 70 }),
+      ],
+    });
+    const risks = buildConclusion(d, baseTree()).findings.filter((f) => f.kind === 'risk');
+    expect(risks).toHaveLength(1);
+    const params = JSON.parse(risks[0].text).params;
+    expect(params.degraded).toBe(0);
+    expect(params.missing).toBe(1);
   });
 
   it('降为负值产出 trend 条目', () => {

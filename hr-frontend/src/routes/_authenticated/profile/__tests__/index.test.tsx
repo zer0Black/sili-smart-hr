@@ -449,6 +449,23 @@ describe('详情页 /profile/$staffName（specs §4.2）', () => {
     expect(screen.queryByText('基础对话能力')).not.toBeInTheDocument();
   });
 
+  it('TestDetailEnneagramNoWing：翼型空串显示「无显著翼型」（03 B1 翼型无显著为空串）', async () => {
+    detailMock.mockResolvedValue(makeDetail({
+      enneagram: {
+        main_type: '5', wing_type: '',
+        distribution: { '1': 5, '2': 5, '3': 5, '4': 10, '5': 40, '6': 10, '7': 5, '8': 10, '9': 10 },
+        rationale: '判型依据示例',
+      },
+    }));
+
+    await renderAt('/profile/$staffName', { staffName: '张三' });
+
+    expect(await screen.findByText('九型人格参考')).toBeInTheDocument();
+    // 主型 5 型名在概览条与九型区各出现一次
+    expect(screen.getAllByText('思考型').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText('无显著翼型')).toBeInTheDocument();
+  });
+
   it('TestDetailBackFallback：无历史时返回列表跳列表页兜底（§3.2）', async () => {
     detailMock.mockResolvedValue(makeDetail());
     listMock.mockResolvedValue(twoRowList());

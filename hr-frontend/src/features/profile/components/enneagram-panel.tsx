@@ -1,5 +1,5 @@
 // 九型人格参考区（specs P2_PRF_001 §4.2.2 E / §4.2.4 规则6）：辅助维度标注参考性。
-// enneagram null 整区显示未参与提示不渲染空图表；主型柱高亮、翼型 0 显示「无显著翼型」。
+// enneagram null 整区显示未参与提示不渲染空图表；主型柱高亮；无显著翼型落库为空串（'0' 兼容），显示「无显著翼型」。
 import { useTranslation } from 'react-i18next';
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis } from 'recharts';
 import type { JSX } from 'react';
@@ -40,7 +40,7 @@ export function EnneagramPanel(props: { enneagram: ProfileEnneagram | null }): J
               <div>
                 <dt className="text-muted-foreground">{t('enneagram.wingType')}</dt>
                 <dd className="font-medium">
-                  {enneagram.wing_type === '0'
+                  {!enneagram.wing_type || enneagram.wing_type === '0'
                     ? t('enneagram.noWing')
                     : enneagramTypeKey[enneagram.wing_type]
                       ? t(enneagramTypeKey[enneagram.wing_type])

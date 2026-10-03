@@ -130,7 +130,7 @@ function buildWeaknesses(eligible: ProfileDimensionRow[]): ConclusionFinding[] {
     }));
 }
 
-/** 风险：按模块各拼一条「N 个维度降权、M 个维度缺失」计数摘要；管理模块 pending 拼待评估。 */
+/** 风险：按模块各拼一条「N 个维度降权、M 个维度缺失」计数摘要（M 含 failed 行，specs §4.2.4 规则8 数据缺失口径）；管理模块 pending 拼待评估。 */
 function buildRisks(detail: ProfileDetail): ConclusionFinding[] {
   const findings: ConclusionFinding[] = [];
   for (const mod of detail.modules) {
@@ -141,7 +141,8 @@ function buildRisks(detail: ProfileDetail): ConclusionFinding[] {
       });
       continue;
     }
-    if (mod.insufficient_count > 0 || mod.missing_count > 0) {
+    const missing = mod.missing_count + mod.failed_count;
+    if (mod.insufficient_count > 0 || missing > 0) {
       findings.push({
         kind: 'risk',
         text: encodeFinding({
@@ -149,7 +150,7 @@ function buildRisks(detail: ProfileDetail): ConclusionFinding[] {
           params: {
             module: mod.module,
             degraded: mod.insufficient_count,
-            missing: mod.missing_count,
+            missing,
           },
         }),
       });
