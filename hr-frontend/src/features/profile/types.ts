@@ -51,3 +51,18 @@ export const dimensionStatusKey: Record<string, string> = {
   insufficient: 'profile:dimensionStatus.insufficient',
   missing: 'profile:dimensionStatus.missing',
 };
+
+/** 模块码 → profile ns i18n 键（评分卡标题与结论 riskCounts/trend 插值共用）。 */
+export const moduleLabelKey: Record<string, string> = {
+  AI_USAGE: 'profile:module.aiUsage',
+  AI_MGMT: 'profile:module.aiMgmt',
+};
+
+/** 结论主文等级枚举（scoreGrade 产物 + 待评估）→ profile ns i18n 键（specs §4.2.4 规则2/3）。 */
+export const gradeLabelKey: Record<string, string> = {
+  excellent: 'profile:summary.grade.excellent',
+  good: 'profile:summary.grade.good',
+  medium: 'profile:summary.grade.medium',
+  poor: 'profile:summary.grade.poor',
+  pending: 'profile:summary.pending',
+};

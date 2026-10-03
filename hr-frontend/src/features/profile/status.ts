@@ -6,6 +6,8 @@ export {
   dataStatusKey,
   confidenceKey,
   enneagramTypeKey,
+  moduleLabelKey,
+  gradeLabelKey,
 } from './types';
 
 /** 分数取整展示（模块分浮点，specs §4.2.4 规则3）。 */

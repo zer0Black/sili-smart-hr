@@ -324,6 +324,10 @@ describe('详情页 /profile/$staffName（specs §4.2）', () => {
     expect(screen.getAllByText(/2026-09-22 ~ 2026-09-28（本期）/).length).toBeGreaterThanOrEqual(1);
     // 评分卡：AI 管理能力待评估（null 不渲染 0 分）
     expect(screen.getByText('核心结论')).toBeInTheDocument();
+    // 核心结论插值本地化：等级枚举映射中文、pending 映射待评估，界面无英文枚举与模块码（T7 BR2）
+    expect(screen.getByText('使用能力良好、管理能力待评估，最高分维度沟通表达')).toBeInTheDocument();
+    expect(screen.getByText('AI 使用能力 较上期上升 3 分')).toBeInTheDocument();
+    expect(screen.queryByText(/excellent|good|medium|poor/)).not.toBeInTheDocument();
     expect(screen.getByText('九型人格参考')).toBeInTheDocument();
     expect(screen.getByText('未参与九型人格测评')).toBeInTheDocument();
     // tab 计数动态取维度树：AI_USAGE 2 维 / AI_MGMT 1 维（§4.2.3 动态计数）

@@ -1,5 +1,6 @@
 // 核心结论区（specs P2_PRF_001 §4.2.2 C / §4.2.4 规则2）：规则拼装不调 LLM。
 // 结论计算在 conclusion.ts 纯函数（T3），此处只做 {key, params} JSON 串解析 + t() 渲染。
+// params 承载的等级枚举与模块码原值（保纯函数可测）在渲染前映射为本地化文案（T7 BR2）。
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
 
@@ -7,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { DimensionTreeNode, ProfileDetail } from '@/lib/contracts';
 
 import { buildConclusion, type ConclusionFinding } from '../conclusion';
+import { gradeLabelKey, moduleLabelKey } from '../status';
 
 interface FindingPayload {
   key: string;
@@ -24,10 +26,27 @@ function parseFinding(text: string): FindingPayload | null {
   return null;
 }
 
+/** 插值参数本地化：等级枚举（usageGrade/mgmtGrade）与模块码（module）换成本地化文案再插值。 */
+function localizeParams(t: (key: string, opts?: Record<string, unknown>) => string, params: Record<string, string | number>): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (typeof v !== 'string') {
+      out[k] = v;
+    } else if (k === 'usageGrade' || k === 'mgmtGrade') {
+      out[k] = gradeLabelKey[v] ? t(gradeLabelKey[v]) : v;
+    } else if (k === 'module') {
+      out[k] = moduleLabelKey[v] ? t(moduleLabelKey[v]) : v;
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
 function renderFinding(t: (key: string, opts?: Record<string, unknown>) => string, text: string): string {
   const parsed = parseFinding(text);
   if (!parsed) return text;
-  return t(parsed.key, parsed.params);
+  return t(parsed.key, localizeParams(t, parsed.params));
 }
 
 const FINDING_ICON: Record<ConclusionFinding['kind'], string> = {
@@ -49,7 +68,7 @@ export function ConclusionPanel(props: {
         <CardTitle>{t('conclusion.title')}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm leading-relaxed">{t(headlineKey, headlineParams)}</p>
+        <p className="text-sm leading-relaxed">{t(headlineKey, localizeParams(t, headlineParams))}</p>
         {findings.length > 0 ? (
           <ul className="space-y-1.5 text-sm">
             {findings.map((f, i) => (

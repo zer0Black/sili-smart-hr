@@ -12,7 +12,7 @@ export interface ConclusionFinding {
   text: string;
 }
 
-/** 严重不足判定：使用能力无聚合行，或使用模块降权+缺失计数之和 ≥ 4（specs §4.2.4 规则2，阈值 4 为前端常量）。 */
+/** 严重不足判定：使用能力无聚合行，或使用模块降权+缺失（含 failed 行，规则8 口径）计数之和 ≥ 4（specs §4.2.4 规则2，阈值 4 为前端常量）。 */
 export const CONCLUSION_LIMITED_THRESHOLD = 4;
 /** 优势阈值 75 / 短板阈值 60（specs §4.2.4 规则2 前端常量）。 */
 export const STRENGTH_THRESHOLD = 75;
@@ -56,11 +56,11 @@ function overviewCodes(tree: DimensionTreeNode): Set<string> {
   return codes;
 }
 
-/** 数据严重不足判定（specs §4.2.4 规则2）。 */
+/** 数据严重不足判定（specs §4.2.4 规则2；缺失口径同规则8 含 failed 行）。 */
 function isLimited(detail: ProfileDetail): boolean {
   const usage = detail.modules.find((m) => m.module === 'AI_USAGE');
   if (!usage || usage.score === null) return true;
-  return usage.insufficient_count + usage.missing_count >= CONCLUSION_LIMITED_THRESHOLD;
+  return usage.insufficient_count + usage.missing_count + usage.failed_count >= CONCLUSION_LIMITED_THRESHOLD;
 }
 
 function moduleGrade(score: number | null): string {

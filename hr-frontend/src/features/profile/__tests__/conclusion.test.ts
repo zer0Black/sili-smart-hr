@@ -227,6 +227,32 @@ describe('buildConclusion 严重不足替换主文（核心断言）', () => {
     });
     expect(buildConclusion(d, baseTree()).headlineKey).not.toBe('profile:conclusion.limited');
   });
+
+  it('降权 1 + failed 3（和=4，缺失口径含 failed 行，规则8）同样替换', () => {
+    const d = detail({
+      modules: [
+        moduleCard({
+          module: 'AI_USAGE', score: 65, data_status: 'missing',
+          insufficient_count: 1, failed_count: 3, missing_count: 0,
+        }),
+        moduleCard({ module: 'AI_MGMT', score: 70 }),
+      ],
+    });
+    expect(buildConclusion(d, baseTree()).headlineKey).toBe('profile:conclusion.limited');
+  });
+
+  it('降权 1 + failed 2（和=3 <4）不替换', () => {
+    const d = detail({
+      modules: [
+        moduleCard({
+          module: 'AI_USAGE', score: 65, data_status: 'missing',
+          insufficient_count: 1, failed_count: 2, missing_count: 0,
+        }),
+        moduleCard({ module: 'AI_MGMT', score: 70 }),
+      ],
+    });
+    expect(buildConclusion(d, baseTree()).headlineKey).not.toBe('profile:conclusion.limited');
+  });
 });
 
 describe('buildConclusion 空类不产出（核心断言）', () => {
