@@ -21,9 +21,11 @@ export function PeriodSelect(props: {
   periods: ProfilePeriod[];
   selected: ProfilePeriodRange | null;
   onChange: (period: ProfilePeriodRange) => void;
+  /** 区间切换请求期间由详情页禁用防抖动（specs §4.2.5）。 */
+  disabled?: boolean;
 }): JSX.Element {
   const { t } = useTranslation('profile');
-  const { periods, selected, onChange } = props;
+  const { periods, selected, onChange, disabled } = props;
   const value = selected ? periodValue(selected) : undefined;
   return (
     <Select
@@ -33,7 +35,7 @@ export function PeriodSelect(props: {
         if (hit) onChange({ period_start: hit.period_start, period_end: hit.period_end });
       }}
     >
-      <SelectTrigger className="w-64" aria-label={t('periodSelect.label')}>
+      <SelectTrigger className="w-64" aria-label={t('periodSelect.label')} disabled={disabled}>
         <SelectValue placeholder={t('periodSelect.placeholder')} />
       </SelectTrigger>
       <SelectContent>

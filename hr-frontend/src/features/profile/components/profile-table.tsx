@@ -107,12 +107,11 @@ export function ProfileTable(props: { resetKey?: number }): JSX.Element {
     setFilter((f) => ({ ...f, ...patch, page: 1 }));
   }
 
-  /** 整行与查看画像共用跳转（specs §4.1.5）：依赖 Router 对 path params 默认编码，不手动编码。
-   *  路由 /profile/$staffName 由 T6 创建，注册前以字符串断言绕过未注册校验。 */
+  /** 整行与查看画像共用跳转（specs §4.1.5）：依赖 Router 对 path params 默认编码，不手动编码。 */
   function goDetail(staffName: string) {
     void navigate({
-      to: '/profile/$staffName' as never,
-      params: { staffName } as never,
+      to: '/profile/$staffName',
+      params: { staffName },
     });
   }
 
