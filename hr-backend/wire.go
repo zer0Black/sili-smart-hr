@@ -112,6 +112,10 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewScaleRepository,
 		service.NewScaleService,
 		handler.NewScaleHandler,
+		// 个人画像域（specs P2_PRF_001）：service 消费既有五仓储与 userapi/密钥装配 +
+		// handler（03 A1/A2/B1 三接口全 GET）。
+		service.NewProfileService,
+		handler.NewProfileHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,

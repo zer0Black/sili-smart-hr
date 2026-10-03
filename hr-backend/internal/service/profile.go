@@ -159,10 +159,11 @@ type profileService struct {
 	dimensions repository.DimensionRepository            // ListAll 基准集合（已有）
 	userapi    userapiClient                             // service 包内既有鸭子接口（*userapi.Client 适配）
 	secretRepo repository.IntegrationSecretRepository    // resolveSecret
-	encKey     string
+	encKey     []byte
 }
 
-// NewProfileService 构造个人画像域 service，Wire 自动装配。
+// NewProfileService 构造个人画像域 service，Wire 自动装配（encKey 形参为 []byte，
+// 绑定 NewLLMEncKey 的 []byte provider，与 assessment_config 样板同位）。
 func NewProfileService(
 	dimScores repository.DimensionScoreRepository,
 	aggScores repository.AggregateScoreRepository,
@@ -171,7 +172,7 @@ func NewProfileService(
 	dimensions repository.DimensionRepository,
 	userapi userapiClient,
 	secretRepo repository.IntegrationSecretRepository,
-	encKey string,
+	encKey []byte,
 ) ProfileService {
 	return &profileService{
 		dimScores:  dimScores,
@@ -814,7 +815,7 @@ func computeCompanyAverages(rows []domain.DimensionScore) map[string]float64 {
 
 // resolveSecret 解密 userapi Bearer 密钥明文，失败由调用方统一映射 1305。
 func (s *profileService) resolveSecret(ctx context.Context) (string, error) {
-	return resolveUserapiSecret(ctx, s.secretRepo, []byte(s.encKey))
+	return resolveUserapiSecret(ctx, s.secretRepo, s.encKey)
 }
 
 // resolveUserapiSecret 集成密钥解密共享私有实现（assessment_config 与 profile 共用）。

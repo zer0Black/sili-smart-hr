@@ -212,7 +212,7 @@ func newProfileSvc(dims *fakeProfileDimensionRepo, ds *fakeProfileDimScores, ag 
 		panic(err)
 	}
 	secretRepo := &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1, SecretCipher: cipher}}
-	return service.NewProfileService(ds, ag, ac, rs, dims, ua, secretRepo, string(encKey))
+	return service.NewProfileService(ds, ag, ac, rs, dims, ua, secretRepo, encKey)
 }
 
 // findProfileItem 按姓名取行（顺序断言独立覆盖，避免测试耦合排序）。
@@ -535,7 +535,7 @@ func TestProfileList_SecretNotConfigured(t *testing.T) {
 	encKey := crypto.DeriveKey("test-profile")
 	svc := service.NewProfileService(&fakeProfileDimScores{}, &fakeProfileAggScores{},
 		&fakeProfileActivityStats{}, &fakeProfileResults{}, &fakeProfileDimensionRepo{},
-		ua, &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1}}, string(encKey))
+		ua, &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1}}, encKey)
 	_, err := svc.List(context.Background(), service.ProfileFilter{})
 	wantCode(t, err, errcode.StaffListUnavailable)
 	if ua.called {
