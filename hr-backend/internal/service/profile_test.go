@@ -516,6 +516,19 @@ func TestProfileList_PageSizeClampAndDefaults(t *testing.T) {
 	if res.Page != 1 || res.PageSize != 10 {
 		t.Fatalf("负值回退 want 1/10, got %d/%d", res.Page, res.PageSize)
 	}
+	// page 超总页数返回空页；极大值触发 (page-1)*pageSize 溢出为负，钳位须防切片 panic。
+	for _, page := range []int{99, 1 << 62, int(^uint(0) >> 1)} {
+		res, err = svc.List(context.Background(), service.ProfileFilter{Page: page})
+		if err != nil {
+			t.Fatalf("List page=%d: %v", page, err)
+		}
+		if len(res.List) != 0 {
+			t.Fatalf("page=%d 应返回空页, got %d 行", page, len(res.List))
+		}
+		if res.Total != 1 {
+			t.Fatalf("page=%d total want 1, got %d", page, res.Total)
+		}
+	}
 }
 
 // TestProfileList_EmptyStaffList 验证上游空名单返回空 List + total 0（错误态判定归前端）。
@@ -1163,6 +1176,22 @@ func TestProfileDetail_ConfidenceMapping(t *testing.T) {
 	}
 	if res.Dimensions[0].Evidences[0].Confidence != "low" || res.Dimensions[0].Evidences[0].SessionCount != 1 {
 		t.Fatalf("1 信号 want low/1, got %+v", res.Dimensions[0].Evidences[0])
+	}
+	// 阈值边界：恰好 10 → high（下界含）、恰好 2 → medium（下界含）、1 → low。
+	for _, tc := range []struct {
+		n    int
+		want string
+	}{
+		{10, "high"}, {2, "medium"}, {9, "medium"},
+	} {
+		ds.byToken[0].EvidenceJSON = evidenceJSONFor(tc.n, nil)
+		res, err = newProfileSvc(dims, ds, ag, ac, rs, ua).Detail(context.Background(), "张敏", "", "")
+		if err != nil {
+			t.Fatalf("Detail(%d 信号): %v", tc.n, err)
+		}
+		if got := res.Dimensions[0].Evidences[0].Confidence; got != tc.want {
+			t.Fatalf("%d 信号 want %s, got %s", tc.n, tc.want, got)
+		}
 	}
 	ds.byToken[0].EvidenceJSON = "{not-json"
 	res, err = newProfileSvc(dims, ds, ag, ac, rs, ua).Detail(context.Background(), "张敏", "", "")

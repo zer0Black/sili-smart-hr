@@ -17,11 +17,10 @@ type AggregateScoreRepository interface {
 	// token_name 与双界周期以入参为权威回填；module_score/overview_score 为 *float64，
 	// nil 显式落 NULL（全剔除覆盖旧值，specs 能力5 规则6），历史周期行不动。
 	UpsertAll(ctx context.Context, tokenName string, start, end int64, rows []domain.AggregateScore) error
-	// ListByToken 按人全量读各期聚合行（含 overview 行），period_start_at ASC，
-	// 供 B1 区间并集与较上期（specs P2_PRF_001 §5.2.2 步骤2/4）。
+	// ListByToken 按人全量读各期聚合行（含 overview 行），period_start_at ASC，供 B1 区间并集与较上期。
 	ListByToken(ctx context.Context, tokenName string) ([]domain.AggregateScore, error)
 	// ListLatestModuleRowsByTokens 批量取每人每模块最新聚合行（不含 overview 行），
-	// 两模块最新周期可各自错位，供 A1 两模块分数列（specs §4.1.2 B、§4.1.4 规则5）。
+	// 两模块最新周期可各自错位，供 A1 两模块分数列。
 	ListLatestModuleRowsByTokens(ctx context.Context, tokenNames []string) ([]domain.AggregateScore, error)
 }
 

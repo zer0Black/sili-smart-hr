@@ -1,12 +1,12 @@
 // 画像两页面路由测试（specs §3.1/§3.2、§4.1.1、§4.2.1/§4.2.3/§4.2.5、§5.2.4 规则1）：
 // 列表页三态（渲染/1305 错误/空）+ 详情页状态机（正常组装/空态/1305 整页错误/2001 回落/
 // 区间切换加载与禁用/管理 tab 切换）+ 跳转链（中文参数往返、返回列表兜底）。
-// profile i18n 命名空间由 T7 落地，此处 addResourceBundle 注入等价文案驱动中文断言。
+// 中文断言直接消费真实 zh.json 文案（i18n/config 注册）。
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import i18n from '@/i18n/config';
 import type {
@@ -47,107 +47,8 @@ vi.mock('sonner', async (importOriginal) => {
   return { ...actual, toast: Object.assign(vi.fn(), { ...actual.toast, error: toastErrorSpy }) };
 });
 
-// T7 将落地的 profile 命名空间等价文案（zh）：覆盖被断言路径上组件消费的键。
-const ZH_PROFILE = {
-  page: { title: '人员画像', subtitle: '全员画像检索与单人能力全景' },
-  list: {
-    title: '人员画像名单',
-    nameLabel: '姓名',
-    namePlaceholder: '按姓名搜索',
-    filterActivity: '活跃度',
-    filterActivityAll: '全部',
-    filterDimension: '短板维度',
-    filterDimensionAll: '全部',
-    unusedOnly: '仅看未使用',
-    query: '查询',
-    reset: '重置',
-    export: '导出名单',
-    exporting: '导出中…',
-    exportFailed: '导出失败，请稍后重试',
-    colName: '姓名',
-    colActivity: '活跃度',
-    colAiUsage: 'AI 使用能力',
-    colAiMgmt: 'AI 管理能力',
-    colEnneagram: '九型主型',
-    colActions: '操作',
-    actionView: '查看画像',
-    pendingScore: '待评估',
-    degradedUsage: '对话数据不足，该总分已降权处理',
-    degradedMgmt: '部分子能力因作答数据不足降权',
-    loadError: '数据加载失败，请重试',
-    retry: '重试',
-    empty: '暂无人员数据',
-    emptyFiltered: '未找到匹配人员，请尝试调整筛选条件',
-    total: '共 {{total}} 人',
-    prevPage: '上一页',
-    nextPage: '下一页',
-    pageSize: '{{n}} 条/页',
-    pageSizeLabel: '每页条数',
-  },
-  activityLevel: { active: '活跃', low_freq: '低频', unused: '未使用' },
-  module: { aiUsage: 'AI 使用能力', aiMgmt: 'AI 管理能力' },
-  summary: {
-    pending: '待评估',
-    changeVsPrev: '较上期',
-    evaluatedAt: '评估时间',
-    grade: { excellent: '优秀', good: '良好', medium: '中等', poor: '待提升' },
-  },
-  conclusion: {
-    title: '核心结论',
-    headline: '使用能力{{usageGrade}}、管理能力{{mgmtGrade}}，最高分维度{{topDimensionName}}',
-    limited: '当前可用数据有限，结论仅供参考',
-    strength: '{{name}} {{score}} 分，为优势维度',
-    weakness: '{{name}} {{score}} 分，为短板维度',
-    riskCounts: '{{module}}：{{degraded}} 个维度降权、{{missing}} 个维度缺失',
-    riskMgmtPending: 'AI 管理能力待评估',
-    trendUp: '{{module}} 较上期上升 {{change}} 分',
-    trendDown: '{{module}} 较上期下降 {{change}} 分',
-  },
-  panel: {
-    tabsLabel: '能力维度',
-    companyAvg: '公司均分',
-    personal: '个人',
-    noTrend: '暂无走势数据',
-    noEvidence: '暂无证据来源',
-    trendScore: '分数',
-    sessionCount: '{{count}} 次会话',
-    group: { base: '基础对话能力', upper: '高级生成能力', mgmt: '管理子能力' },
-  },
-  periodSelect: { label: '评估区间', placeholder: '选择区间', current: '本期' },
-  enneagram: {
-    title: '九型人格参考',
-    reference: '辅助维度，不进入硬性评分聚合',
-    mainType: '主型',
-    wingType: '翼型',
-    rationale: '判型理由',
-    notParticipated: '未参与九型人格测评',
-    noWing: '无显著翼型',
-    type1: '完美型', type2: '助人型', type3: '成就型', type4: '自我型',
-    type5: '智慧型', type6: '忠诚型', type7: '活跃型', type8: '领袖型', type9: '和平型',
-  },
-  dataStatus: { complete: '数据完整', degraded: '部分维度已降权', missing: '部分维度缺失', pending: '待评估' },
-  evidenceSource: { conversation: '对话分析', active_test: '主动测试' },
-  confidence: { high: '高', medium: '中', low: '低' },
-  dimensionStatus: { normal: '正常', insufficient: '已降权', missing: '数据缺失' },
-  detail: {
-    back: '返回列表',
-    loading: '加载中…',
-    loadError: '画像数据加载失败，请重试',
-    retry: '重试',
-    empty: '该人员暂无画像数据',
-    emptyBack: '返回列表',
-    periodInvalid: '所选区间无效，已回落最新区间',
-  },
-  overview: {
-    activityLabel: '活跃度',
-    enneagramLabel: '九型主型',
-    periodLabel: '当前区间',
-    enneagramNone: '-',
-  },
-};
-
+// 直接消费真实 zh.json 的 profile 命名空间（i18n/config 已同步注册）：文案与源码单一来源。
 beforeAll(async () => {
-  i18n.addResourceBundle('zh', 'profile', ZH_PROFILE, true, true);
   await i18n.changeLanguage('zh');
 });
 
@@ -268,10 +169,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
-});
-
-afterAll(() => {
-  i18n.removeResourceBundle('zh', 'profile');
 });
 
 describe('列表页 /profile（specs §4.1）', () => {
@@ -498,6 +395,3 @@ describe('列表 → 详情跳转链（specs §3.2）', () => {
     expect(await screen.findByText('核心结论')).toBeInTheDocument();
   });
 });
-
-// userEvent 保留给 openSelect 之外的未来扩展
-void userEvent;

@@ -63,6 +63,7 @@ describe('i18n zh/en 一致性（T7 验收锚点）', () => {
 describe('profile 域代码引用键全覆盖', () => {
   // 源码中静态可收集的键：'profile:xxx' 字面量（types.ts 映射 + conclusion.ts finding 键）
   // 与组件 useTranslation('profile') 下的 t('yyy') 字面量（含 warnKey/titleKey 属性透传）。
+  // profile 域源文件清单：新增组件/纯函数文件须同步补录，漏录即漏校验。
   const used = new Set<string>();
   const files = [
     'src/features/profile/types.ts',
@@ -82,14 +83,11 @@ describe('profile 域代码引用键全覆盖', () => {
     const src = readFileSync(resolve(process.cwd(), f), 'utf8');
     for (const m of src.matchAll(/'profile:([a-zA-Z0-9_.]+)'/g)) used.add(m[1]);
     for (const m of src.matchAll(/\bt\('([a-zA-Z][a-zA-Z0-9_.]*)'/g)) used.add(m[1]);
+    // t(map[x] ?? 'fallback') 形态：?? 右侧字面量也是运行时可能渲染的键
+    for (const m of src.matchAll(/\?\? '([a-zA-Z][a-zA-Z0-9_.]*)'/g)) used.add(m[1]);
     for (const m of src.matchAll(/titleKey: '([a-zA-Z0-9_.]+)'/g)) used.add(m[1]);
     for (const m of src.matchAll(/warnKey="([a-zA-Z0-9_.]+)"/g)) used.add(m[1]);
   }
-  // scoreGrade 四档经模板串 `summary.grade.${grade}` 组装
-  used.add('summary.grade.excellent');
-  used.add('summary.grade.good');
-  used.add('summary.grade.medium');
-  used.add('summary.grade.poor');
 
   it('引用键均存在于 zh.profile', () => {
     const zhProfileKeys = new Set(flat(zh.profile as Record<string, unknown>));

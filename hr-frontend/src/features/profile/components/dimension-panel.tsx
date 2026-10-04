@@ -1,7 +1,6 @@
 // 能力面板（specs P2_PRF_001 §4.2.2 D / §4.2.3 / §4.2.5）：双 tab + 雷达 + 维度明细行。
-// 维度集合与分组动态取 dimensionTree（启用维度）；展开集合为组件内部 state（key=dimension_code），
-// 跨区间切换自然保留、行间互相独立；管理 tab 首次切入才挂载雷达（mgmtMounted 门控）。
-import { useState } from 'react';
+// 维度集合与分组动态取 dimensionTree（启用维度）；展开集合由页面持有（key=dimension_code），
+// 区间切换期间面板随数据区卸载重挂，展开状态在页面存活（specs §4.2.3）；管理 tab 首次切入才挂载雷达（mgmtMounted 门控）。
 import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import type { JSX } from 'react';
@@ -42,6 +41,9 @@ export interface DimensionPanelProps {
   /** 管理雷达是否已挂载过（首次切入后置 true 并保持，实现按需加载，specs §4.2.3）。 */
   mgmtMounted: boolean;
   onMgmtFirstActivated: () => void;
+  /** 展开集合由页面持有：区间切换面板卸载重挂后展开状态不丢（specs §4.2.3）。 */
+  expandedCodes: Set<string>;
+  onToggleExpanded: (code: string) => void;
 }
 
 /** 单个分组渲染单元：分组标题 + 该组维度行。 */
@@ -61,9 +63,16 @@ const COMPANY_COLOR = 'var(--chart-1)';
 
 export function DimensionPanel(props: DimensionPanelProps): JSX.Element {
   const { t } = useTranslation('profile');
-  const { detail, dimensionTree, activeTab, onTabChange, mgmtMounted, onMgmtFirstActivated } = props;
-  // 展开集合 key 为 dimension_code：不随区间数据刷新重置，跨区间保留、行间独立（specs §4.2.3）。
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const {
+    detail,
+    dimensionTree,
+    activeTab,
+    onTabChange,
+    mgmtMounted,
+    onMgmtFirstActivated,
+    expandedCodes,
+    onToggleExpanded,
+  } = props;
   const moduleCode = MODULE_OF_TAB[activeTab];
 
   const groups = buildGroups(dimensionTree, moduleCode);
@@ -73,16 +82,6 @@ export function DimensionPanel(props: DimensionPanelProps): JSX.Element {
   const selectTab = (tab: ProfileTabKey) => {
     onTabChange(tab);
     if (tab === 'aiMgmt') onMgmtFirstActivated();
-  };
-
-  const toggleRow = (row: ProfileDimensionRow) => {
-    if (row.status === 'missing') return; // 数据缺失行不可展开（specs §4.2.3）
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(row.dimension_code)) next.delete(row.dimension_code);
-      else next.add(row.dimension_code);
-      return next;
-    });
   };
 
   const tabCount = (tab: ProfileTabKey) =>
@@ -135,8 +134,11 @@ export function DimensionPanel(props: DimensionPanelProps): JSX.Element {
                     <DimensionRowItem
                       key={code}
                       row={row}
-                      expanded={expanded.has(code)}
-                      onToggle={() => toggleRow(row)}
+                      expanded={expandedCodes.has(code)}
+                      onToggle={() => {
+                        if (row.status === 'missing') return; // 数据缺失行不可展开（specs §4.2.3）
+                        onToggleExpanded(code);
+                      }}
                     />
                   ) : null;
                 })}

@@ -18,6 +18,7 @@ import { useProfileDetail } from '@/features/profile/hooks';
 import { activityLevelKey, enneagramTypeKey } from '@/features/profile/status';
 import type { ProfileTabKey } from '@/features/profile/types';
 import type { ProfileDetail, ProfilePeriodRange } from '@/lib/contracts';
+import { ErrCode } from '@/lib/contracts';
 import { ApiError } from '@/lib/http-client';
 import { useAuthStore } from '@/stores/auth';
 
@@ -29,9 +30,6 @@ function ProfileDetailRoute() {
   const { staffName } = Route.useParams();
   return <ProfileDetailPage staffName={staffName} />;
 }
-
-/** 所选区间无效（后端 2001，specs §5.2.4 规则1）：toast 提示并回落最新区间，不走整页占位。 */
-const PROFILE_PERIOD_INVALID = 2001;
 
 const EMPTY_TREE = { modules: [] };
 
@@ -61,6 +59,8 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
   const [activeTab, setActiveTab] = useState<ProfileTabKey>('aiUsage');
   // 管理雷达首次切入才渲染，此后保持挂载（specs §4.2.3 按需加载）
   const [mgmtMounted, setMgmtMounted] = useState(false);
+  // 维度行展开集合由页面持有：区间切换数据区卸载重挂后展开状态保留（specs §4.2.3）
+  const [expandedCodes, setExpandedCodes] = useState<Set<string>>(new Set());
   // 最近一次成功 detail：承载区间切换期间常驻的顶部条与下拉选项
   const [shell, setShell] = useState<ProfileDetail | null>(null);
 
@@ -81,7 +81,7 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
   // 2001 单独分支（specs §5.2.4 规则1）：toast 提示后清 selected 回落最新区间重查
   useEffect(() => {
     const err = query.error;
-    if (err instanceof ApiError && err.code === PROFILE_PERIOD_INVALID) {
+    if (err instanceof ApiError && err.code === ErrCode.ProfilePeriodInvalid) {
       toast.error(t('detail.periodInvalid'));
       setSelected(undefined);
     }
@@ -89,6 +89,15 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
 
   function onTabChange(tab: ProfileTabKey) {
     setActiveTab(tab);
+  }
+
+  function toggleExpanded(code: string) {
+    setExpandedCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
   }
 
   function goBack() {
@@ -101,7 +110,7 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
 
   // 2001 已在 effect 中回落：pending/fetching/回落等待期由加载态承接，不进整页错误占位
   const periodInvalid =
-    query.error instanceof ApiError && query.error.code === PROFILE_PERIOD_INVALID;
+    query.error instanceof ApiError && query.error.code === ErrCode.ProfilePeriodInvalid;
   const loading = query.isPending || query.isFetching || periodInvalid;
 
   if (query.isError && !periodInvalid) {
@@ -202,6 +211,8 @@ export function ProfileDetailPage(props: { staffName: string }): JSX.Element {
             onTabChange={onTabChange}
             mgmtMounted={mgmtMounted}
             onMgmtFirstActivated={() => setMgmtMounted(true)}
+            expandedCodes={expandedCodes}
+            onToggleExpanded={toggleExpanded}
           />
           {/* 九型区不随区间变化（specs §4.2.3）：数据为最新判型行，区间切换不重取 */}
           <EnneagramPanel enneagram={detail!.enneagram} />

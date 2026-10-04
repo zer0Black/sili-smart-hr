@@ -25,10 +25,15 @@ function parseExportFilename(disposition: string | undefined): string {
   return EXPORT_FALLBACK_FILENAME;
 }
 
-/** blob 为统一 JSON 错误体时解析并抛 ApiError；返回 null 表示正常二进制流。 */
-async function rejectJsonBlob(blob: Blob): Promise<null> {
+/** blob 为统一 JSON 错误体时解析并抛 ApiError；恒抛错，正常二进制流不走此函数。 */
+async function rejectJsonBlob(blob: Blob): Promise<never> {
   const text = await blob.text();
-  const body = JSON.parse(text) as { code?: unknown; message?: unknown };
+  let body: { code?: unknown; message?: unknown } = {};
+  try {
+    body = JSON.parse(text) as { code?: unknown; message?: unknown };
+  } catch {
+    // 非法 JSON 也按未知错误抛出，防错误体静默成空 blob
+  }
   throw new ApiError(
     typeof body.code === 'number' ? body.code : -1,
     typeof body.message === 'string' ? body.message : 'export failed',

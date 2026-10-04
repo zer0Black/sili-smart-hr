@@ -10,6 +10,7 @@ import type { ProfileModuleCard } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
 import { dataStatusKey, roundScore, scoreGrade } from '../status';
+import { gradeLabelKey } from '../types';
 
 function ModuleCard(props: { module: ProfileModuleCard }): JSX.Element {
   const { module } = props;
@@ -31,7 +32,7 @@ function ModuleCard(props: { module: ProfileModuleCard }): JSX.Element {
         ) : (
           <div className="flex items-end gap-2">
             <span className="text-3xl font-semibold">{roundScore(score)}</span>
-            <Badge variant="outline">{t(`summary.grade.${scoreGrade(score)}`)}</Badge>
+            <Badge variant="outline">{t(gradeLabelKey[scoreGrade(score)])}</Badge>
           </div>
         )}
         <dl className="space-y-1 text-right text-sm">

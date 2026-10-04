@@ -68,6 +68,7 @@ export const ErrCode = {
   AnswerTokenInvalid: 1901,
   AnswerReplyInvalid: 1902,
   AnswerIncomplete: 1903,
+  ProfilePeriodInvalid: 2001,
 } as const;
 
 /** 脱敏账号。id 为雪花 ID，后端以 JSON string 传输规避前端 JS 精度坑。 */

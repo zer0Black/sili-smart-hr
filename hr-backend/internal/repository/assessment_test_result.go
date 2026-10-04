@@ -13,16 +13,15 @@ import (
 
 // AssessmentTestResultRepository 是九型判型结果的数据访问接口。
 type AssessmentTestResultRepository interface {
-	// UpsertByTaskID 撞 uk_result_task 时 UPDATE 全业务列（列名形态，空串照写），
-	// 重试与补偿收敛到同一份结果（specs §5.2.4 规则1 幂等）。
+	// UpsertByTaskID 撞 uk_result_task 时 UPDATE 全业务列（列名形态，空串照写），重试与补偿收敛到同一份结果。
 	UpsertByTaskID(ctx context.Context, r *domain.AssessmentTestResult) error
 	// DegradeTask 降级终态单事务：enneagram 先落降级行再推任务行 grading_status
-	// degraded（ai_mgmt 无判型行仅推任务行），两步原子防半降级（specs §5.2.5）。
+	// degraded（ai_mgmt 无判型行仅推任务行），两步原子防半降级。
 	DegradeTask(ctx context.Context, taskID int64, enneagram bool) error
 	// ListLatestScoredByStaffNames 批量取每人最新 scored 判型行：JOIN
 	// assessment_test_tasks（staff_name IN + test_type=enneagram）圈任务，再逐任务
 	// 取 grading_status='scored' 且 main_type <> '' 的最新行（created_at DESC，同人
-	// 多任务取最新），降级占位行视为无判型（03 §1.8）。
+	// 多任务取最新），降级占位行视为无判型。
 	ListLatestScoredByStaffNames(ctx context.Context, staffNames []string) (map[string]domain.AssessmentTestResult, error)
 }
 

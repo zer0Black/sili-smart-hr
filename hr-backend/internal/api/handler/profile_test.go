@@ -100,8 +100,8 @@ func TestProfileHandler_List_OK(t *testing.T) {
 	var resp struct {
 		Code int `json:"code"`
 		Data struct {
-			List []service.ProfileListItem `json:"list"`
-			Total int64                    `json:"total"`
+			List  []service.ProfileListItem `json:"list"`
+			Total int64                     `json:"total"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -474,8 +474,10 @@ func TestProfileRoutes_RequiresAuth(t *testing.T) {
 func TestProfileRoutes_Registered(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeProfileSvc{
-		listRes:   &service.ProfileListResult{List: []service.ProfileListItem{}},
-		detailRes: &service.ProfileDetailDTO{Periods: []service.ProfilePeriod{}},
+		listRes:    &service.ProfileListResult{List: []service.ProfileListItem{}},
+		detailRes:  &service.ProfileDetailDTO{Periods: []service.ProfilePeriod{}},
+		exportData: []byte("PK\x03\x04fake-xlsx-bytes"),
+		exportName: "人员画像名单_20260101.xlsx",
 	}
 	engine := newProfileEngine(t, svc)
 	jwtMgr := jwt.NewManager("profile-test-secret", time.Hour)
@@ -484,7 +486,7 @@ func TestProfileRoutes_Registered(t *testing.T) {
 		t.Fatalf("generate token: %v", err)
 	}
 
-	for _, path := range []string{"/api/profiles", "/api/profiles/detail"} {
+	for _, path := range []string{"/api/profiles", "/api/profiles/detail", "/api/profiles/export"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		req.Header.Set("Authorization", "Bearer "+token)
 		w := httptest.NewRecorder()

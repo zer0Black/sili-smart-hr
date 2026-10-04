@@ -1,9 +1,9 @@
-// profile 个人画像域 HTTP 处理器：A1 列表 / A2 导出 / B1 详情（specs P2_PRF_001 §5.1/§5.2，03 §1.2）。
+// profile 个人画像域 HTTP 处理器：A1 列表 / A2 导出 / B1 详情（specs P2_PRF_001）。
 //
 // 业务规则：
-//   - BR1 本域全 GET，三接口均为查询语义（03 §1.2）。
-//   - BR2 导出成功直写 xlsx 二进制流旁路统一响应结构；失败返回统一 JSON 错误结构（03 §1.6）。
-//   - BR3 三接口挂 JWT 鉴权 auth 组，未带 token 由中间件统一 401+1003（03 §2.1）。
+//   - BR1 本域全 GET，三接口均为查询语义。
+//   - BR2 导出成功直写 xlsx 二进制流旁路统一响应结构；失败返回统一 JSON 错误结构。
+//   - BR3 三接口挂 JWT 鉴权 auth 组，未带 token 由中间件统一 401+1003。
 package handler
 
 import (
@@ -17,7 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// xlsxMIME 是 xlsx 文件的 MIME 类型（03 §1.6）。
+// xlsxMIME 是 xlsx 文件的 MIME 类型。
 const xlsxMIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 // ProfileHandler 个人画像域 HTTP 处理器（03 A1/A2/B1，全 GET）。
@@ -31,7 +31,7 @@ func NewProfileHandler(svc service.ProfileService) *ProfileHandler {
 }
 
 // List 处理 GET /api/profiles：query 绑定 name/activity_level/dimension_code/unused_only/page/page_size。
-// unused_only 非法布尔 → 1400；page/page_size 非法用默认值 1/10（specs A1，钳位归 service）。
+// unused_only 非法布尔 → 1400；page/page_size 非法用默认值 1/10（钳位归 service）。
 func (h *ProfileHandler) List(c *gin.Context) {
 	f, ok := parseProfileFilter(c)
 	if !ok {
@@ -48,7 +48,7 @@ func (h *ProfileHandler) List(c *gin.Context) {
 }
 
 // Export 处理 GET /api/profiles/export：成功直写 xlsx 二进制流（Content-Type xlsx
-// MIME + Content-Disposition attachment，RFC 5987 filename* 承载中文名，03 §1.6）；
+// MIME + Content-Disposition attachment，RFC 5987 filename* 承载中文名）；
 // 失败按 Content-Type 判别返回统一 JSON 错误结构（handleServiceError）。
 func (h *ProfileHandler) Export(c *gin.Context) {
 	f, ok := parseProfileFilter(c)
@@ -95,7 +95,7 @@ func parseProfileFilter(c *gin.Context) (service.ProfileFilter, bool) {
 	return f, true
 }
 
-// parseProfilePaging 解析分页 query：缺失或非法兜底 1/10（specs A1 默认值），
+// parseProfilePaging 解析分页 query：缺失或非法兜底 1/10，
 // 越界钳位归 service（1-100 接受、>100 钳 100）。
 func parseProfilePaging(c *gin.Context) (page, pageSize int) {
 	page = 1

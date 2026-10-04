@@ -36,9 +36,14 @@ func openExportSheet(t *testing.T, svc service.ProfileService, f service.Profile
 	if len(data) == 0 {
 		t.Fatal("导出 bytes 应非空")
 	}
-	wantName := "人员画像名单_" + nowDateCompact() + ".xlsx"
-	if filename != wantName {
-		t.Fatalf("文件名 want %s, got %s", wantName, filename)
+	// 期望文件名日期与实现各取一次 time.Now：跨午夜瞬间两者可能差一天，翻转窗内放行。
+	if !strings.HasSuffix(filename, ".xlsx") ||
+		!strings.HasPrefix(filename, "人员画像名单_"+nowDateCompact()) {
+		today := "人员画像名单_" + nowDateCompact() + ".xlsx"
+		yesterday := "人员画像名单_" + time.Now().AddDate(0, 0, -1).Format("20060102") + ".xlsx"
+		if filename != yesterday {
+			t.Fatalf("文件名 want %s（或跨午夜 %s）, got %s", today, yesterday, filename)
+		}
 	}
 	fx, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
@@ -72,7 +77,7 @@ func cellOf(t *testing.T, fx *excelize.File, row, col int) string {
 	return cells[col-1]
 }
 
-// TestProfileExport_ColumnsAndRows 2 人（张敏全字段、张伟全缺失）：表头五列、
+// TestProfileExport_ColumnsAndRows 2 人（张三全字段、李四全缺失）：表头五列、
 // 全字段行取值正确（九型 "3" → 成就型）、缺失行活跃度未使用 + 数值九型空串。
 func TestProfileExport_ColumnsAndRows(t *testing.T) {
 	ps, pe := profilePeriod()
@@ -114,8 +119,18 @@ func TestProfileExport_ColumnsAndRows(t *testing.T) {
 	wantMissing := []string{"李四", "未使用", "", "", ""}
 	for col, want := range wantMissing {
 		if got := cellOf(t, fx, 3, col+1); got != want {
-			t.Fatalf("张伟行[%d] want %q, got %q", col, want, got)
+			t.Fatalf("李四行[%d] want %q, got %q", col, want, got)
 		}
+	}
+	// 分数列为数值单元格（Excel 内可直接排序求和）：excelize 写数值省略 t 属性，
+	// 读回 CellTypeUnset；退化为 SetCellValue(string) 会读回 SharedString，此处守护。
+	sheet := fx.GetSheetName(0)
+	ct, err := fx.GetCellType(sheet, "C2")
+	if err != nil || ct == excelize.CellTypeSharedString || ct == excelize.CellTypeInlineString {
+		t.Fatalf("C2 应为数值单元格, type=%v err=%v", ct, err)
+	}
+	if v, err := fx.GetCellValue(sheet, "C2"); err != nil || v != "82.35" {
+		t.Fatalf("C2 want 82.35, got %q err=%v", v, err)
 	}
 }
 

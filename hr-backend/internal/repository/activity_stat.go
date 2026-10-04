@@ -15,10 +15,9 @@ type ActivityStatRepository interface {
 	// Upsert 按唯一索引 (token_name, period_start_at) upsert 全列覆盖：同人同周期
 	// 重跑按唯一索引更新，历史周期行不动（specs 能力3）。键与列值均取自 rec。
 	Upsert(ctx context.Context, rec *domain.ActivityStat) error
-	// ListByToken 按人全量读各期活跃度行，period_start_at ASC，供 B1 区间并集与
-	// 所选区间行（specs P2_PRF_001 §5.2.2 步骤2/3）。
+	// ListByToken 按人全量读各期活跃度行，period_start_at ASC，供 B1 区间并集与所选区间行。
 	ListByToken(ctx context.Context, tokenName string) ([]domain.ActivityStat, error)
-	// ListLatestByTokens 批量取每人最新周期行，供 A1 活跃度列（specs §4.1.2 B）。
+	// ListLatestByTokens 批量取每人最新周期行，供 A1 活跃度列。
 	ListLatestByTokens(ctx context.Context, tokenNames []string) ([]domain.ActivityStat, error)
 }
 

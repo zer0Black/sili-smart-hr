@@ -1,12 +1,5 @@
-// profile 个人画像域业务层：A1 人员画像列表聚合（specs P2_PRF_001 §5.1、03 §4.3 A1 链路）。
-//
-// 业务规则：
-//   - BR1 上游名单实时拉取，失败整体 1305，不降级不缓存（specs §4.1.4 规则1）
-//   - BR2 缺失值：活跃度无行 unused、模块分无聚合行 nil、九型无判型 nil（specs §4.1.4 规则2）
-//   - BR3 模块最新聚合周期内存在 insufficient/failed 维度行 → degraded 只标注不改分（specs §4.1.4 规则3）
-//   - BR4 短板集合 = 两模块最新周期参与聚合维度合并后最低分，并列全选（specs §4.1.4 规则4、03 §1.9）
-//   - BR5 各列分别取各自最新周期，无区间参数（specs §4.1.4 规则5）
-//   - BR6 仅看未使用与活跃度叠加时以未使用为准（specs §4.1.2 A）
+// profile 个人画像域业务层：A1 人员画像列表聚合与 B1 详情聚合（specs P2_PRF_001）。
+// BR 编号沿用 01_功能需求规格说明书 §4.1.4/§4.2.4 规则与 03_api_interface.md 业务规则集。
 package service
 
 import (
@@ -24,7 +17,7 @@ import (
 	"sili-smart-hr/backend/internal/repository"
 )
 
-// 分页口径（03 A1：任意 1-100 接受，>100 钳位 100；specs §4.1.5 默认 10）。
+// 分页口径（03 A1）。
 const (
 	profileDefaultPageSize = 10
 	profileMaxPageSize     = 100
@@ -32,9 +25,9 @@ const (
 
 // B1 计算常量（03 §4.2：实现常量非在线配置，随源码发版）。
 const (
-	TrendWindowSize       = 4  // 走势期数（specs §4.2.2 D）
-	CompanyAvgMinPeople   = 3  // 公司均分最小有数据人数（specs §4.2.4 规则4）
-	ConfidenceHighSignals = 10 // 会话信号 ≥10 → high（specs §4.2.4 规则5）
+	TrendWindowSize       = 4  // 走势期数
+	CompanyAvgMinPeople   = 3  // 公司均分最小有数据人数
+	ConfidenceHighSignals = 10 // 会话信号 ≥10 → high
 	ConfidenceLowSignals  = 2  // <2 → low（2-9 medium）
 )
 
@@ -53,7 +46,7 @@ type ProfileFilter struct {
 	Name          string // 姓名包含匹配，已去首尾空格
 	ActivityLevel string // 空=全部；active/low_freq/unused，非法值 1400
 	DimensionCode string // 短板维度筛选；须为启用且 module ∈ {AI_USAGE,AI_MGMT} 的 code，否则 1400
-	UnusedOnly    bool   // true 时忽略 ActivityLevel 强制 unused（specs §4.1.2 A）
+	UnusedOnly    bool   // true 时忽略 ActivityLevel 强制 unused（BR6）
 	Page          int    // 默认 1
 	PageSize      int    // 默认 10；任意 1-100 接受，>100 钳位 100
 }
@@ -69,9 +62,9 @@ type ProfileListResult struct {
 // ProfileListItem A1 行（03 A1 响应字段，全 string/number/bool 无雪花 ID）。
 type ProfileListItem struct {
 	StaffName         string   `json:"staff_name"`
-	ActivityLevel     string   `json:"activity_level"`    // 无行按 unused（specs §4.1.4 规则2）
+	ActivityLevel     string   `json:"activity_level"`    // 无行按 unused（BR2）
 	AIUsageScore      *float64 `json:"ai_usage_score"`    // 无聚合行 nil
-	AIUsageDegraded   bool     `json:"ai_usage_degraded"` // specs §4.1.4 规则3
+	AIUsageDegraded   bool     `json:"ai_usage_degraded"` // BR3
 	AIMGMTScore       *float64 `json:"ai_mgmt_score"`
 	AIMGMTDegraded    bool     `json:"ai_mgmt_degraded"`
 	EnneagramMainType *string  `json:"enneagram_main_type"` // "1"-"9" 或 nil
@@ -103,36 +96,36 @@ type ProfilePeriodRange struct {
 
 // ProfileEnneagram 九型判型（最新 scored 行，不随区间变化，03 B1 enneagram）。
 type ProfileEnneagram struct {
-	MainType      string             `json:"main_type"`
-	WingType      string             `json:"wing_type"`
-	Distribution  map[string]float64 `json:"distribution"`
-	Rationale     string             `json:"rationale"`
+	MainType     string             `json:"main_type"`
+	WingType     string             `json:"wing_type"`
+	Distribution map[string]float64 `json:"distribution"`
+	Rationale    string             `json:"rationale"`
 }
 
 // ProfileModuleCard 模块评分卡条目（03 B1 modules[]，恒两行）。
 type ProfileModuleCard struct {
-	Module           string   `json:"module"`
-	Score            *float64 `json:"score"`
-	ChangeVsPrev     *int     `json:"change_vs_prev"`
-	EvaluatedAt      *string  `json:"evaluated_at"`
-	DataStatus       string   `json:"data_status"`
-	InsufficientCount int     `json:"insufficient_count"`
-	FailedCount       int     `json:"failed_count"`
-	MissingCount      int     `json:"missing_count"`
+	Module            string   `json:"module"`
+	Score             *float64 `json:"score"`
+	ChangeVsPrev      *int     `json:"change_vs_prev"`
+	EvaluatedAt       *string  `json:"evaluated_at"`
+	DataStatus        string   `json:"data_status"`
+	InsufficientCount int      `json:"insufficient_count"`
+	FailedCount       int      `json:"failed_count"`
+	MissingCount      int      `json:"missing_count"`
 }
 
 // ProfileDimensionRow 维度明细条目（03 B1 dimensions[]）。
 type ProfileDimensionRow struct {
-	Module        string               `json:"module"`
-	DimensionCode string               `json:"dimension_code"`
-	DimensionName string               `json:"dimension_name"`
-	GroupCode     *string              `json:"group_code"`
-	Score         *int                 `json:"score"`
-	Status        string               `json:"status"`
-	Rationale     string               `json:"rationale"`
-	Evidences     []ProfileEvidence    `json:"evidences"`
-	Trend         []ProfileTrendPoint  `json:"trend"`
-	CompanyAvg    *float64             `json:"company_avg"`
+	Module        string              `json:"module"`
+	DimensionCode string              `json:"dimension_code"`
+	DimensionName string              `json:"dimension_name"`
+	GroupCode     *string             `json:"group_code"`
+	Score         *int                `json:"score"`
+	Status        string              `json:"status"`
+	Rationale     string              `json:"rationale"`
+	Evidences     []ProfileEvidence   `json:"evidences"`
+	Trend         []ProfileTrendPoint `json:"trend"`
+	CompanyAvg    *float64            `json:"company_avg"`
 }
 
 // ProfileEvidence 证据来源条目（03 B1 evidences[]）。
@@ -210,8 +203,12 @@ func (s *profileService) List(ctx context.Context, f ProfileFilter) (*ProfileLis
 		return nil, err
 	}
 
-	// 姓名升序（specs §8.3 偏离记录）+ 内存分页。
+	// 姓名升序 + 内存分页。
+	// offset 溢出防护：page 极大值让 (page-1)*pageSize int64 溢出为负，穿透上界钳位后切片 panic。
 	offset := (page - 1) * pageSize
+	if offset < 0 {
+		offset = len(items)
+	}
 	if offset > len(items) {
 		offset = len(items)
 	}
@@ -266,7 +263,7 @@ func (s *profileService) assembleRows(ctx context.Context, f ProfileFilter) ([]P
 	}); werr != nil {
 		return nil, NewError(errcode.StaffListUnavailable)
 	}
-	// 上游过滤结果的内存包含校验兜底（03 A1：字面比较，无转义场景）。
+	// 上游过滤结果的内存包含校验兜底（字面比较，无转义场景）。
 	if kw != "" {
 		kept := names[:0]
 		for _, n := range names {
@@ -280,7 +277,7 @@ func (s *profileService) assembleRows(ctx context.Context, f ProfileFilter) ([]P
 		return []ProfileListItem{}, nil
 	}
 
-	// 批量 IN 四表（specs §5.1.4 规则2：禁止逐人查询）。
+	// 批量 IN 四表（禁止逐人查询）。
 	aggRows, err := s.aggScores.ListLatestModuleRowsByTokens(ctx, names)
 	if err != nil {
 		return nil, fmt.Errorf("list latest aggregate rows: %w", err)
@@ -348,7 +345,7 @@ func (s *profileService) assembleRows(ctx context.Context, f ProfileFilter) ([]P
 		items = append(items, item)
 	}
 
-	// 姓名升序（specs §8.3 偏离记录）。
+	// 姓名升序。
 	sort.SliceStable(items, func(i, j int) bool { return items[i].StaffName < items[j].StaffName })
 	return items, nil
 }
@@ -366,7 +363,7 @@ func (s *profileService) Detail(ctx context.Context, staffName string, periodSta
 			return nil, NewError(errcode.BadRequest)
 		}
 		var err error
-		// 03 §1.4 换算：start 当日 00:00、end 次日 00:00，与落库双界 Unix 秒精确匹配。
+		// start 当日 00:00、end 次日 00:00，与落库双界 Unix 秒精确匹配。
 		if wantStart, err = time.ParseInLocation(layoutDate, periodStart, time.Local); err != nil {
 			return nil, NewError(errcode.BadRequest)
 		}
@@ -405,7 +402,7 @@ func (s *profileService) Detail(ctx context.Context, staffName string, periodSta
 		})
 	}
 
-	// 定位 selected：未传取首项；传入须双界精确匹配，否则 2001（specs §5.2.4 规则1）。
+	// 定位 selected：未传取首项；传入须双界精确匹配，否则 2001。
 	var selStart, selEnd time.Time
 	if !hasPeriod {
 		if len(bounds) == 0 {
@@ -455,7 +452,7 @@ func (s *profileService) Detail(ctx context.Context, staffName string, periodSta
 		}
 	}
 
-	// 姓名解析：上游失败 1305（BR8）；查无匹配回退 token_name 入参（03 §1.7）。
+	// 姓名解析：上游失败 1305（BR8）；查无匹配回退 token_name 入参。
 	name, err := s.resolveStaffName(ctx, staffName)
 	if err != nil {
 		return nil, err
@@ -522,7 +519,7 @@ func (s *profileService) assembleEmptyDetail(ctx context.Context, staffName stri
 	}, nil
 }
 
-// resolveStaffName userapi 单页解析姓名（03 §1.7）：上游 err 整体 1305；
+// resolveStaffName userapi 单页解析姓名：上游 err 整体 1305；
 // username == staffName 即命中；查无匹配回退 token_name 入参原值。
 func (s *profileService) resolveStaffName(ctx context.Context, staffName string) (string, error) {
 	secret, err := s.resolveSecret(ctx)
@@ -541,8 +538,7 @@ func (s *profileService) resolveStaffName(ctx context.Context, staffName string)
 	return staffName, nil
 }
 
-// loadEnneagram 取最新 scored 判型行转 DTO；降级占位行（main_type 空串）视同无判型
-//（03 §1.8），无判型 nil。
+// loadEnneagram 取最新 scored 判型行转 DTO；降级占位行（main_type 空串）视同无判型，无判型 nil。
 func (s *profileService) loadEnneagram(ctx context.Context, staffName string) (*ProfileEnneagram, error) {
 	byStaff, err := s.results.ListLatestScoredByStaffNames(ctx, []string{staffName})
 	if err != nil {
@@ -572,7 +568,7 @@ type profileEvidenceJSON struct {
 
 // buildModuleCards 组装两模块评分卡（恒两行，03 B1 modules）：
 // score 原始浮点直出；change_vs_prev = round(本期)-round(区间列表下一项聚合行)（BR2）；
-// evaluated_at = PeriodEndAt Local 减一日（BR9）；data_status 判定优先级见 specs §4.2.4 规则8。
+// evaluated_at = PeriodEndAt Local 减一日（BR9）；data_status 判定优先级 pending > missing > degraded > complete。
 func (s *profileService) buildModuleCards(aggRows []domain.AggregateScore, dimRows []domain.DimensionScore,
 	dims []domain.Dimension, bounds []profilePeriodBound, selStart, selEnd time.Time) []ProfileModuleCard {
 	enabledByModule := map[string]int{}
@@ -882,7 +878,7 @@ type includedWeight struct {
 	Weight int    `json:"weight"`
 }
 
-// parseIncludedCodes 解析聚合行 included_json 的参与聚合 code 集合（03 §1.9 判据）；
+// parseIncludedCodes 解析聚合行 included_json 的参与聚合 code 集合；
 // 解析失败按空集（防御：正常聚合链路恒合法，模块行恒数组形态）。
 func parseIncludedCodes(includedJSON string) map[string]struct{} {
 	set := make(map[string]struct{})

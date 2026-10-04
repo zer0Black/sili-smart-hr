@@ -41,7 +41,7 @@ engine 八个子域（extractor / activity / evaluator / scorer / fallback / pip
 
 前端 React 19 + TypeScript：Rsbuild 构建、TanStack Router（文件路由）与 TanStack Query、Zustand、axios、shadcn/ui（new-york）、Tailwind 4、React Hook Form + Zod、Recharts、TanStack Table、i18next 双语。
 
-文档与实现的一处偏差：架构文档把 @base-ui/react 列为在用，但 package.json 尚未引入，属计划项；Recharts、TanStack Table 为预留依赖当前未用（dayjs 已在用）。
+文档与实现的一处偏差：架构文档把 @base-ui/react 列为在用，但 package.json 尚未引入，属计划项；Recharts 已在用（profile 域能力雷达/走势折线/九型柱状图），TanStack Table 为预留依赖当前未用（dayjs 已在用）。
 
 ## 本地启动
 

@@ -7,12 +7,12 @@ import type { JSX } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { DimensionTreeNode, ProfileDetail } from '@/lib/contracts';
 
-import { buildConclusion, type ConclusionFinding } from '../conclusion';
+import { buildConclusion, type ConclusionFinding, type ConclusionParams, type LocalizableParamKey } from '../conclusion';
 import { gradeLabelKey, moduleLabelKey } from '../status';
 
 interface FindingPayload {
   key: string;
-  params: Record<string, string | number>;
+  params: ConclusionParams;
 }
 
 /** finding text {key, params} JSON 串安全解析：非法串回退原文案键路径不渲染 params。 */
@@ -27,14 +27,16 @@ function parseFinding(text: string): FindingPayload | null {
 }
 
 /** 插值参数本地化：等级枚举（usageGrade/mgmtGrade）与模块码（module）换成本地化文案再插值。 */
-function localizeParams(t: (key: string, opts?: Record<string, unknown>) => string, params: Record<string, string | number>): Record<string, string | number> {
+function localizeParams(t: (key: string, opts?: Record<string, unknown>) => string, params: ConclusionParams): Record<string, string | number> {
   const out: Record<string, string | number> = {};
+  const gradeKeys: Record<string, Record<string, string>> = { usageGrade: gradeLabelKey, mgmtGrade: gradeLabelKey };
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== 'string') {
       out[k] = v;
-    } else if (k === 'usageGrade' || k === 'mgmtGrade') {
-      out[k] = gradeLabelKey[v] ? t(gradeLabelKey[v]) : v;
-    } else if (k === 'module') {
+    } else if (gradeKeys[k]) {
+      const map = gradeKeys[k];
+      out[k] = map[v] ? t(map[v]) : v;
+    } else if ((k as LocalizableParamKey) === 'module') {
       out[k] = moduleLabelKey[v] ? t(moduleLabelKey[v]) : v;
     } else {
       out[k] = v;

@@ -20,9 +20,14 @@ export const WEAKNESS_THRESHOLD = 60;
 
 export interface ConclusionResult {
   headlineKey: string; // 正常主文键或谨慎参考提示键
-  headlineParams: Record<string, string | number>;
+  headlineParams: ConclusionParams;
   findings: ConclusionFinding[];
 }
+
+/** 插值参数键名联合：需要渲染前本地化的键（等级枚举/模块码）在此声明，
+ *  消费组件 localizeParams 按此收敛，新增键漏改会有编译期提示。 */
+export type LocalizableParamKey = 'usageGrade' | 'mgmtGrade' | 'module';
+export type ConclusionParams = Partial<Record<LocalizableParamKey | 'topDimensionName' | 'code' | 'name' | 'score' | 'degraded' | 'missing' | 'change', string | number>>;
 
 interface FindingPayload {
   key: string;
