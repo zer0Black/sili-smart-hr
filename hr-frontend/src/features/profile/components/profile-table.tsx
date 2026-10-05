@@ -58,14 +58,23 @@ function ScoreCell(props: { score: number | null; degraded: boolean; warnKey: st
 }
 
 /** 人员画像列表表格：筛选区（姓名/活跃度/短板维度/仅看未使用）+ 工具栏（导出）+ 表格 + 分页。
- *  筛选与分页状态由组件内部自治（仿 batch-table）；父级 resetKey 重置回第一页。 */
-export function ProfileTable(props: { resetKey?: number }): JSX.Element {
+ *  筛选与分页状态由组件内部自治（仿 batch-table）；父级 resetKey 重置回第一页；
+ *  initialFilter 首挂载预填筛选（看板深链，specs §4.1.3 / §7.2）。 */
+export function ProfileTable(props: {
+  resetKey?: number;
+  initialFilter?: { dimension_code?: string; unused_only?: boolean };
+}): JSX.Element {
   const { t } = useTranslation('profile');
   const navigate = useNavigate();
 
   // 姓名是草稿态（回车/查询才提交，specs §4.1.3）；下拉与开关即时生效直接写 filter
   const [draftName, setDraftName] = useState('');
-  const [filter, setFilter] = useState<ProfileFilter>({ page: 1, page_size: DEFAULT_PAGE_SIZE });
+  const [filter, setFilter] = useState<ProfileFilter>({
+    page: 1,
+    page_size: DEFAULT_PAGE_SIZE,
+    dimension_code: props.initialFilter?.dimension_code,
+    unused_only: props.initialFilter?.unused_only ? true : undefined,
+  });
 
   const query = useProfileList(filter);
   const exportMut = useProfileExport();
