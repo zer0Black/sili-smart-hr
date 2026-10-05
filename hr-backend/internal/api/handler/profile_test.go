@@ -443,6 +443,7 @@ func newProfileEngine(t *testing.T, svc *fakeProfileSvc) http.Handler {
 		nil, // questionGenerationHandler
 		nil, // scaleHandler
 		handler.NewProfileHandler(svc),
+		nil, // dashboardHandler
 		rdb,
 	)
 }

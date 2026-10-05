@@ -116,6 +116,12 @@ func InitializeApp(configPath string) (*App, error) {
 		// handler（03 A1/A2/B1 三接口全 GET）。
 		service.NewProfileService,
 		handler.NewProfileHandler,
+		// 团队看板域（specs P2_TMD_001）：dashboard 两仓储 + service（消费既有维度/
+		// 阅卷/密钥装配）+ handler（03 A1/A2 两接口全 GET，聚合实时计算不落库）。
+		repository.NewDashboardQueryRepository,
+		repository.NewTeamTrainingSuggestionRepository,
+		service.NewDashboardService,
+		handler.NewDashboardHandler,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
