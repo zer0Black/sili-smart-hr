@@ -1275,5 +1275,89 @@
       "enneagramNone": "-",
       "periodLabel": "当前区间"
     }
+  },
+  "dashboard": {
+    "page": {
+      "title": "团队看板",
+      "subtitle": "全公司整体能力态势与共性短板",
+      "loading": "加载中…",
+      "loadError": "看板数据加载失败，请重试",
+      "retry": "重试",
+      "empty": "暂无评估数据",
+      "emptyGo": "前往评测运营中心"
+    },
+    "toolbar": {
+      "periodLabel": "评估区间",
+      "periodPlaceholder": "选择区间",
+      "current": "本期",
+      "updatedAt": "数据更新于 {{time}}"
+    },
+    "activity": {
+      "title": "活跃度概览",
+      "staffTotalShort": "全员人数",
+      "active": "活跃",
+      "low_freq": "低频",
+      "unused": "未使用",
+      "staffTotal": "全员 {{count}} 人",
+      "mom": "环比"
+    },
+    "module": {
+      "AI_USAGE": "AI 使用能力",
+      "AI_MGMT": "AI 管理能力",
+      "sourceUsage": "走对话分析",
+      "sourceMgmt": "走主动测试场景题",
+      "viewTrend": "查看逐期趋势",
+      "weaknessTitle": "共性短板",
+      "noWeakness": "本模块暂无满足条件的共性短板维度",
+      "dimensionAvg": "维度均分",
+      "referenceAvg": "全维度均值"
+    },
+    "enneagram": {
+      "title": "团队人格构成",
+      "snapshot": "最新快照",
+      "empty": "暂无九型人格测评数据",
+      "dominantType": "主导型",
+      "secondaryType": "次主导型",
+      "coverage": "测评覆盖",
+      "coverageValue": "已测评 {{count}} 人，覆盖率 {{ratio}}%",
+      "trait1": "注重标准与细节，擅长在规则框架内把事情做对。",
+      "trait2": "乐于支持他人，擅长营造协作氛围与满足团队需求。",
+      "trait3": "目标导向，擅长高效达成结果并推动团队产出。",
+      "trait4": "感受细腻，擅长创意表达与差异化视角。",
+      "trait5": "偏好在充分掌握信息后行动，擅长分析与深入研究。",
+      "trait6": "重视确定性与风险预判，擅长稳妥推进与忠诚执行。",
+      "trait7": "好奇心强，擅长探索新可能并带动团队活力。",
+      "trait8": "果断直接，擅长在压力下决策并掌控局面。",
+      "trait9": "平和包容，擅长调和分歧与维持团队稳定。"
+    },
+    "suggestion": {
+      "title": "团队培训方向建议",
+      "pending": "培训建议生成中或本期无批量批次",
+      "period": "评估区间 {{start}} ~ {{end}}",
+      "generatedAt": "生成时间 {{time}}",
+      "summaryTitle": "综合研判"
+    },
+    "trend": {
+      "back": "返回看板",
+      "typeLabel": "能力类型",
+      "loadError": "趋势数据加载失败，请重试",
+      "empty": "暂无评估数据",
+      "compositeLabel": "模块综合分",
+      "vsPrev": "较上期",
+      "currentPeriod": "本期区间",
+      "dataSource": "数据来源",
+      "sourceUsage": "对话分析",
+      "sourceMgmt": "主动测试场景题",
+      "dimensionCount": "评估维度数",
+      "observationWindow": "观察窗口",
+      "updatedAt": "数据更新时间",
+      "scoreLabel": "均分",
+      "weaknessTag": "短板",
+      "changeTitle": "本期较上期变化",
+      "colDimension": "维度",
+      "colPrev": "上期分",
+      "colCurrent": "本期分",
+      "colChange": "变化"
+    }
   }
 }

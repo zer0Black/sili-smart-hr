@@ -1,0 +1,241 @@
+{
+  "schema_version": 1,
+  "feature_id": "P2_TMD_001_FEAT_团队看板",
+  "subplans": {
+    "01": {
+      "base_sha": "2f79d478e0a0cfa583c9f30f0a225b37149183ce",
+      "plan_digest": "3a4767d05060a3709633514900daa066924d59439f59e240384f043afdd09d52",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "b68581f7266e42f1a8327b211165002dbe174b979b3047ad06cc30b1146107d6",
+        "../03_api_interface.md": "372471a82f7e5849d30c941492415361e47cb15cae5f16c7ec6a48548bd27de1",
+        "../04_model_interface.md": "6876dd28036a2cc9e99cd20c0fa0d0117f251e20ed979f5d0b0b6778227c6e8e"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T1",
+          "status": "verified",
+          "base_sha": "2f79d478e0a0cfa583c9f30f0a225b37149183ce",
+          "head_sha": "afaa67522edf416d2062caff9be20e2b6b8124b6",
+          "verification": {
+            "path": "execution-evidence/01_T1_afaa675.md",
+            "digest": "8b2a436d7c3682605e43d8f5766c8f190955072e9cc7bf715f3398f5fdae30a0",
+            "head_sha": "afaa67522edf416d2062caff9be20e2b6b8124b6",
+            "recorded_at": "2026-10-05T07:27:41Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T2",
+          "status": "verified",
+          "base_sha": "afaa67522edf416d2062caff9be20e2b6b8124b6",
+          "head_sha": "35de33fba4873112ad91f3c7c2b8151b2bd7083a",
+          "verification": {
+            "path": "execution-evidence/01_T2_35de33f.md",
+            "digest": "5c65918f97a5f3328675ae432c313f10dfbab01b42dd76c630f4044af3afabd7",
+            "head_sha": "35de33fba4873112ad91f3c7c2b8151b2bd7083a",
+            "recorded_at": "2026-10-05T07:40:42Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T3",
+          "status": "verified",
+          "base_sha": "35de33fba4873112ad91f3c7c2b8151b2bd7083a",
+          "head_sha": "910bbc6ebcc5890067fb159343f3142d2c7f29ff",
+          "verification": {
+            "path": "execution-evidence/01_T3_910bbc6.md",
+            "digest": "93c623237529314195e242234e7f80dd2e1d8df7825dcf92414380181853241b",
+            "head_sha": "910bbc6ebcc5890067fb159343f3142d2c7f29ff",
+            "recorded_at": "2026-10-05T08:02:13Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T4",
+          "status": "verified",
+          "base_sha": "910bbc6ebcc5890067fb159343f3142d2c7f29ff",
+          "head_sha": "40559822dc111cc521338d7cc010c96ce249afe8",
+          "verification": {
+            "path": "execution-evidence/01_T4_4055982.md",
+            "digest": "f72ef6a51c91fb521e17c3f0dfa10c3b5f86bdbb08f6a3e8977d2b5ba1179ca4",
+            "head_sha": "40559822dc111cc521338d7cc010c96ce249afe8",
+            "recorded_at": "2026-10-05T08:06:45Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T5",
+          "status": "verified",
+          "base_sha": "40559822dc111cc521338d7cc010c96ce249afe8",
+          "head_sha": "c0b217c50bed24c05f07258c1cd370912249a413",
+          "verification": {
+            "path": "execution-evidence/01_T5_c0b217c.md",
+            "digest": "3efd6de8daf35c394985dc9d98fa3cd86c10c7a3f673fdaddfdd259841c80515",
+            "head_sha": "c0b217c50bed24c05f07258c1cd370912249a413",
+            "recorded_at": "2026-10-05T08:11:12Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T6",
+          "status": "verified",
+          "base_sha": "c0b217c50bed24c05f07258c1cd370912249a413",
+          "head_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+          "verification": {
+            "path": "execution-evidence/01_T6_d222d05.md",
+            "digest": "f99400dd42a2ac35b8c667b39935e3a2bbfaf401a8970de804e15070ccd12b4b",
+            "head_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+            "recorded_at": "2026-10-05T12:14:25Z",
+            "deferred_reason": null
+          }
+        },
+        "T7": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T7",
+          "status": "verified",
+          "base_sha": "a5ebe9b2be8627b601326b40d610834541c8b51b",
+          "head_sha": "5050a44346ff639aa55456c9375e10b34d002d57",
+          "verification": {
+            "path": "execution-evidence/01_T7_5050a44.md",
+            "digest": "c3a5508ba23335ac2992f45f302b8d83e37c9d7828eb1dd4f0c6f65e20ce0d87",
+            "head_sha": "5050a44346ff639aa55456c9375e10b34d002d57",
+            "recorded_at": "2026-10-05T08:41:25Z",
+            "deferred_reason": null
+          }
+        },
+        "T8": {
+          "key": "P2_TMD_001_FEAT_团队看板/01/T8",
+          "status": "verified",
+          "base_sha": "5050a44346ff639aa55456c9375e10b34d002d57",
+          "head_sha": "b3094f84f20c8ec076d81536d727f11ec24a5d09",
+          "verification": {
+            "path": "execution-evidence/01_T8_b3094f8.md",
+            "digest": "cbd6440779145f23737a09414b41f165772d0a2be6b971d2d282728d60c53f9b",
+            "head_sha": "b3094f84f20c8ec076d81536d727f11ec24a5d09",
+            "recorded_at": "2026-10-05T08:51:24Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01_review3_pass_d222d05.md",
+        "digest": "a20bce2474cf0a524480f29cfe5f39043432851b02b4a53a639e48e765813234",
+        "head_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+        "base_sha": "2f79d478e0a0cfa583c9f30f0a225b37149183ce",
+        "passed": true,
+        "recorded_at": "2026-10-05T12:40:23Z"
+      },
+      "review_failures": 2
+    },
+    "02": {
+      "base_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+      "plan_digest": "919356b94bde689036ec5893d59d57a9f65fa17d1f130a11007cb937a2995999",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "b68581f7266e42f1a8327b211165002dbe174b979b3047ad06cc30b1146107d6",
+        "../03_api_interface.md": "372471a82f7e5849d30c941492415361e47cb15cae5f16c7ec6a48548bd27de1"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T1",
+          "status": "verified",
+          "base_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+          "head_sha": "a89564106cd944f10188932075f9520c2cf7b0f1",
+          "verification": {
+            "path": "execution-evidence/02_T1_a895641.md",
+            "digest": "eab4d8574284c31b6a521e786cecb4d2e6ca01fab0ef8e5149329122c0a30f27",
+            "head_sha": "a89564106cd944f10188932075f9520c2cf7b0f1",
+            "recorded_at": "2026-10-05T12:46:48Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T2",
+          "status": "verified",
+          "base_sha": "a89564106cd944f10188932075f9520c2cf7b0f1",
+          "head_sha": "dc4f32c97bdfd9ea32ddcaa33227941505b622a8",
+          "verification": {
+            "path": "execution-evidence/02_T2_dc4f32c.md",
+            "digest": "80eb800aa3ab22f1d87ffca3b9ab8ac33a6ff19b06e8f58762e7b64013ded126",
+            "head_sha": "dc4f32c97bdfd9ea32ddcaa33227941505b622a8",
+            "recorded_at": "2026-10-05T13:00:54Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T3",
+          "status": "verified",
+          "base_sha": "dc4f32c97bdfd9ea32ddcaa33227941505b622a8",
+          "head_sha": "9caec338c052828dbab4f1df7393c4fcec708fc3",
+          "verification": {
+            "path": "execution-evidence/02_T3_9caec33.md",
+            "digest": "fbbf5e37783f8c100ce93eb12e21ee11d474291b6bf06052d533ffc29c1b0334",
+            "head_sha": "9caec338c052828dbab4f1df7393c4fcec708fc3",
+            "recorded_at": "2026-10-05T13:14:33Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T4",
+          "status": "verified",
+          "base_sha": "9caec338c052828dbab4f1df7393c4fcec708fc3",
+          "head_sha": "b663d44b428595d09d3562eb12c4d9d3eb65cd9a",
+          "verification": {
+            "path": "execution-evidence/02_T4_b663d44.md",
+            "digest": "50740e68a1858b884cfbc11b274cc0c31553196664acc05806e2bfb19746368c",
+            "head_sha": "b663d44b428595d09d3562eb12c4d9d3eb65cd9a",
+            "recorded_at": "2026-10-05T13:22:58Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T5",
+          "status": "verified",
+          "base_sha": "b663d44b428595d09d3562eb12c4d9d3eb65cd9a",
+          "head_sha": "12448e5671f92ab4bb1f90317c86753c505ff1c2",
+          "verification": {
+            "path": "execution-evidence/02_T5_12448e5.md",
+            "digest": "d5ce7ea230f1a87dfc80c013fe30d73f9217fd7b6ec80c8c02fed59fce9b4b53",
+            "head_sha": "12448e5671f92ab4bb1f90317c86753c505ff1c2",
+            "recorded_at": "2026-10-05T14:10:25Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T6",
+          "status": "verified",
+          "base_sha": "4f48ede3e81a95f8653fd90ff6e3f5dba21759f8",
+          "head_sha": "460029a9d2996f77dee9b27b491ff9b86f78b274",
+          "verification": {
+            "path": "execution-evidence/02_T6_460029a.md",
+            "digest": "83e208edbdcfbc19eabca44b3595f7faabb98b6d3dfa0deface7723cfe1a901d",
+            "head_sha": "460029a9d2996f77dee9b27b491ff9b86f78b274",
+            "recorded_at": "2026-10-05T13:44:15Z",
+            "deferred_reason": null
+          }
+        },
+        "T7": {
+          "key": "P2_TMD_001_FEAT_团队看板/02/T7",
+          "status": "verified",
+          "base_sha": "460029a9d2996f77dee9b27b491ff9b86f78b274",
+          "head_sha": "212150922d30a965f36d2adcd63e81c8c9ff86ec",
+          "verification": {
+            "path": "execution-evidence/02_T7_2121509.md",
+            "digest": "e7a5d7310bebb6596de3278c6c222686fc82e5f89eb28b366ef470fb4378d0a9",
+            "head_sha": "212150922d30a965f36d2adcd63e81c8c9ff86ec",
+            "recorded_at": "2026-10-05T13:50:41Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/02_review2_pass_12448e5.md",
+        "digest": "1d3d54b9a4a61a2c49606aee71ab0785e39f8f41df3c90d128334d81c7e6bf4a",
+        "head_sha": "12448e5671f92ab4bb1f90317c86753c505ff1c2",
+        "base_sha": "d222d05bbc915033c3c1dcbe543278f0484aae5b",
+        "passed": true,
+        "recorded_at": "2026-10-05T14:20:42Z"
+      },
+      "review_failures": 1
+    }
+  },
+  "updated_at": "2026-10-05T14:20:42Z"
+}

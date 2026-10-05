@@ -86,3 +86,14 @@ func TestMessageUnknownFallback(t *testing.T) {
 		t.Errorf("1399 message = %q, want \"error\"", got)
 	}
 }
+
+// TestErrcodeDashboardPeriodInvalid 团队看板域 2101（P2_TMD_001 03 §5）：
+// 常量值与非空文案双登记核查。
+func TestErrcodeDashboardPeriodInvalid(t *testing.T) {
+	if errcode.DashboardPeriodInvalid != 2101 {
+		t.Errorf("DashboardPeriodInvalid = %d, want 2101", errcode.DashboardPeriodInvalid)
+	}
+	if got := errcode.Message(errcode.DashboardPeriodInvalid); got != "dashboard period invalid" {
+		t.Errorf("DashboardPeriodInvalid message = %q, want %q", got, "dashboard period invalid")
+	}
+}

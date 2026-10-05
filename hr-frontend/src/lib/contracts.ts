@@ -742,3 +742,145 @@ export interface ProfileFilter {
   name?: string; activity_level?: string; dimension_code?: string;
   unused_only?: boolean; page: number; page_size: number;
 }
+
+// 团队看板域契约（与后端 dashboard service DTO 同构，03_api_interface §1 A1/A2。
+// 本域响应无雪花 ID，全 number/string 直译；区间与时间字段均为含止日或 yyyy-MM-dd HH:mm 直出。）
+
+/** 评估区间条目（periods 列表项；selected_period/current_period 为其去 is_current 子集）。 */
+export interface DashboardPeriodItem {
+  period_start: string;
+  period_end: string;
+  /** 最新落库区间为 true，前端标注「本期」。 */
+  is_current: boolean;
+}
+
+/** 三态分级：count 人数 + ratio 占全员比例一位小数。 */
+export interface DashboardCountRatio {
+  count: number;
+  ratio: number;
+}
+
+/** 环比：本期减上一落库区间计数差，int 带符号；最早区间为 null。 */
+export interface DashboardMom {
+  active_change: number;
+  unused_change: number;
+}
+
+/** 活跃度概览（所选区间）。 */
+export interface DashboardActivity {
+  active: DashboardCountRatio;
+  low_freq: DashboardCountRatio;
+  unused: DashboardCountRatio;
+  mom: DashboardMom | null;
+}
+
+/** 模块内维度均分行（雷达轴与短板标签同源）。 */
+export interface DashboardDimItem {
+  dimension_code: string;
+  dimension_name: string;
+  /** 全员均分取整 int；有数据人数 < 3 为 null（雷达断轴）。 */
+  avg_score: number | null;
+  /** 低分占比一位小数；avg_score 为 null 时同置 null。 */
+  low_ratio: number | null;
+  is_weakness: boolean;
+}
+
+/** 两模块雷达卡，恒含 AI_USAGE 与 AI_MGMT 两行。 */
+export interface DashboardModule {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  dimensions: DashboardDimItem[];
+  /** 全维度均值参考线取整 int；任一维度置空为 null。 */
+  overall_avg: number | null;
+}
+
+/** 九型分布条目（恒 9 项按型别序号升序）。 */
+export interface DashboardEnneagramItem {
+  /** 型别数字串 "1"-"9"，型名映射由前端 i18n 承载。 */
+  type: string;
+  count: number;
+  ratio: number;
+}
+
+/** 九型构成快照（最新判型集合，不随区间变化）。 */
+export interface DashboardEnneagram {
+  scored_count: number;
+  coverage_ratio: number;
+  distribution: DashboardEnneagramItem[];
+  dominant_type: string;
+  dominant_ratio: number;
+  secondary_type: string;
+  secondary_ratio: number;
+}
+
+/** 培训建议条目：脱敏落库原文透传。 */
+export interface DashboardSuggestionItem {
+  name: string;
+  description: string;
+}
+
+/** 模块建议组（每模块 2-4 条）。 */
+export interface DashboardSuggestionModule {
+  module: string;
+  suggestions: DashboardSuggestionItem[];
+}
+
+/** 培训建议（恒返回，status 四态承载展示分支）。 */
+export interface DashboardSuggestion {
+  status: 'generated' | 'generating' | 'failed' | 'none';
+  /** 非 generated 态为 null。 */
+  period_start: string | null;
+  period_end: string | null;
+  generated_at: string | null;
+  modules: DashboardSuggestionModule[];
+  /** 非 generated 态为空串。 */
+  summary: string;
+}
+
+/** GET /api/dashboard 响应 data（03 §1 A1）。 */
+export interface DashboardOverview {
+  periods: DashboardPeriodItem[];
+  selected_period: DashboardPeriodItem | null;
+  data_updated_at: string | null;
+  staff_total: number;
+  activity: DashboardActivity | null;
+  modules: DashboardModule[];
+  enneagram: DashboardEnneagram | null;
+  suggestion: DashboardSuggestion;
+}
+
+/** 综合分摘要卡；本期全部维度置空为 null（空态语义）。 */
+export interface DashboardTrendComposite {
+  score: number;
+  change_vs_prev: number | null;
+  dimension_count: number;
+}
+
+/** 走势逐期分值：score 为该期均分取整 int，置空期为 null（前端断线显示 -）。 */
+export interface DashboardTrendPoint {
+  period_start: string;
+  period_end: string;
+  score: number | null;
+}
+
+/** 维度走势行（与 periods 窗口一一对应）。 */
+export interface DashboardTrendDim {
+  dimension_code: string;
+  dimension_name: string;
+  /** 本期共性短板标识，历史期次不回溯。 */
+  is_weakness: boolean;
+  history: DashboardTrendPoint[];
+  current_score: number | null;
+  prev_score: number | null;
+  change: number | null;
+}
+
+/** GET /api/dashboard/trend 响应 data（03 §1 A2）。type 为兜底后回显值。 */
+export interface DashboardTrend {
+  type: 'use' | 'manage';
+  module: 'AI_USAGE' | 'AI_MGMT';
+  periods: DashboardPeriodItem[];
+  current_period: DashboardPeriodItem | null;
+  data_updated_at: string | null;
+  composite: DashboardTrendComposite | null;
+  dimensions: DashboardTrendDim[];
+}

@@ -1275,5 +1275,89 @@
       "enneagramNone": "-",
       "periodLabel": "Current period"
     }
+  },
+  "dashboard": {
+    "page": {
+      "title": "Team Dashboard",
+      "subtitle": "Company-wide capability posture and common weaknesses",
+      "loading": "Loading…",
+      "loadError": "Failed to load dashboard data, please retry",
+      "retry": "Retry",
+      "empty": "No assessment data yet",
+      "emptyGo": "Go to assessment center"
+    },
+    "toolbar": {
+      "periodLabel": "Evaluation period",
+      "periodPlaceholder": "Select period",
+      "current": "Current",
+      "updatedAt": "Data updated at {{time}}"
+    },
+    "activity": {
+      "title": "Activity Overview",
+      "staffTotalShort": "Total staff",
+      "active": "Active",
+      "low_freq": "Low frequency",
+      "unused": "Unused",
+      "staffTotal": "{{count}} staff in total",
+      "mom": "Period over period"
+    },
+    "module": {
+      "AI_USAGE": "AI Usage Capability",
+      "AI_MGMT": "AI Management Capability",
+      "sourceUsage": "Derived from conversation analysis",
+      "sourceMgmt": "Derived from active test scenarios",
+      "viewTrend": "View trend by period",
+      "weaknessTitle": "Common weaknesses",
+      "noWeakness": "No qualifying common weakness dimensions in this module",
+      "dimensionAvg": "Dimension average",
+      "referenceAvg": "Overall average"
+    },
+    "enneagram": {
+      "title": "Team Personality Composition",
+      "snapshot": "Latest snapshot",
+      "empty": "No enneagram assessment data yet",
+      "dominantType": "Dominant type",
+      "secondaryType": "Secondary type",
+      "coverage": "Assessment coverage",
+      "coverageValue": "{{count}} assessed, coverage {{ratio}}%",
+      "trait1": "Focuses on standards and details; good at getting things right within rules.",
+      "trait2": "Supportive of others; good at fostering collaboration and meeting team needs.",
+      "trait3": "Goal oriented; good at delivering results efficiently and driving output.",
+      "trait4": "Perceptive and creative; good at original expression and fresh perspectives.",
+      "trait5": "Prefers acting on full information; good at analysis and in-depth research.",
+      "trait6": "Values certainty and risk awareness; good at steady execution with loyalty.",
+      "trait7": "Highly curious; good at exploring new possibilities and energizing the team.",
+      "trait8": "Decisive and direct; good at making decisions under pressure and taking charge.",
+      "trait9": "Calm and inclusive; good at mediating differences and keeping stability."
+    },
+    "suggestion": {
+      "title": "Team Training Direction Suggestions",
+      "pending": "Suggestions are being generated, or no scheduled batch this period",
+      "period": "Evaluation period {{start}} ~ {{end}}",
+      "generatedAt": "Generated at {{time}}",
+      "summaryTitle": "Overall assessment"
+    },
+    "trend": {
+      "back": "Back to dashboard",
+      "typeLabel": "Capability type",
+      "loadError": "Failed to load trend data, please retry",
+      "empty": "No assessment data yet",
+      "compositeLabel": "Module composite score",
+      "vsPrev": "vs previous period",
+      "currentPeriod": "Current period",
+      "dataSource": "Data source",
+      "sourceUsage": "Conversation analysis",
+      "sourceMgmt": "Active test scenarios",
+      "dimensionCount": "Dimensions assessed",
+      "observationWindow": "Observation window",
+      "updatedAt": "Data updated at",
+      "scoreLabel": "Average score",
+      "weaknessTag": "Weakness",
+      "changeTitle": "Change vs previous period",
+      "colDimension": "Dimension",
+      "colPrev": "Previous score",
+      "colCurrent": "Current score",
+      "colChange": "Change"
+    }
   }
 }

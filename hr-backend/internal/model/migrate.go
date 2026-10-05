@@ -353,5 +353,6 @@ func allModels() []any {
 		&domain.AssessmentTestLink{},
 		&domain.AssessmentTestResult{},
 		&domain.AssessmentTestAnswer{},
+		&domain.TeamTrainingSuggestion{},
 	}
 }

@@ -133,8 +133,8 @@ function makeDetail(o: Partial<ProfileDetail> = {}): ProfileDetail {
   };
 }
 
-/** 路由级渲染：真实 routeTree + 独立 QueryClient，navigate 目标路径（含参数）。 */
-async function renderAt(to: string, params?: Record<string, string>) {
+/** 路由级渲染：真实 routeTree + 独立 QueryClient，navigate 目标路径（含参数与 search）。 */
+async function renderAt(to: string, params?: Record<string, string>, search?: Record<string, string>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createRouter({ routeTree, context: { queryClient: qc }, defaultPreload: 'intent' });
   render(
@@ -142,7 +142,7 @@ async function renderAt(to: string, params?: Record<string, string>) {
       <RouterProvider router={router} />
     </QueryClientProvider>,
   );
-  await router.navigate(params ? { to, params } : { to });
+  await router.navigate({ to, ...(params ? { params } : {}), ...(search ? { search } : {}) });
   return router;
 }
 
@@ -393,5 +393,61 @@ describe('列表 → 详情跳转链（specs §3.2）', () => {
 
     await waitFor(() => expect(detailMock).toHaveBeenCalledWith('李四', undefined));
     expect(await screen.findByText('核心结论')).toBeInTheDocument();
+  });
+});
+
+// URL 参数预填（specs §4.1.3 共性短板/未使用人群跳转、§7.2 F9 预填依赖）：
+// 看板短板标签携 dimension_code、未使用卡携 unused_only=true 深链进入，列表筛选预填
+// 且消费后清参（一次性深链语义，question-bank 先例），页内交互行为保持现状。
+describe('列表页 URL 参数预填（specs §4.1.3 / §7.2）', () => {
+  it('TestProfilePage_PrefillsDimensionCode：携 dimension_code 进入首查请求含该维度（03 §4.5 短板标签跳转契约）', async () => {
+    listMock.mockResolvedValue(twoRowList());
+
+    await renderAt('/profile', undefined, { dimension_code: 'AI_WRITING' });
+
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ dimension_code: 'AI_WRITING', page: 1 })),
+    );
+    expect(await screen.findByText('张三')).toBeInTheDocument();
+  });
+
+  it('TestProfilePage_PrefillsUnusedOnly：携 unused_only=true 进入开关开启且请求含 unused_only（03 §4.5 未使用卡跳转契约）', async () => {
+    listMock.mockResolvedValue(twoRowList());
+
+    await renderAt('/profile', undefined, { unused_only: 'true' });
+
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith(expect.objectContaining({ unused_only: true, page: 1 })),
+    );
+    // 开关为开启态：Radix Switch 勾选时 data-state="checked"
+    const sw = await screen.findByRole('switch', { name: '仅看未使用' });
+    await waitFor(() => expect(sw).toHaveAttribute('data-state', 'checked'));
+  });
+
+  it('TestProfilePage_ConsumesThenClears：预填消费后 URL search 清空（replace）且筛选保持预填值（§7.2 一次性深链）', async () => {
+    listMock.mockResolvedValue(twoRowList());
+
+    const router = await renderAt('/profile', undefined, { dimension_code: 'AI_WRITING' });
+    await screen.findByText('张三');
+
+    // 清参后再渲染：筛选仍保持预填值（不随清参重置）
+    await waitFor(() => expect(router.state.location.search).toEqual({}));
+    expect(await screen.findByText('张三')).toBeInTheDocument();
+    const latest = listMock.mock.calls[listMock.mock.calls.length - 1][0] as { dimension_code?: string };
+    expect(latest.dimension_code).toBe('AI_WRITING');
+  });
+
+  it('TestProfilePage_ManualFilterUnchanged：无参数进入首查不含筛选参数，行为与现状一致（回归锚点）', async () => {
+    listMock.mockResolvedValue(twoRowList());
+
+    await renderAt('/profile');
+
+    await screen.findByText('张三');
+    const first = listMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(first.name).toBeUndefined();
+    expect(first.activity_level).toBeUndefined();
+    expect(first.dimension_code).toBeUndefined();
+    expect(first.unused_only).toBeUndefined();
+    expect(first).toMatchObject({ page: 1, page_size: 10 });
   });
 });

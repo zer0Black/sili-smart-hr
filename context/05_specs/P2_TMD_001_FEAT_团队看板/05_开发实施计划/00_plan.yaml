@@ -19,7 +19,7 @@ sub_plans:
   - id: "01"
     name: "后端数据域"
     file: "01_后端数据域.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
@@ -28,7 +28,7 @@ sub_plans:
   - id: "02"
     name: "前端看板页面"
     file: "02_前端看板页面.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
