@@ -82,6 +82,12 @@ func (f *fakeBatchRepo) GetByID(ctx context.Context, id int64) (*domain.Assessme
 	return f.stored, nil
 }
 
+func (f *fakeBatchRepo) GetByBatchNo(ctx context.Context, batchNo string) (*domain.AssessmentBatch, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.stored, nil
+}
+
 func (f *fakeBatchRepo) FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error) {
 	if f.findCalls != nil {
 		*f.findCalls++

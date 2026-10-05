@@ -32,6 +32,8 @@ type fakeBatchRepo struct {
 	listErr         error
 	byID            *domain.AssessmentBatch
 	byIDErr         error
+	byBatchNo       *domain.AssessmentBatch
+	byBatchNoErr    error
 	failedList      []domain.AssessmentBatchPerson
 	failedListErr   error
 	countInRange    int64
@@ -56,6 +58,9 @@ func (f *fakeBatchRepo) CreateWithPersons(_ context.Context, _ *domain.Assessmen
 }
 func (f *fakeBatchRepo) GetByID(_ context.Context, _ int64) (*domain.AssessmentBatch, error) {
 	return f.byID, f.byIDErr
+}
+func (f *fakeBatchRepo) GetByBatchNo(_ context.Context, _ string) (*domain.AssessmentBatch, error) {
+	return f.byBatchNo, f.byBatchNoErr
 }
 func (f *fakeBatchRepo) ListFailedByBatch(_ context.Context, batchID int64) ([]domain.AssessmentBatchPerson, error) {
 	f.failedListGotID = batchID

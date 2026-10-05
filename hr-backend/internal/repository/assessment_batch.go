@@ -41,6 +41,8 @@ type AssessmentBatchRepository interface {
 	CreateWithPersons(ctx context.Context, batch *domain.AssessmentBatch, persons func(batchID int64) []domain.AssessmentBatchPerson) error
 	// GetByID 按主键点查，无行返 (nil, nil)。
 	GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error)
+	// GetByBatchNo 按批次号唯一索引点查（uk_batch_no），无行返 (nil, nil)。
+	GetByBatchNo(ctx context.Context, batchNo string) (*domain.AssessmentBatch, error)
 	// FindLatestScheduled 取最近触发的定时批次（不限状态，tick 已建批判定消费）：
 	// 批次快速落终态后宽限窗内的重复 tick 仍须能查到它防重复建批。无行返 (nil, nil)。
 	FindLatestScheduled(ctx context.Context) (*domain.AssessmentBatch, error)
@@ -104,6 +106,18 @@ func (r *assessmentBatchRepository) CreateWithPersons(ctx context.Context, batch
 func (r *assessmentBatchRepository) GetByID(ctx context.Context, id int64) (*domain.AssessmentBatch, error) {
 	var b domain.AssessmentBatch
 	err := r.db.WithContext(ctx).First(&b, id).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
+func (r *assessmentBatchRepository) GetByBatchNo(ctx context.Context, batchNo string) (*domain.AssessmentBatch, error) {
+	var b domain.AssessmentBatch
+	err := r.db.WithContext(ctx).Where("batch_no = ?", batchNo).First(&b).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}

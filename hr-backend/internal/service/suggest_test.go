@@ -27,6 +27,7 @@ type fakeSuggestSuggestions struct {
 	ensureCalls int
 	generated   *suggestGeneratedCall
 	failed      *suggestFailedCall
+	touched     *suggestTouchedCall
 	err         error
 }
 
@@ -42,6 +43,11 @@ type suggestGeneratedCall struct {
 type suggestFailedCall struct {
 	id     int64
 	reason string
+}
+
+type suggestTouchedCall struct {
+	id int64
+	at time.Time
 }
 
 func (f *fakeSuggestSuggestions) EnsureGenerating(_ context.Context, row domain.TeamTrainingSuggestion) (bool, error) {
@@ -72,6 +78,11 @@ func (f *fakeSuggestSuggestions) MarkGenerated(_ context.Context, id int64, batc
 
 func (f *fakeSuggestSuggestions) MarkFailed(_ context.Context, id int64, errSummary string) error {
 	f.failed = &suggestFailedCall{id: id, reason: errSummary}
+	return nil
+}
+
+func (f *fakeSuggestSuggestions) TouchGenerating(_ context.Context, id int64, at time.Time) error {
+	f.touched = &suggestTouchedCall{id: id, at: at}
 	return nil
 }
 
@@ -282,6 +293,114 @@ func TestTickScan_EnqueueFailKeepsRow(t *testing.T) {
 	}
 	if sug.failed != nil {
 		t.Fatalf("投递失败不应触发 MarkFailed, got %+v", sug.failed)
+	}
+}
+
+// ===== TickScan 滞留续投（specs §5.1.4 规则5 滞留恢复、03 §4.1 步4） =====
+
+// stuckRow 构造滞留场景生成中建议行（UpdatedAt 偏移 dur）。
+func stuckRow(id int64, batchNo string, week repository.PeriodBound, updatedAgo time.Duration) domain.TeamTrainingSuggestion {
+	return domain.TeamTrainingSuggestion{
+		ID: id, BatchNo: batchNo, Status: domain.SuggestionStatusGenerating,
+		PeriodStartAt: week.StartAt, PeriodEndAt: week.EndAt,
+		UpdatedAt: time.Now().Add(-updatedAgo),
+	}
+}
+
+// TestTickScan_RetryStuckReenqueues 验证过期 generating 行且批次存在终态时
+// 续投：Enqueuer 收到该批次 ID、行 updated_at 被刷新、不建新行（specs §5.1.5 滞留恢复）。
+func TestTickScan_RetryStuckReenqueues(t *testing.T) {
+	w0 := sugWeek(0)
+	now := time.Now()
+	sug := &fakeSuggestSuggestions{rows: []domain.TeamTrainingSuggestion{
+		stuckRow(9, "B-9", w0, 25*time.Minute),
+	}}
+	q := &fakeSuggestQueries{} // 拾取扫描无命中（生成中行即拾取锁）
+	b := &fakeBatchRepo{byBatchNo: sugBatch(9, "B-9", w0, 0)}
+	enq := &fakeSuggestEnqueuer{}
+	svc := newSuggestSvc(sug, q, b, nil, enq, &fakeDashboardDimRepo{}, &fakeUserapiClient{})
+
+	if err := svc.TickScan(context.Background(), now); err != nil {
+		t.Fatalf("TickScan: %v", err)
+	}
+	if !enq.called || len(enq.batchIDs) != 1 || enq.batchIDs[0] != 9 {
+		t.Fatalf("续投 want batchID=9 一次, got %v", enq.batchIDs)
+	}
+	if sug.touched == nil || sug.touched.id != 9 || !sug.touched.at.Equal(now) {
+		t.Fatalf("续投后应刷新行 updated_at, got %+v", sug.touched)
+	}
+	if sug.ensureCalls != 0 || sug.failed != nil {
+		t.Fatalf("续投不应建行或 MarkFailed: ensure=%d failed=%+v", sug.ensureCalls, sug.failed)
+	}
+}
+
+// TestTickScan_FreshGeneratingSkipped 验证未过期 generating 行（合法在途窗口内）
+// 不续投：Enqueuer 未被调用、返回 nil（specs §5.1.4 规则4 成本口径防重复投递）。
+func TestTickScan_FreshGeneratingSkipped(t *testing.T) {
+	w0 := sugWeek(0)
+	sug := &fakeSuggestSuggestions{rows: []domain.TeamTrainingSuggestion{
+		stuckRow(9, "B-9", w0, 5*time.Minute),
+	}}
+	q := &fakeSuggestQueries{}
+	b := &fakeBatchRepo{byBatchNo: sugBatch(9, "B-9", w0, 0)}
+	enq := &fakeSuggestEnqueuer{}
+	svc := newSuggestSvc(sug, q, b, nil, enq, &fakeDashboardDimRepo{}, &fakeUserapiClient{})
+
+	if err := svc.TickScan(context.Background(), time.Now()); err != nil {
+		t.Fatalf("TickScan want nil, got %v", err)
+	}
+	if enq.called || sug.touched != nil || sug.ensureCalls != 0 {
+		t.Fatalf("未过期行不应续投: enq=%v touched=%+v ensure=%d", enq.called, sug.touched, sug.ensureCalls)
+	}
+}
+
+// TestTickScan_StuckBatchMissingFails 验证过期行但批次已删（GetByBatchNo 无行）
+// 时 MarkFailed 记因非空、不投递（specs §5.1.5 滞留行恢复的批次缺失分支）。
+func TestTickScan_StuckBatchMissingFails(t *testing.T) {
+	w0 := sugWeek(0)
+	sug := &fakeSuggestSuggestions{rows: []domain.TeamTrainingSuggestion{
+		stuckRow(11, "B-GONE", w0, 30*time.Minute),
+	}}
+	q := &fakeSuggestQueries{}
+	b := &fakeBatchRepo{}
+	enq := &fakeSuggestEnqueuer{}
+	svc := newSuggestSvc(sug, q, b, nil, enq, &fakeDashboardDimRepo{}, &fakeUserapiClient{})
+
+	if err := svc.TickScan(context.Background(), time.Now()); err != nil {
+		t.Fatalf("TickScan: %v", err)
+	}
+	if sug.failed == nil || sug.failed.id != 11 || sug.failed.reason == "" {
+		t.Fatalf("批次缺失应 MarkFailed 且记因非空, got %+v", sug.failed)
+	}
+	if enq.called || sug.touched != nil {
+		t.Fatalf("批次缺失不应投递或刷新: enq=%v touched=%+v", enq.called, sug.touched)
+	}
+}
+
+// TestTickScan_PickBeatsStuckRetry 验证拾取扫描命中新批次时优先正常拾取路径，
+// 续投仅在扫描无命中分支执行（specs §5.1.4 规则5：续投与拾取判定解耦）。
+func TestTickScan_PickBeatsStuckRetry(t *testing.T) {
+	w0 := sugWeek(0)
+	w1 := sugWeek(1)
+	sug := &fakeSuggestSuggestions{rows: []domain.TeamTrainingSuggestion{
+		stuckRow(9, "B-9", w0, 25*time.Minute), // 过期滞留行
+	}}
+	q := &fakeSuggestQueries{pending: sugBatch(77, "B-77", w1, 0)} // 扫描命中新批次
+	b := &fakeBatchRepo{byBatchNo: sugBatch(9, "B-9", w0, 0)}
+	enq := &fakeSuggestEnqueuer{}
+	svc := newSuggestSvc(sug, q, b, nil, enq, &fakeDashboardDimRepo{}, &fakeUserapiClient{})
+
+	if err := svc.TickScan(context.Background(), time.Now()); err != nil {
+		t.Fatalf("TickScan: %v", err)
+	}
+	if sug.ensureCalls != 1 || sug.ensureRows[0].BatchNo != "B-77" {
+		t.Fatalf("命中批次应走正常拾取建行, got ensure=%d rows=%+v", sug.ensureCalls, sug.ensureRows)
+	}
+	if len(enq.batchIDs) != 1 || enq.batchIDs[0] != 77 {
+		t.Fatalf("投递应只含拾取批次 77, got %v", enq.batchIDs)
+	}
+	if sug.touched != nil {
+		t.Fatalf("正常拾取时不应触发滞留续投刷新, got %+v", sug.touched)
 	}
 }
 

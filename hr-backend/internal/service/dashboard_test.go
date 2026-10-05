@@ -113,6 +113,10 @@ func (f *fakeDashboardSuggestions) MarkFailed(context.Context, int64, string) er
 	return nil
 }
 
+func (f *fakeDashboardSuggestions) TouchGenerating(context.Context, int64, time.Time) error {
+	return nil
+}
+
 var _ repository.TeamTrainingSuggestionRepository = (*fakeDashboardSuggestions)(nil)
 
 // fakeDashboardDimRepo 复用 fakeProfileDimensionRepo 形态，独立命名防与 profile 测试互扰。

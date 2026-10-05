@@ -23,6 +23,14 @@ const suggestAnomalyReason = "批次数据异常：该评估区间无任何聚�
 // suggestReasonMaxLen 失败原因列宽对齐（04 §3.1 error_summary varchar(255)）。
 const suggestReasonMaxLen = 255
 
+// suggestStuckThreshold 生成中行滞留判定阈值（specs §5.1.4 规则5/§5.1.5）：
+// 覆盖 240s 任务超时 + 3 次重试退避（约 8 分钟）的合法在途窗口，
+// 仅对 UpdatedAt 超过该窗的滞留行续投，防在途任务被重复投递。
+const suggestStuckThreshold = 20 * time.Minute
+
+// suggestStuckReason 滞留行所属批次已删时的 MarkFailed 记因。
+const suggestStuckReason = "建议生成滞留：所属批次已不存在"
+
 // SuggestEnqueuer 建议生成任务投递窄接口：service 层不 import asynq，
 // 根层适配器（T7 AsynqSuggestEnqueuer）实现（GenerationEnqueuer 同款形态）。
 type SuggestEnqueuer interface {
@@ -83,9 +91,10 @@ func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 }
 
 // TickScan tick 拾取编排（specs §5.1.2 步1/步2/步6，03 §4.1）：
-// 建议行全量喂拾取扫描取最早待处理终态批次 → 无命中空转返 nil（生成中行即
-// 拾取锁）→ 幂等建行/续作 → 投递 generate 任务。投递失败 err 透传交 tick
-// 任务级重试，行保持 generating 由下个 tick 沿既有行续作。
+// 建议行全量喂拾取扫描取最早待处理终态批次 → 无命中时先做滞留续投检查
+//（生成中行 UpdatedAt 超阈即建行后投递失败/进程崩溃的滞留恢复）→ 幂等建行/
+// 续作 → 投递 generate 任务。投递失败 err 透传交 tick 任务级重试，行保持
+// generating 由下个 tick 沿既有行续作或滞留续投。
 func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 	rows, err := s.suggestions.FindAll(ctx)
 	if err != nil {
@@ -96,7 +105,7 @@ func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 		return fmt.Errorf("scan pending suggest batch: %w", err)
 	}
 	if batch == nil {
-		return nil
+		return s.retryStuckGenerating(ctx, rows, now)
 	}
 	row := domain.TeamTrainingSuggestion{
 		BatchNo:       batch.BatchNo,
@@ -111,6 +120,47 @@ func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 	if err := s.enq.EnqueueSuggestGenerate(ctx, batch.ID); err != nil {
 		return fmt.Errorf("enqueue suggest generate: %w", err)
 	}
+	return nil
+}
+
+// retryStuckGenerating 滞留续投（specs §5.1.4 规则5、§5.1.5 滞留恢复）：
+// 拾取扫描无命中时，取生成中且 UpdatedAt 早于阈值的最早行（period 口径），
+// 按行 BatchNo 定位批次重投 generate（幂等安全：Generate 对非 generating 行
+// 返 nil、MarkGenerated 条件写守卫）；批次已删则 MarkFailed 记因。与拾取判定
+// 解耦：仅在扫描无命中分支执行，不改变生成中行的拾取锁语义。
+func (s *SuggestService) retryStuckGenerating(ctx context.Context, rows []domain.TeamTrainingSuggestion, now time.Time) error {
+	stuckAt := now.Add(-suggestStuckThreshold)
+	var stuck *domain.TeamTrainingSuggestion
+	// rows 由仓储按 period 新到旧排序，倒序遍历取滞留行中 period 最早者。
+	for i := len(rows) - 1; i >= 0; i-- {
+		r := &rows[i]
+		if r.Status == domain.SuggestionStatusGenerating && r.UpdatedAt.Before(stuckAt) {
+			stuck = r
+			break
+		}
+	}
+	if stuck == nil {
+		return nil
+	}
+	batch, err := s.batches.GetByBatchNo(ctx, stuck.BatchNo)
+	if err != nil {
+		return fmt.Errorf("get batch by batch_no for stuck suggestion: %w", err)
+	}
+	if batch == nil {
+		if err := s.suggestions.MarkFailed(ctx, stuck.ID, suggestStuckReason); err != nil {
+			return fmt.Errorf("mark stuck suggestion failed: %w", err)
+		}
+		slog.Warn("suggest stuck row batch missing, mark failed", "batch_no", stuck.BatchNo)
+		return nil
+	}
+	if err := s.enq.EnqueueSuggestGenerate(ctx, batch.ID); err != nil {
+		return fmt.Errorf("enqueue suggest generate for stuck row: %w", err)
+	}
+	if err := s.suggestions.TouchGenerating(ctx, stuck.ID, now); err != nil {
+		return fmt.Errorf("touch stuck suggestion row: %w", err)
+	}
+	slog.Warn("suggest stuck generating row re-enqueued", "batch_no", stuck.BatchNo,
+		"period_start", stuck.PeriodStartAt.Format(layoutDate), "period_end", stuck.PeriodEndAt.Format(layoutDate))
 	return nil
 }
 

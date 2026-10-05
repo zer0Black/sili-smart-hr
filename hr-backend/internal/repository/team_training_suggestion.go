@@ -32,6 +32,9 @@ type TeamTrainingSuggestionRepository interface {
 	MarkGenerated(ctx context.Context, id int64, batchNo string, modulesJSON string, summary string, modelName string, promptVersion string, generatedAt time.Time) error
 	// MarkFailed 落 failed 终态与原因（同款 generating 守卫，affected=0 幂等返回 nil）。
 	MarkFailed(ctx context.Context, id int64, errSummary string) error
+	// TouchGenerating 刷新生成中行 updated_at（generating 守卫），滞留续投后
+	// 防下一 tick 立即重复投递（specs §5.1.5 滞留恢复）。affected=0 幂等返回 nil。
+	TouchGenerating(ctx context.Context, id int64, at time.Time) error
 }
 
 type teamTrainingSuggestionRepository struct {
@@ -161,5 +164,12 @@ func (r *teamTrainingSuggestionRepository) MarkFailed(ctx context.Context, id in
 			"status":        domain.SuggestionStatusFailed,
 			"error_summary": errSummary,
 		})
+	return res.Error
+}
+
+func (r *teamTrainingSuggestionRepository) TouchGenerating(ctx context.Context, id int64, at time.Time) error {
+	res := r.db.WithContext(ctx).Model(&domain.TeamTrainingSuggestion{}).
+		Where("id = ? AND status = ?", id, domain.SuggestionStatusGenerating).
+		Update("updated_at", at)
 	return res.Error
 }
