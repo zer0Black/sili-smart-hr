@@ -57,10 +57,8 @@ export function ModuleRadarCard(props: { data: DashboardModule }): JSX.Element {
         <button
           type="button"
           onClick={() => {
-            // 查看逐期趋势（specs §4.1.3）：携能力类型参数跳趋势页。
-            // to 走类型断言：/dashboard/trend 路由在 T3 建（routeTree.gen 届时收录），
-            // 组件先行交付时路径字面量暂未进路由联合类型。
-            void navigate({ to: '/dashboard/trend' as never, search: { type } as never });
+            // 查看逐期趋势（specs §4.1.3）：携能力类型参数跳趋势页
+            void navigate({ to: '/dashboard/trend', search: { type } });
           }}
           className="text-primary inline-flex cursor-pointer items-center gap-0.5 text-xs hover:underline"
         >

@@ -16,6 +16,7 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AnswerTokenRouteImport } from './routes/answer/$token'
 import { Route as AuthenticatedAssessmentIndexRouteImport } from './routes/_authenticated/assessment/index'
 import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
+import { Route as AuthenticatedDashboardTrendRouteImport } from './routes/_authenticated/dashboard/trend'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedProfileStaffNameRouteImport } from './routes/_authenticated/profile/$staffName'
 import { Route as AuthenticatedQuestionBankIndexRouteImport } from './routes/_authenticated/question-bank/index'
@@ -60,6 +61,12 @@ const AuthenticatedDashboardIndexRoute =
   AuthenticatedDashboardIndexRouteImport.update({
     id: '/dashboard/',
     path: '/dashboard/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDashboardTrendRoute =
+  AuthenticatedDashboardTrendRouteImport.update({
+    id: '/dashboard/trend',
+    path: '/dashboard/trend',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProfileIndexRoute =
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
+  '/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
@@ -139,6 +147,7 @@ export interface FileRoutesByTo {
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
   '/': typeof AuthenticatedIndexRoute
+  '/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
@@ -158,6 +167,7 @@ export interface FileRoutesById {
   '/setup': typeof SetupRoute
   '/answer/$token': typeof AnswerTokenRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/_authenticated/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/_authenticated/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
   '/_authenticated/system/params': typeof AuthenticatedSystemParamsRoute
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/setup'
     | '/answer/$token'
+    | '/dashboard/trend'
     | '/profile/$staffName'
     | '/question-bank/generate'
     | '/system/params'
@@ -194,6 +205,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/answer/$token'
     | '/'
+    | '/dashboard/trend'
     | '/profile/$staffName'
     | '/question-bank/generate'
     | '/system/params'
@@ -212,6 +224,7 @@ export interface FileRouteTypes {
     | '/setup'
     | '/answer/$token'
     | '/_authenticated/'
+    | '/_authenticated/dashboard/trend'
     | '/_authenticated/profile/$staffName'
     | '/_authenticated/question-bank/generate'
     | '/_authenticated/system/params'
@@ -283,6 +296,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/dashboard/trend': {
+      id: '/_authenticated/dashboard/trend'
+      path: '/dashboard/trend'
+      fullPath: '/dashboard/trend'
+      preLoaderRoute: typeof AuthenticatedDashboardTrendRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile/': {
       id: '/_authenticated/profile/'
       path: '/profile'
@@ -351,6 +371,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
+  AuthenticatedDashboardTrendRoute: typeof AuthenticatedDashboardTrendRoute
   AuthenticatedProfileStaffNameRoute: typeof AuthenticatedProfileStaffNameRoute
   AuthenticatedQuestionBankGenerateRoute: typeof AuthenticatedQuestionBankGenerateRoute
   AuthenticatedSystemParamsRoute: typeof AuthenticatedSystemParamsRoute
@@ -366,6 +387,7 @@ interface AuthenticatedRouteRouteChildren {
 
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
+  AuthenticatedDashboardTrendRoute: AuthenticatedDashboardTrendRoute,
   AuthenticatedProfileStaffNameRoute: AuthenticatedProfileStaffNameRoute,
   AuthenticatedQuestionBankGenerateRoute:
     AuthenticatedQuestionBankGenerateRoute,

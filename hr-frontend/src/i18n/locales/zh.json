@@ -1336,6 +1336,28 @@
       "period": "评估区间 {{start}} ~ {{end}}",
       "generatedAt": "生成时间 {{time}}",
       "summaryTitle": "综合研判"
+    },
+    "trend": {
+      "back": "返回看板",
+      "typeLabel": "能力类型",
+      "loadError": "趋势数据加载失败，请重试",
+      "empty": "暂无评估数据",
+      "compositeLabel": "模块综合分",
+      "vsPrev": "较上期",
+      "currentPeriod": "本期区间",
+      "dataSource": "数据来源",
+      "sourceUsage": "对话分析",
+      "sourceMgmt": "主动测试场景题",
+      "dimensionCount": "评估维度数",
+      "observationWindow": "观察窗口",
+      "updatedAt": "数据更新时间",
+      "scoreLabel": "均分",
+      "weaknessTag": "短板",
+      "changeTitle": "本期较上期变化",
+      "colDimension": "维度",
+      "colPrev": "上期分",
+      "colCurrent": "本期分",
+      "colChange": "变化"
     }
   }
 }

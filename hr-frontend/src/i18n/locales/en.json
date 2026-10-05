@@ -1336,6 +1336,28 @@
       "period": "Evaluation period {{start}} ~ {{end}}",
       "generatedAt": "Generated at {{time}}",
       "summaryTitle": "Overall assessment"
+    },
+    "trend": {
+      "back": "Back to dashboard",
+      "typeLabel": "Capability type",
+      "loadError": "Failed to load trend data, please retry",
+      "empty": "No assessment data yet",
+      "compositeLabel": "Module composite score",
+      "vsPrev": "vs previous period",
+      "currentPeriod": "Current period",
+      "dataSource": "Data source",
+      "sourceUsage": "Conversation analysis",
+      "sourceMgmt": "Active test scenarios",
+      "dimensionCount": "Dimensions assessed",
+      "observationWindow": "Observation window",
+      "updatedAt": "Data updated at",
+      "scoreLabel": "Average score",
+      "weaknessTag": "Weakness",
+      "changeTitle": "Change vs previous period",
+      "colDimension": "Dimension",
+      "colPrev": "Previous score",
+      "colCurrent": "Current score",
+      "colChange": "Change"
     }
   }
 }
