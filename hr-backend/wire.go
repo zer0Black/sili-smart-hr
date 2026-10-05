@@ -122,6 +122,16 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewTeamTrainingSuggestionRepository,
 		service.NewDashboardService,
 		handler.NewDashboardHandler,
+		// 建议生成两段任务（specs §5.1，03 §4.1/§4.2）：suggestgen 引擎（专用
+		// LLM client 180s 独立 gate）+ SuggestService（adapter 固定 inject=nil）+
+		// suggest-tick / suggest-generate 两 handler 经参数注入 NewMux + Asynq
+		// 投递适配器（service.SuggestEnqueuer 窄接口，default 队列 MaxRetry 3）。
+		NewSuggestGenLLMClient,
+		NewSuggestGenProvider,
+		NewSuggestServiceAdapter,
+		NewAsynqSuggestEnqueuer,
+		NewSuggestTickHandlerTyped,
+		NewSuggestGenerateHandlerTyped,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
@@ -175,6 +185,8 @@ func InitializeApp(configPath string) (*App, error) {
 		wire.Bind(new(service.GenerationEnqueuer), new(*AsynqGenerationEnqueuer)),
 		// 阅卷任务投递：*AsynqTestGradeEnqueuer 绑定 service.TestGradeEnqueuer 窄接口。
 		wire.Bind(new(service.TestGradeEnqueuer), new(*AsynqTestGradeEnqueuer)),
+		// 建议生成任务投递：*AsynqSuggestEnqueuer 绑定 service.SuggestEnqueuer 窄接口。
+		wire.Bind(new(service.SuggestEnqueuer), new(*AsynqSuggestEnqueuer)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

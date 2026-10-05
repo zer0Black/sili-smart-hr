@@ -137,7 +137,13 @@ func InitializeApp(configPath string) (*App, error) {
 	gradingLLMClient := NewGradingLLMClient(enabledModelProvider)
 	grader := NewGradingProvider(gradingLLMClient, enabledModelProvider, assessmentTestTaskRepository, questionRepository, assessmentTestAnswerRepository, assessmentTestResultRepository, dimensionRepository, dimensionScoreRepository, scorerScorer, assessmentConfigRepository, systemParamReader)
 	testGradeHandler := NewTestGradeHandlerTyped(grader, assessmentTestTaskRepository, assessmentTestResultRepository)
-	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler)
+	suggestGenLLMClient := NewSuggestGenLLMClient(enabledModelProvider)
+	suggestgenGenerator := NewSuggestGenProvider(suggestGenLLMClient, enabledModelProvider, systemParamReader)
+	asynqSuggestEnqueuer := NewAsynqSuggestEnqueuer(asynqClient)
+	suggestService := NewSuggestServiceAdapter(teamTrainingSuggestionRepository, dashboardQueryRepository, assessmentBatchRepository, dimensionRepository, suggestgenGenerator, asynqSuggestEnqueuer, integrationSecretRepository, v, userapiClient)
+	suggestTickHandler := NewSuggestTickHandlerTyped(suggestService)
+	suggestGenerateHandler := NewSuggestGenerateHandlerTyped(suggestService)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler, suggestTickHandler, suggestGenerateHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,

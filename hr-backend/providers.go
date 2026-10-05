@@ -23,6 +23,7 @@ import (
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/questiongen"
 	"sili-smart-hr/backend/internal/engine/scorer"
+	"sili-smart-hr/backend/internal/engine/suggestgen"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/integration/llm"
 	"sili-smart-hr/backend/internal/integration/userapi"
@@ -458,14 +459,16 @@ func NewTestGradeHandlerTyped(grader *grading.Grader, taskRepo repository.Assess
 	return TestGradeHandler(task.NewTestGradeHandler(grader, taskRepo, resultRepo))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收七个命名类型 handler，转调 task.NewMux
+// NewMuxAdapter Wire 装配适配器：接收九个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
 	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler,
-	testExpireTick TestExpireTickHandler, testGrade TestGradeHandler) *asynq.ServeMux {
+	testExpireTick TestExpireTickHandler, testGrade TestGradeHandler,
+	suggestTick SuggestTickHandler, suggestGenerate SuggestGenerateHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
 		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate),
-		asynq.HandlerFunc(testExpireTick), asynq.HandlerFunc(testGrade))
+		asynq.HandlerFunc(testExpireTick), asynq.HandlerFunc(testGrade),
+		asynq.HandlerFunc(suggestTick), asynq.HandlerFunc(suggestGenerate))
 }
 
 // QuestionGenLLMClient 用命名接口类型区分出题专用 client 与全局 llm.Client，
@@ -603,6 +606,104 @@ type QuestionGenerateHandler func(context.Context, *asynq.Task) error
 func NewQuestionGenerateHandlerTyped(gen *questiongen.Generator) QuestionGenerateHandler {
 	return QuestionGenerateHandler(task.NewQuestionGenerateHandler(gen))
 }
+
+// SuggestTickHandler / SuggestGenerateHandler 是建议生成两段任务 handler
+// 命名类型（同 SessionExtractHandler 范式，各占 Wire 类型表一格）。
+type SuggestTickHandler func(context.Context, *asynq.Task) error
+
+// SuggestGenerateHandler dashboard:suggest-generate handler 命名类型（同上）。
+type SuggestGenerateHandler func(context.Context, *asynq.Task) error
+
+// NewSuggestTickHandlerTyped 构造 dashboard:suggest-tick handler（命名类型
+// 透出；runner 为 service.SuggestService，装配在 app 包收敛避免 service→task
+// 反向 import）。
+func NewSuggestTickHandlerTyped(svc *service.SuggestService) SuggestTickHandler {
+	return SuggestTickHandler(task.NewSuggestTickHandler(svc))
+}
+
+// NewSuggestGenerateHandlerTyped 构造 dashboard:suggest-generate handler
+//（命名类型透出；runner 同为 service.SuggestService）。
+func NewSuggestGenerateHandlerTyped(svc *service.SuggestService) SuggestGenerateHandler {
+	return SuggestGenerateHandler(task.NewSuggestGenerateHandler(svc))
+}
+
+// SuggestGenLLMClient 用命名接口类型区分建议生成专用 client 与全局 llm.Client，
+// 规避 Wire 类型表 multiple bindings 冲突（与 GradingLLMClient 同款）。
+type SuggestGenLLMClient llm.Client
+
+// SuggestGenLLMClientTimeout 建议生成专用 LLM 客户端超时（03 §4.4 初值
+// 180s）：小于任务级超时 240s（worker/task 的 suggestGenerateTimeout）保
+// 重试边界自洽。包级导出常量供装配测试锚定。
+const SuggestGenLLMClientTimeout = 180 * time.Second
+
+// NewSuggestGenLLMClient 构造建议生成专用 LLM 客户端（03 §4.4）：Timeout
+// 180s，与全局/评估/出题/阅卷 client 各持独立并发 gate（默认 4）。MaxRetries=1
+// + 退避 5-10s 与其余专用 client 同款，任务级重试归 Asynq。
+func NewSuggestGenLLMClient(provider llm.EnabledModelProvider) SuggestGenLLMClient {
+	return llm.New(llm.Config{
+		Timeout:        SuggestGenLLMClientTimeout,
+		MaxRetries:     1,
+		InitialBackoff: 5 * time.Second,
+		MaxBackoff:     10 * time.Second,
+		MaxRetryAfter:  60 * time.Second,
+		TokenCounter:   llm.NewCharDiv3Counter(),
+	}, provider)
+}
+
+// NewSuggestGenProvider 装配建议生成引擎：专用 LLM client + 启用模型解析 +
+// 系统参数（脱敏正则，suggestgen 引擎内 Redact 消费）。
+func NewSuggestGenProvider(llmClient SuggestGenLLMClient, provider llm.EnabledModelProvider,
+	sysParams repository.SystemParamReader) *suggestgen.Generator {
+	return suggestgen.New(llmClient, provider, sysParams)
+}
+
+// NewSuggestServiceAdapter 是 Wire 装配适配器：转调 service.NewSuggestService
+// 十参形态，inject 尾参生产装配固定传 nil（沿用构造入参 gen，测试注入才用）。
+func NewSuggestServiceAdapter(
+	suggestions repository.TeamTrainingSuggestionRepository,
+	queries repository.DashboardQueryRepository,
+	batches repository.AssessmentBatchRepository,
+	dims repository.DimensionRepository,
+	gen *suggestgen.Generator,
+	enq service.SuggestEnqueuer,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	staffs *userapi.Client,
+) *service.SuggestService {
+	return service.NewSuggestService(suggestions, queries, batches, dims, gen, enq,
+		secretRepo, encKey, service.ProvideUserapiClient(staffs), nil)
+}
+
+// AsynqSuggestEnqueuer 把 AsynqClient 适配为 service.SuggestEnqueuer 窄接口
+//（AsynqGenerationEnqueuer 同款）：service 层不 import asynq。
+type AsynqSuggestEnqueuer struct {
+	client *asynq.Client
+}
+
+// NewAsynqSuggestEnqueuer 组装建议生成任务投递适配器。
+func NewAsynqSuggestEnqueuer(client *asynq.Client) *AsynqSuggestEnqueuer {
+	return &AsynqSuggestEnqueuer{client: client}
+}
+
+// EnqueueSuggestGenerate 投递建议生成任务（default 队列，03 §4.2）：payload
+// 为雪花 ID 十进制字符串（worker/task 消费侧同构）。MaxRetry(3) 对齐
+// specs §5.1.4 规则3 基准（task.suggestMaxRetry），耗尽由 handler 落 failed 终结。
+func (e *AsynqSuggestEnqueuer) EnqueueSuggestGenerate(ctx context.Context, batchID int64) error {
+	payload, err := json.Marshal(task.SuggestGeneratePayload{BatchID: fmt.Sprintf("%d", batchID)})
+	if err != nil {
+		return fmt.Errorf("suggest generate payload 序列化: %w", err)
+	}
+	if _, err := e.client.EnqueueContext(ctx,
+		asynq.NewTask(task.TypeSuggestGenerate, payload),
+		asynq.MaxRetry(3),
+		asynq.Queue(task.QueueDefault)); err != nil {
+		return fmt.Errorf("suggest generate 投递: %w", err)
+	}
+	return nil
+}
+
+// 编译期断言：适配器满足 service.SuggestEnqueuer 窄接口。
+var _ service.SuggestEnqueuer = (*AsynqSuggestEnqueuer)(nil)
 
 // AsynqGenerationEnqueuer 把 AsynqClient 适配为 service.GenerationEnqueuer
 // 窄接口（pipeline/enqueue.go 同款）：service 层不 import asynq。
