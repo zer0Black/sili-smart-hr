@@ -15,6 +15,7 @@ import { Route as SetupRouteImport } from './routes/setup'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AnswerTokenRouteImport } from './routes/answer/$token'
 import { Route as AuthenticatedAssessmentIndexRouteImport } from './routes/_authenticated/assessment/index'
+import { Route as AuthenticatedDashboardIndexRouteImport } from './routes/_authenticated/dashboard/index'
 import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authenticated/profile/index'
 import { Route as AuthenticatedProfileStaffNameRouteImport } from './routes/_authenticated/profile/$staffName'
 import { Route as AuthenticatedQuestionBankIndexRouteImport } from './routes/_authenticated/question-bank/index'
@@ -53,6 +54,12 @@ const AuthenticatedAssessmentIndexRoute =
   AuthenticatedAssessmentIndexRouteImport.update({
     id: '/assessment/',
     path: '/assessment/',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedDashboardIndexRoute =
+  AuthenticatedDashboardIndexRouteImport.update({
+    id: '/dashboard/',
+    path: '/dashboard/',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedProfileIndexRoute =
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment/': typeof AuthenticatedAssessmentIndexRoute
+  '/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/profile/': typeof AuthenticatedProfileIndexRoute
   '/question-bank/': typeof AuthenticatedQuestionBankIndexRoute
   '/system/dimension/': typeof AuthenticatedSystemDimensionIndexRoute
@@ -136,6 +144,7 @@ export interface FileRoutesByTo {
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment': typeof AuthenticatedAssessmentIndexRoute
+  '/dashboard': typeof AuthenticatedDashboardIndexRoute
   '/profile': typeof AuthenticatedProfileIndexRoute
   '/question-bank': typeof AuthenticatedQuestionBankIndexRoute
   '/system/dimension': typeof AuthenticatedSystemDimensionIndexRoute
@@ -154,6 +163,7 @@ export interface FileRoutesById {
   '/_authenticated/system/params': typeof AuthenticatedSystemParamsRoute
   '/_authenticated/system/status': typeof AuthenticatedSystemStatusRoute
   '/_authenticated/assessment/': typeof AuthenticatedAssessmentIndexRoute
+  '/_authenticated/dashboard/': typeof AuthenticatedDashboardIndexRoute
   '/_authenticated/profile/': typeof AuthenticatedProfileIndexRoute
   '/_authenticated/question-bank/': typeof AuthenticatedQuestionBankIndexRoute
   '/_authenticated/system/dimension/': typeof AuthenticatedSystemDimensionIndexRoute
@@ -172,6 +182,7 @@ export interface FileRouteTypes {
     | '/system/params'
     | '/system/status'
     | '/assessment/'
+    | '/dashboard/'
     | '/profile/'
     | '/question-bank/'
     | '/system/dimension/'
@@ -188,6 +199,7 @@ export interface FileRouteTypes {
     | '/system/params'
     | '/system/status'
     | '/assessment'
+    | '/dashboard'
     | '/profile'
     | '/question-bank'
     | '/system/dimension'
@@ -205,6 +217,7 @@ export interface FileRouteTypes {
     | '/_authenticated/system/params'
     | '/_authenticated/system/status'
     | '/_authenticated/assessment/'
+    | '/_authenticated/dashboard/'
     | '/_authenticated/profile/'
     | '/_authenticated/question-bank/'
     | '/_authenticated/system/dimension/'
@@ -261,6 +274,13 @@ declare module '@tanstack/react-router' {
       path: '/assessment'
       fullPath: '/assessment/'
       preLoaderRoute: typeof AuthenticatedAssessmentIndexRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/dashboard/': {
+      id: '/_authenticated/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof AuthenticatedDashboardIndexRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/profile/': {
@@ -336,6 +356,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemParamsRoute: typeof AuthenticatedSystemParamsRoute
   AuthenticatedSystemStatusRoute: typeof AuthenticatedSystemStatusRoute
   AuthenticatedAssessmentIndexRoute: typeof AuthenticatedAssessmentIndexRoute
+  AuthenticatedDashboardIndexRoute: typeof AuthenticatedDashboardIndexRoute
   AuthenticatedProfileIndexRoute: typeof AuthenticatedProfileIndexRoute
   AuthenticatedQuestionBankIndexRoute: typeof AuthenticatedQuestionBankIndexRoute
   AuthenticatedSystemDimensionIndexRoute: typeof AuthenticatedSystemDimensionIndexRoute
@@ -351,6 +372,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemParamsRoute: AuthenticatedSystemParamsRoute,
   AuthenticatedSystemStatusRoute: AuthenticatedSystemStatusRoute,
   AuthenticatedAssessmentIndexRoute: AuthenticatedAssessmentIndexRoute,
+  AuthenticatedDashboardIndexRoute: AuthenticatedDashboardIndexRoute,
   AuthenticatedProfileIndexRoute: AuthenticatedProfileIndexRoute,
   AuthenticatedQuestionBankIndexRoute: AuthenticatedQuestionBankIndexRoute,
   AuthenticatedSystemDimensionIndexRoute:

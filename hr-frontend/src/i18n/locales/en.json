@@ -1277,6 +1277,15 @@
     }
   },
   "dashboard": {
+    "page": {
+      "title": "Team Dashboard",
+      "subtitle": "Company-wide capability posture and common weaknesses",
+      "loading": "Loading…",
+      "loadError": "Failed to load dashboard data, please retry",
+      "retry": "Retry",
+      "empty": "No assessment data yet",
+      "emptyGo": "Go to assessment center"
+    },
     "toolbar": {
       "periodLabel": "Evaluation period",
       "periodPlaceholder": "Select period",

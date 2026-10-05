@@ -1277,6 +1277,15 @@
     }
   },
   "dashboard": {
+    "page": {
+      "title": "团队看板",
+      "subtitle": "全公司整体能力态势与共性短板",
+      "loading": "加载中…",
+      "loadError": "看板数据加载失败，请重试",
+      "retry": "重试",
+      "empty": "暂无评估数据",
+      "emptyGo": "前往评测运营中心"
+    },
     "toolbar": {
       "periodLabel": "评估区间",
       "periodPlaceholder": "选择区间",
