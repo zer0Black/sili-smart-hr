@@ -3,6 +3,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { ReactElement } from 'react';
 
 import '@/i18n/config';
 import i18n from '@/i18n/config';
@@ -12,6 +13,7 @@ import type {
   DashboardModule,
   DashboardPeriodItem,
   DashboardSuggestion,
+  DashboardTrendDim,
 } from '@/lib/contracts';
 
 await i18n.changeLanguage('zh');
@@ -27,7 +29,9 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 // recharts 在 jsdom 无尺寸，ResponsiveContainer 宽高为 0 不渲染内部图表；
-// 柱图/雷达断言（Cell 高亮、参考线存在性）需要 SVG 节点，stub 成透传容器。
+// 柱图/雷达断言（Cell 高亮、参考线存在性）需要 SVG 节点，stub 成透传容器；
+// Line stub 捕获 dot 渲染函数供位置无关的行为断言（末端点标记，§4.2.2 B）。
+const lastLineDot = vi.hoisted(() => ({ current: null as ((p: unknown) => unknown) | null }));
 vi.mock('recharts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('recharts')>();
   const Passthrough = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
@@ -37,6 +41,7 @@ vi.mock('recharts', async (importOriginal) => {
     RadarChart: Passthrough,
     PieChart: Passthrough,
     BarChart: Passthrough,
+    LineChart: Passthrough,
     CartesianGrid: Passthrough,
     PolarGrid: Passthrough,
     PolarAngleAxis: Passthrough,
@@ -46,6 +51,10 @@ vi.mock('recharts', async (importOriginal) => {
     XAxis: Passthrough,
     YAxis: Passthrough,
     Bar: Passthrough,
+    Line: ({ dot }: { dot?: unknown }) => {
+      lastLineDot.current = typeof dot === 'function' ? (dot as (p: unknown) => unknown) : null;
+      return null;
+    },
     Cell: ({ fill }: { fill?: string }) => <g data-testid="chart-cell" fill={fill} />,
     Radar: ({ name, dataKey, strokeDasharray }: { name?: string; dataKey?: string; strokeDasharray?: string }) => (
       <g data-testid="radar-line" data-name={name} data-key={dataKey} data-dash={strokeDasharray} />
@@ -58,6 +67,7 @@ import { ModuleRadarCard } from '../components/module-radar-card';
 import { EnneagramPanel } from '../components/enneagram-panel';
 import { SuggestionPanel } from '../components/suggestion-panel';
 import { PeriodToolbar } from '../components/period-toolbar';
+import { TrendDimensionCard } from '../components/trend-dimension-card';
 
 beforeEach(() => {
   navigateMock.mockReset();
@@ -368,5 +378,55 @@ describe('PeriodToolbar（specs §4.1.2 A / §4.1.3 评估区间切换）', () =
     await user.click(await screen.findByRole('option', { name: /2026-09-22/ }));
 
     expect(onSelect).toHaveBeenCalledWith(periods[1]);
+  });
+});
+
+// ---------- TrendDimensionCard ----------
+
+const trendDim: DashboardTrendDim = {
+  dimension_code: 'AI_WRITING',
+  dimension_name: '文档写作',
+  is_weakness: false,
+  history: [
+    { period_start: '2026-09-15', period_end: '2026-09-21', score: null },
+    { period_start: '2026-09-22', period_end: '2026-09-28', score: 72 },
+    { period_start: '2026-09-29', period_end: '2026-10-05', score: 76 },
+  ],
+  current_score: 76,
+  prev_score: 72,
+  change: 4,
+};
+
+describe('TrendDimensionCard（specs §4.2.2 B / §4.2.4 规则2）', () => {
+  it('TestTrendDimensionCard_EndDot：dot 渲染函数仅对末索引且有值点返回圆点，其余点返回 false（末端点标记本期值，位置无关）', () => {
+    render(<TrendDimensionCard data={trendDim} />);
+
+    const dot = lastLineDot.current;
+    expect(dot).toBeTypeOf('function');
+    const total = trendDim.history.length;
+    const mk = (i: number, value: number | undefined) => ({
+      index: i,
+      value,
+      cx: 10 * i,
+      cy: 20,
+      points: Array.from({ length: total }, () => ({})),
+    });
+    // 末索引且 score 有值（76）：返回 circle 元素，坐标由 recharts 注入透传
+    const end = dot!(mk(total - 1, 76)) as unknown as ReactElement<{ cx?: number; cy?: number; r?: number }>;
+    expect(end.type).toBe('circle');
+    expect(end.props.cx).toBe(10 * (total - 1));
+    expect(end.props.cy).toBe(20);
+    expect(end.props.r).toBe(3);
+    // 非末索引或值缺失：不渲染
+    expect(dot!(mk(0, 72))).toBe(false);
+    expect(dot!(mk(total - 1, undefined))).toBe(false);
+  });
+
+  it('TestTrendDimensionCard_NullScoreBreak：score=null 传导 undefined 断线且本期值正常呈现（§4.2.4 规则2）', () => {
+    render(<TrendDimensionCard data={trendDim} />);
+
+    expect(screen.getByTestId('trend-sparkline')).toBeInTheDocument();
+    expect(screen.getByText('76')).toBeInTheDocument();
+    expect(screen.getByText('+4')).toBeInTheDocument();
   });
 });

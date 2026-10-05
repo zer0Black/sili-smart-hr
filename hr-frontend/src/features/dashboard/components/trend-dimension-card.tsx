@@ -36,9 +36,7 @@ export function TrendDimensionCard(props: { data: DashboardTrendDim }): JSX.Elem
   const series = data.history.map((h) => ({
     label: labelOf(h),
     score: h.score ?? undefined,
-    isLast: false,
   }));
-  if (series.length > 0) series[series.length - 1] = { ...series[series.length - 1], isLast: true };
 
   return (
     <Card
@@ -96,24 +94,23 @@ export function TrendDimensionCard(props: { data: DashboardTrendDim }): JSX.Elem
                   t('trend.scoreLabel'),
                 ]}
               />
+              {/* 末端点标记本期值（specs §4.2.2 B）：dot 渲染函数仅对末索引且有值点画圆，
+                  坐标由 recharts 注入（cx/cy），其余点返回 false 不渲染 */}
               <Line
                 type="monotone"
                 dataKey="score"
                 stroke={LINE_COLOR}
                 strokeWidth={2}
-                dot={false}
+                dot={(p) =>
+                  p.index === p.points.length - 1 && typeof p.value === 'number' ? (
+                    <circle cx={p.cx} cy={p.cy} r={3} fill={LINE_COLOR} />
+                  ) : (
+                    false
+                  )
+                }
                 activeDot={{ r: 3 }}
                 isAnimationActive={false}
-              >
-                {/* 末端点标记本期值（specs §4.2.2 B） */}
-                {series.map((p, i) =>
-                  p.isLast && p.score !== undefined ? (
-                    <g key={i} className="recharts-line-dot">
-                      <circle cx={0} cy={0} r={3} fill={LINE_COLOR} />
-                    </g>
-                  ) : null,
-                )}
-              </Line>
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
