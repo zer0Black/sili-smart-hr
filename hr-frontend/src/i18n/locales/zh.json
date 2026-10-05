@@ -1275,5 +1275,58 @@
       "enneagramNone": "-",
       "periodLabel": "当前区间"
     }
+  },
+  "dashboard": {
+    "toolbar": {
+      "periodLabel": "评估区间",
+      "periodPlaceholder": "选择区间",
+      "current": "本期",
+      "updatedAt": "数据更新于 {{time}}"
+    },
+    "activity": {
+      "title": "活跃度概览",
+      "staffTotalShort": "全员人数",
+      "active": "活跃",
+      "low_freq": "低频",
+      "unused": "未使用",
+      "staffTotal": "全员 {{count}} 人",
+      "mom": "环比"
+    },
+    "module": {
+      "AI_USAGE": "AI 使用能力",
+      "AI_MGMT": "AI 管理能力",
+      "sourceUsage": "走对话分析",
+      "sourceMgmt": "走主动测试场景题",
+      "viewTrend": "查看逐期趋势",
+      "weaknessTitle": "共性短板",
+      "noWeakness": "本模块暂无满足条件的共性短板维度",
+      "dimensionAvg": "维度均分",
+      "referenceAvg": "全维度均值"
+    },
+    "enneagram": {
+      "title": "团队人格构成",
+      "snapshot": "最新快照",
+      "empty": "暂无九型人格测评数据",
+      "dominantType": "主导型",
+      "secondaryType": "次主导型",
+      "coverage": "测评覆盖",
+      "coverageValue": "已测评 {{count}} 人，覆盖率 {{ratio}}%",
+      "trait1": "注重标准与细节，擅长在规则框架内把事情做对。",
+      "trait2": "乐于支持他人，擅长营造协作氛围与满足团队需求。",
+      "trait3": "目标导向，擅长高效达成结果并推动团队产出。",
+      "trait4": "感受细腻，擅长创意表达与差异化视角。",
+      "trait5": "偏好在充分掌握信息后行动，擅长分析与深入研究。",
+      "trait6": "重视确定性与风险预判，擅长稳妥推进与忠诚执行。",
+      "trait7": "好奇心强，擅长探索新可能并带动团队活力。",
+      "trait8": "果断直接，擅长在压力下决策并掌控局面。",
+      "trait9": "平和包容，擅长调和分歧与维持团队稳定。"
+    },
+    "suggestion": {
+      "title": "团队培训方向建议",
+      "pending": "培训建议生成中或本期无批量批次",
+      "period": "评估区间 {{start}} ~ {{end}}",
+      "generatedAt": "生成时间 {{time}}",
+      "summaryTitle": "综合研判"
+    }
   }
 }
