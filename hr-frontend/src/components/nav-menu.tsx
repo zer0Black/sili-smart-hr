@@ -32,8 +32,11 @@ export function NavMenu() {
   const pending = (feature?: string) =>
     feature ? `${t('nav.pendingHint')} · ${feature}` : t('nav.pendingHint');
   const isHome = location.pathname === '/';
-  // 已接通 leaf 以 to 为前缀判定命中，覆盖其下子路径。
-  const isPathActive = (to: string) => location.pathname.startsWith(to);
+  // leaf 分层匹配：精确命中或子路径前缀（to + '/'），/dashboard 不吞 /dashboard/trend。
+  const matchLeaf = (to: string) =>
+    location.pathname === to || location.pathname.startsWith(`${to}/`);
+  // 一级菜单组用宽松前缀：下钻子路径（如 /dashboard/trend）保持所属组高亮。
+  const matchGroup = (to: string) => location.pathname.startsWith(to);
 
   const entries: Entry[] = [
     {
@@ -45,8 +48,8 @@ export function NavMenu() {
     {
       label: t('nav.dashboard'),
       children: [
-        { label: t('nav.dashboardOverview'), feature: 'F10' },
-        { label: t('nav.dashboardTrend'), feature: 'F10' },
+        { label: t('nav.dashboardOverview'), to: '/dashboard' },
+        { label: t('nav.dashboardTrend'), to: '/dashboard/trend' },
       ],
     },
     {
@@ -70,6 +73,20 @@ export function NavMenu() {
     },
   ];
 
+  // 前缀嵌套的 leaf（/dashboard 与 /dashboard/trend）取最长命中，至多一个高亮。
+  const activeTo = entries
+    .flatMap((entry) => entry.children ?? [])
+    .reduce<string | null>(
+      (longest, leaf) =>
+        leaf.to && matchLeaf(leaf.to) && (longest === null || leaf.to.length > longest.length)
+          ? leaf.to
+          : longest,
+      null,
+    );
+  const isLeafActive = (to: string) => to === activeTo;
+  const isEntryActive = (entry: Entry) =>
+    (entry.children ?? []).some((leaf) => leaf.to && matchGroup(leaf.to));
+
   return (
     <nav className="flex items-center gap-1">
       <button
@@ -86,7 +103,14 @@ export function NavMenu() {
       {entries.map((entry) =>
         entry.children ? (
           <div key={entry.label} className="group relative">
-            <span className={cn(itemCls, 'hover:bg-accent')}>{entry.label}</span>
+            <span
+              className={cn(
+                itemCls,
+                isEntryActive(entry) ? 'bg-accent text-accent-foreground' : 'hover:bg-accent',
+              )}
+            >
+              {entry.label}
+            </span>
             {/* 透明桥接区：填满 span 底边到面板顶边的 mt-1 视觉缝。
                 absolute 面板不撑开 .group，外 margin 会留出 hover 命中真空带，
                 鼠标下滑经过缝时 group-hover 失效、菜单消失。真实桥接 div 作为
@@ -101,7 +125,7 @@ export function NavMenu() {
                     onClick={() => navigate({ to: leaf.to })}
                     className={cn(
                       leafCls,
-                      isPathActive(leaf.to)
+                      isLeafActive(leaf.to)
                         ? 'bg-accent text-accent-foreground'
                         : 'hover:bg-accent',
                     )}
