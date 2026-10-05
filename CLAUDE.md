@@ -19,9 +19,10 @@ sili-smart-hr 是综合人才测评平台：把兄弟系统 sili-smart-api（LLM
 | assessment_test 主动测试（任务运营 + AI 阅卷） | 贯通 | 贯通 | P2_TST_001 |
 | answer 员工作答 | 贯通 | 贯通 | P2_TST_002 |
 | profile 个人画像 | 贯通 | 贯通 | P2_PRF_001 |
-| dashboard / workspace | 未开工 | 未开工 | PRD 概念，规格未立 |
+| dashboard 团队看板 | 贯通 | 未开工 | P2_TMD_001 |
+| workspace 工作台 | 未开工 | 未开工 | PRD 概念，规格未立 |
 
-engine 八个子域（extractor / activity / evaluator / scorer / fallback / pipeline / questiongen / grading）、integration 三客户端（conversationlog / llm / userapi）与 worker 三队列跑批通道均已实现，规格归集见上表与 [context/05_specs/](context/05_specs/)，链路细节见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
+engine 九个子域（extractor / activity / evaluator / scorer / fallback / pipeline / questiongen / grading / suggestgen）、integration 三客户端（conversationlog / llm / userapi）与 worker 三队列跑批通道均已实现，规格归集见上表与 [context/05_specs/](context/05_specs/)，链路细节见 [hr-backend/CLAUDE.md](hr-backend/CLAUDE.md)。
 
 规格依据在 [context/](context/) 目录：[context/03_architecture/architecture.md](context/03_architecture/architecture.md) 是模块划分与依赖关系的权威来源，第 4 章承载运行时约定；各 Feature 规格在 [context/05_specs/](context/05_specs/) 按 Feature ID 归档。
 

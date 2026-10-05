@@ -3,8 +3,8 @@ package errcode
 
 // 通用、account 域、系统初始化域、dimension 域与 config 域错误码。
 // 段位：account 1001-1007，系统初始化 1101-1102，dimension 1201-1209，config 1301-1309，通用 1400/1500，
-// assessment batch 1601-1603，题库管理 1701-1709+1713，主动测试 1801-1805，员工作答 1901-1903，个人画像 2001。
-// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank，8=主动测试，9=员工作答，20=个人画像。
+// assessment batch 1601-1603，题库管理 1701-1709+1713，主动测试 1801-1805，员工作答 1901-1903，个人画像 2001，团队看板 2101。
+// 百位区分域：0=account，1=system，2=dimension，3=config，6=assessment batch，7=questionbank，8=主动测试，9=员工作答，20=个人画像，21=团队看板。
 // dimension 刻意用 12xx 段避让 11xx，config 刻意用 13xx 段避让 11xx/12xx。
 const (
 	Success                          = 0
