@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -185,6 +186,76 @@ func TestMigrateCreatesEvalTables(t *testing.T) {
 		if !db.Migrator().HasIndex(idx.model, idx.name) {
 			t.Fatalf("expected %s index exists", idx.name)
 		}
+	}
+}
+
+// TestMigrateTeamTrainingSuggestion 验证团队看板建议表迁移（04 §3.1）：
+// 表、13 列与 uk_suggestion_period 唯一索引建出；行为断言同 period 不同批次号
+// 双写撞唯一键（BR1 一区间一行 / BR3 重跑覆盖走 UPDATE 不建第二行），
+// 状态常量与 specs §6 三态对齐（BR2）。
+func TestMigrateTeamTrainingSuggestion(t *testing.T) {
+	if err := snowflake.Init(1); err != nil {
+		t.Fatalf("snowflake init: %v", err)
+	}
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := migrateDB(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	// 表存在。
+	if !db.Migrator().HasTable("team_training_suggestions") {
+		t.Fatal("expected team_training_suggestions table exists")
+	}
+
+	// 13 列逐项核对（04 §3.1.1）。
+	ttsCols := []string{
+		"id", "batch_no", "period_start_at", "period_end_at", "status",
+		"modules_json", "summary", "model_name", "prompt_version",
+		"error_summary", "generated_at", "created_at", "updated_at",
+	}
+	for _, col := range ttsCols {
+		if !db.Migrator().HasColumn(&domain.TeamTrainingSuggestion{}, col) {
+			t.Fatalf("expected team_training_suggestions.%s column exists", col)
+		}
+	}
+
+	// 唯一索引 uk_suggestion_period（BR1：period 起止为唯一冲突键）。
+	if !db.Migrator().HasIndex(&domain.TeamTrainingSuggestion{}, "uk_suggestion_period") {
+		t.Fatal("expected uk_suggestion_period index exists")
+	}
+
+	// 状态三态常量与 specs §6 对齐（BR2）。
+	if domain.SuggestionStatusGenerating != "generating" ||
+		domain.SuggestionStatusGenerated != "generated" ||
+		domain.SuggestionStatusFailed != "failed" {
+		t.Fatalf("status constants = %s/%s/%s, want generating/generated/failed",
+			domain.SuggestionStatusGenerating, domain.SuggestionStatusGenerated, domain.SuggestionStatusFailed)
+	}
+
+	// 行为断言：同 period 换批次号再建行撞 uk_suggestion_period（BR1/BR3），
+	// 证明重跑批次命中同一 period 即同一建议行，覆盖走 UPDATE 不产生第二行。
+	// 裸连接无雪花回调，显式赋 ID 隔离主键变量。
+	start := time.Date(2026, 9, 28, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 10, 5, 0, 0, 0, 0, time.UTC)
+	first := &domain.TeamTrainingSuggestion{ID: 1, BatchNo: "B20260928",
+		PeriodStartAt: start, PeriodEndAt: end, Status: domain.SuggestionStatusGenerated}
+	if err := db.Create(first).Error; err != nil {
+		t.Fatalf("create first suggestion: %v", err)
+	}
+	second := &domain.TeamTrainingSuggestion{ID: 2, BatchNo: "B20261005",
+		PeriodStartAt: start, PeriodEndAt: end, Status: domain.SuggestionStatusGenerating}
+	if err := db.Create(second).Error; err == nil {
+		t.Fatal("expected unique violation on same period with different batch_no")
+	}
+	var n int64
+	if err := db.Model(&domain.TeamTrainingSuggestion{}).Count(&n).Error; err != nil {
+		t.Fatalf("count suggestions: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected 1 suggestion row, got %d", n)
 	}
 }
 
