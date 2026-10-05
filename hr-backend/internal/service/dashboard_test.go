@@ -105,7 +105,7 @@ func (f *fakeDashboardSuggestions) GetByPeriod(context.Context, int64, int64) (*
 	return nil, nil
 }
 
-func (f *fakeDashboardSuggestions) MarkGenerated(context.Context, int64, string, string, string, string, time.Time) error {
+func (f *fakeDashboardSuggestions) MarkGenerated(context.Context, int64, string, string, string, string, string, time.Time) error {
 	return nil
 }
 

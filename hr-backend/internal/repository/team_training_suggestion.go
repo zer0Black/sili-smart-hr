@@ -27,8 +27,9 @@ type TeamTrainingSuggestionRepository interface {
 	// GetByPeriod 按 period 双界 Unix 秒取行，无行返 (nil, nil)。
 	GetByPeriod(ctx context.Context, periodStart, periodEnd int64) (*domain.TeamTrainingSuggestion, error)
 	// MarkGenerated 落 generated 终态（WHERE status='generating' 守卫，
-	// affected=0 幂等返回 nil）。
-	MarkGenerated(ctx context.Context, id int64, batchNo string, modulesJSON string, summary string, modelName string, generatedAt time.Time) error
+	// affected=0 幂等返回 nil）；prompt_version 落 suggestgen.PromptVersion
+	//（evaluator 同模式，04 §3.1）。
+	MarkGenerated(ctx context.Context, id int64, batchNo string, modulesJSON string, summary string, modelName string, promptVersion string, generatedAt time.Time) error
 	// MarkFailed 落 failed 终态与原因（同款 generating 守卫，affected=0 幂等返回 nil）。
 	MarkFailed(ctx context.Context, id int64, errSummary string) error
 }
@@ -75,13 +76,14 @@ func (r *teamTrainingSuggestionRepository) EnsureGenerating(ctx context.Context,
 			row.PeriodStartAt, row.PeriodEndAt,
 			[]string{domain.SuggestionStatusGenerated, domain.SuggestionStatusFailed}).
 		Updates(map[string]any{
-			"status":        domain.SuggestionStatusGenerating,
-			"batch_no":      row.BatchNo,
-			"modules_json":  "",
-			"summary":       "",
-			"model_name":    "",
-			"error_summary": "",
-			"generated_at":  nil,
+			"status":         domain.SuggestionStatusGenerating,
+			"batch_no":       row.BatchNo,
+			"modules_json":   "",
+			"summary":        "",
+			"model_name":     "",
+			"prompt_version": "",
+			"error_summary":  "",
+			"generated_at":   nil,
 		})
 	if res.Error != nil {
 		return false, res.Error
@@ -136,17 +138,18 @@ func (r *teamTrainingSuggestionRepository) GetByPeriod(ctx context.Context, peri
 	return r.findByPeriodAt(ctx, time.Unix(periodStart, 0).UTC(), time.Unix(periodEnd, 0).UTC())
 }
 
-func (r *teamTrainingSuggestionRepository) MarkGenerated(ctx context.Context, id int64, batchNo string, modulesJSON string, summary string, modelName string, generatedAt time.Time) error {
+func (r *teamTrainingSuggestionRepository) MarkGenerated(ctx context.Context, id int64, batchNo string, modulesJSON string, summary string, modelName string, promptVersion string, generatedAt time.Time) error {
 	res := r.db.WithContext(ctx).Model(&domain.TeamTrainingSuggestion{}).
 		Where("id = ? AND status = ?", id, domain.SuggestionStatusGenerating).
 		Updates(map[string]any{
-			"status":        domain.SuggestionStatusGenerated,
-			"batch_no":      batchNo,
-			"modules_json":  modulesJSON,
-			"summary":       summary,
-			"model_name":    modelName,
-			"error_summary": "",
-			"generated_at":  generatedAt,
+			"status":         domain.SuggestionStatusGenerated,
+			"batch_no":       batchNo,
+			"modules_json":   modulesJSON,
+			"summary":        summary,
+			"model_name":     modelName,
+			"prompt_version": promptVersion,
+			"error_summary":  "",
+			"generated_at":   generatedAt,
 		})
 	return res.Error
 }

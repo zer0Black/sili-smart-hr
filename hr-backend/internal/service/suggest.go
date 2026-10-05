@@ -171,7 +171,7 @@ func (s *SuggestService) Generate(ctx context.Context, batchID int64) error {
 		return fmt.Errorf("marshal suggestion modules: %w", err)
 	}
 	if err := s.suggestions.MarkGenerated(ctx, row.ID, batch.BatchNo,
-		string(modulesJSON), out.Summary, modelName, time.Now().UTC()); err != nil {
+		string(modulesJSON), out.Summary, modelName, suggestgen.PromptVersion, time.Now().UTC()); err != nil {
 		return fmt.Errorf("mark suggestion generated: %w", err)
 	}
 	slog.Info("team suggestion generated", "batch_no", batch.BatchNo, "model_name", modelName)

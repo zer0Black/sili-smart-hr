@@ -31,11 +31,12 @@ type fakeSuggestSuggestions struct {
 }
 
 type suggestGeneratedCall struct {
-	id          int64
-	batchNo     string
-	modulesJSON string
-	summary     string
-	modelName   string
+	id            int64
+	batchNo       string
+	modulesJSON   string
+	summary       string
+	modelName     string
+	promptVersion string
 }
 
 type suggestFailedCall struct {
@@ -64,8 +65,8 @@ func (f *fakeSuggestSuggestions) GetByPeriod(_ context.Context, start, end int64
 	return f.byPer[[2]int64{start, end}], f.err
 }
 
-func (f *fakeSuggestSuggestions) MarkGenerated(_ context.Context, id int64, batchNo, modulesJSON, summary, modelName string, _ time.Time) error {
-	f.generated = &suggestGeneratedCall{id: id, batchNo: batchNo, modulesJSON: modulesJSON, summary: summary, modelName: modelName}
+func (f *fakeSuggestSuggestions) MarkGenerated(_ context.Context, id int64, batchNo, modulesJSON, summary, modelName, promptVersion string, _ time.Time) error {
+	f.generated = &suggestGeneratedCall{id: id, batchNo: batchNo, modulesJSON: modulesJSON, summary: summary, modelName: modelName, promptVersion: promptVersion}
 	return nil
 }
 
@@ -452,6 +453,9 @@ func TestGenerate_MarksGenerated(t *testing.T) {
 	}
 	if sug.generated.modelName != "kimi-k2.7" {
 		t.Fatalf("model_name want kimi-k2.7, got %s", sug.generated.modelName)
+	}
+	if sug.generated.promptVersion != suggestgen.PromptVersion {
+		t.Fatalf("prompt_version want %s, got %s", suggestgen.PromptVersion, sug.generated.promptVersion)
 	}
 	if sug.generated.summary != "整体稳健" {
 		t.Fatalf("summary want 整体稳健, got %s", sug.generated.summary)

@@ -698,7 +698,7 @@ func TestMarkGeneratedGuard(t *testing.T) {
 	if err := db.Create(&failedRow).Error; err != nil {
 		t.Fatalf("seed failed: %v", err)
 	}
-	if err := repo.MarkGenerated(ctx, failedRow.ID, "B001", `[{"module":"AI_USAGE"}]`, "研判", "m1", time.Unix(tmdbBaseUnix+3600, 0).UTC()); err != nil {
+	if err := repo.MarkGenerated(ctx, failedRow.ID, "B001", `[{"module":"AI_USAGE"}]`, "研判", "m1", "v1", time.Unix(tmdbBaseUnix+3600, 0).UTC()); err != nil {
 		t.Fatalf("MarkGenerated want 幂等 nil error, got %v", err)
 	}
 	row := loadSuggestionRow(t, db, start, end)
@@ -715,7 +715,7 @@ func TestMarkGeneratedGuard(t *testing.T) {
 		t.Fatalf("seed generating: %v", err)
 	}
 	generatedAt := time.Unix(tmdbBaseUnix+7200, 0).UTC()
-	if err := repo.MarkGenerated(ctx, generatingRow.ID, "B002", `[{"module":"AI_USAGE","suggestions":[]}]`, "综合研判", "kimi", generatedAt); err != nil {
+	if err := repo.MarkGenerated(ctx, generatingRow.ID, "B002", `[{"module":"AI_USAGE","suggestions":[]}]`, "综合研判", "kimi", "v1", generatedAt); err != nil {
 		t.Fatalf("MarkGenerated 正路径: %v", err)
 	}
 	done := loadSuggestionRow(t, db, end, end+7*86400)
@@ -724,6 +724,9 @@ func TestMarkGeneratedGuard(t *testing.T) {
 	}
 	if done.ModulesJSON == "" || done.Summary == "" || done.ModelName != "kimi" {
 		t.Fatalf("内容列未落全: modules=%q summary=%q model=%q", done.ModulesJSON, done.Summary, done.ModelName)
+	}
+	if done.PromptVersion != "v1" {
+		t.Fatalf("prompt_version want v1, got %q", done.PromptVersion)
 	}
 	if done.GeneratedAt == nil || !done.GeneratedAt.Equal(generatedAt) {
 		t.Fatalf("generated_at want %v, got %v", generatedAt, done.GeneratedAt)
