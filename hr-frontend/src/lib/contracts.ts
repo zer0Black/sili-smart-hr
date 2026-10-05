@@ -820,7 +820,7 @@ export interface DashboardSuggestionItem {
 
 /** 模块建议组（每模块 2-4 条）。 */
 export interface DashboardSuggestionModule {
-  module: string;
+  module: 'AI_USAGE' | 'AI_MGMT';
   suggestions: DashboardSuggestionItem[];
 }
 

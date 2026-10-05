@@ -252,7 +252,7 @@ GET /api/dashboard?period_start=2026-09-29&period_end=2026-10-05
 | 错误码 | 说明 |
 |--------|------|
 | 1400 | 参数格式错误（区间只传一端、日期格式非法） |
-| 2101 | 所选区间不在落库区间列表内（前端提示并回落最新区间） |
+| 2101 | 所选区间不在落库区间列表内（前端按通用错误态整页占位处理） |
 | 1305 | 全员名单上游拉取失败（specs §5.2.4 规则2，接口整体失败不用部分数据降级渲染） |
 | 1500 | 服务内部错误 |
 
@@ -381,6 +381,10 @@ GET /api/dashboard/trend?type=manage
        4. 投递 dashboard:suggest-generate 任务（payload 携批次雪花 ID 十进制
           字符串），投递失败 err 透传交 Asynq 任务级重试（行保持 generating，
           重试 tick 沿既有生成中行续作，不重复拾取）
+       5. 滞留续投兜底（specs/03 原始定义未覆盖的实现期补充）：
+          生成中行超 suggestStuckThreshold（20min）未更新视为任务丢失，
+          touch 更新时间后按行内 batch_no 重投生成任务；行内批次已不存在
+          （批次被删）则落 failed 终结，下个 tick 走终态重置续作
 返回:  err == nil → 成功（含无命中空转）
        err != nil → 交 Asynq 任务级重试
 幂等:  tick 幂等扫描；生成中行即拾取锁；漏生成（停机窗口错过的批次）
@@ -479,6 +483,7 @@ A2 趋势组装：
 | suggestTickTimeout | 60s | tick 任务级超时（§4.1） |
 | suggestGenerateTimeout | 240s | 生成任务级超时（specs §5.1.4 规则5 初值） |
 | suggestMaxRetry | 3 | 生成任务 Asynq MaxRetry（specs §5.1.4 规则3 基准 3 次） |
+| suggestgenMaxTokens | 6000 | 建议生成 LLM 输出 token 上限（引擎调用参数，非业务规则） |
 | trendWindowSize | 8 | 趋势观察窗口期数（specs §4.2.4 规则1） |
 | avgMinPeople | 3 | 维度均分最小有数据人数（< 3 置空，specs §4.1.4 规则3；与 F9 CompanyAvgMinPeople 同值异名常量） |
 | weaknessMaxCount | 2 / weaknessHardCap 3 | 共性短板每模块最低 2 维、并列至多 3 项（specs §4.1.4 规则4） |
@@ -505,7 +510,7 @@ F9 列表接口（GET /api/profiles）不变，预填为其前端路由层的查
 
 | 错误码 | 常量 | 含义 | 使用场景 |
 |--------|------|------|---------|
-| 2101 | DashboardPeriodInvalid | 评估区间不在落库区间列表内 | A1 所选区间查无对应落库周期行（前端提示并回落最新区间） |
+| 2101 | DashboardPeriodInvalid | 评估区间不在落库区间列表内 | A1 所选区间查无对应落库周期行（陈旧直链/并发场景可达；正常交互区间选项来自后端 periods 不触发；前端按通用错误态整页占位处理，与 specs §4.1.5 一致） |
 
 ---
 
