@@ -58,15 +58,15 @@ type periodRow struct {
 }
 
 // ListPeriods 三表各查 distinct 后内存归并（等值区间跨表去重），排序语义固定
-// 新到旧。行数级为全员 × 期数聚合后的期数，量级极小。
+// 新到旧。行数级为全员 × 期数聚合后的期数，量级极小。三模型均无 TableName
+// 覆写且无软删字段，表名走 GORM 复数化，用 Model 解析避免硬编码漂移。
 func (r *dashboardQueryRepository) ListPeriods(ctx context.Context) ([]PeriodBound, error) {
-	// 表名按 GORM 复数化约定（三模型均未覆写 TableName）。
-	tables := []string{"activity_stats", "dimension_scores", "aggregate_scores"}
+	models := []any{&domain.ActivityStat{}, &domain.DimensionScore{}, &domain.AggregateScore{}}
 	seen := make(map[PeriodBound]struct{})
 	var rows []periodRow
-	for _, table := range tables {
+	for _, m := range models {
 		if err := r.db.WithContext(ctx).
-			Table(table).
+			Model(m).
 			Select("DISTINCT period_start_at AS period_start_at, period_end_at AS period_end_at").
 			Find(&rows).Error; err != nil {
 			return nil, err

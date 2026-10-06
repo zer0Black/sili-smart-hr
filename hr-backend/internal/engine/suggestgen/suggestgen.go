@@ -49,6 +49,9 @@ func ParseOutput(raw string) (Output, error) {
 	}
 	seen := make(map[string]bool, len(out.Modules))
 	for _, mod := range out.Modules {
+		if seen[mod.Module] {
+			return Output{}, ErrSchemaInvalid
+		}
 		seen[mod.Module] = true
 		if len(mod.Suggestions) < 2 || len(mod.Suggestions) > 4 {
 			return Output{}, ErrSchemaInvalid

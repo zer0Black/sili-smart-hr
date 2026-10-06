@@ -128,6 +128,19 @@ func TestParseOutput_EmptyField(t *testing.T) {
 	}
 }
 
+// TestParseOutput_DuplicatedModule 模块条目重复（AI_USAGE×2）时返 ErrSchemaInvalid。
+func TestParseOutput_DuplicatedModule(t *testing.T) {
+	raw := `{"modules":[{"module":"AI_USAGE","suggestions":[
+		{"name":"a","description":"d"},{"name":"b","description":"d"}]},
+		{"module":"AI_USAGE","suggestions":[
+		{"name":"c","description":"d"},{"name":"e","description":"d"}]},
+		{"module":"AI_MGMT","suggestions":[
+		{"name":"f","description":"d"},{"name":"g","description":"d"}]}],"summary":"s"}`
+	if _, err := ParseOutput(raw); !errors.Is(err, ErrSchemaInvalid) {
+		t.Fatalf("重复模块条目应返 ErrSchemaInvalid, got %v", err)
+	}
+}
+
 // TestParseOutput_FencedMarkdown ```json 围栏包裹输出解析成功。
 func TestParseOutput_FencedMarkdown(t *testing.T) {
 	fenced := "```json\n" + validOutputJSON + "\n```"

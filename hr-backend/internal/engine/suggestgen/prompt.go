@@ -14,10 +14,10 @@ const PromptVersion = "v1"
 // Material 生成素材：仅结构化聚合数字与维度口径（specs §5.1.4 规则4），
 // 不含对话原文与单人明细。
 type Material struct {
-	PeriodStart   string
-	PeriodEnd     string
-	Modules       []ModuleMaterial
-	Activity      ActivityMaterial
+	PeriodStart    string
+	PeriodEnd      string
+	Modules        []ModuleMaterial
+	Activity       ActivityMaterial
 	WeakDimensions []WeakDimMaterial
 	DimSpecs       []DimSpec
 }

@@ -24,8 +24,8 @@ const suggestAnomalyReason = "批次数据异常：该评估区间无任何聚�
 const suggestReasonMaxLen = 255
 
 // suggestStuckThreshold 生成中行滞留判定阈值（specs §5.1.4 规则5/§5.1.5）：
-// 覆盖 240s 任务超时 + 3 次重试退避（约 8 分钟）的合法在途窗口，
-// 仅对 UpdatedAt 超过该窗的滞留行续投，防在途任务被重复投递。
+// 覆盖 4 次执行×240s 加 30/60/120s 阶梯退避约 19.5 分钟合法在途；饱和排队等待
+// 不在内，滞留续投可能与在途任务重复，幂等守卫收敛、代价至多一次额外 LLM 调用。
 const suggestStuckThreshold = 20 * time.Minute
 
 // suggestStuckReason 滞留行所属批次已删时的 MarkFailed 记因。
@@ -43,9 +43,9 @@ type SuggestGenerator interface {
 	Generate(ctx context.Context, m suggestgen.Material) (suggestgen.Output, string, error)
 }
 
-// SuggestGeneratorInjector 生成器注入器：生产装配传 nil（沿用构造入参 gen），
-// 测试传返回 fake 的闭包。
-type SuggestGeneratorInjector func() SuggestGenerator
+// ProvideSuggestGenerator 把 *suggestgen.Generator 适配为 SuggestGenerator 窄接口，
+// 供 wire 在 app 包注入（ProvideUserapiClient 同款形态）。
+func ProvideSuggestGenerator(g *suggestgen.Generator) SuggestGenerator { return g }
 
 // SuggestService 团队培训建议生成编排服务（specs §5.1）。
 type SuggestService struct {
@@ -53,36 +53,31 @@ type SuggestService struct {
 	queries     repository.DashboardQueryRepository
 	batches     repository.AssessmentBatchRepository
 	dims        repository.DimensionRepository
-	gen         SuggestGeneratorInjector
+	gen         SuggestGenerator
 	enq         SuggestEnqueuer
 	secretRepo  repository.IntegrationSecretRepository
 	encKey      []byte
 	staffs      userapiClient
 }
 
-// NewSuggestService 构造建议生成 service：gen 为生产引擎（T7 wire 装配），
-// inject 仅测试用（nil 时沿用 gen）。
+// NewSuggestService 构造建议生成 service：gen 为生成引擎（生产经
+// ProvideSuggestGenerator 适配，测试可注入 fake）。
 func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 	queries repository.DashboardQueryRepository,
 	batches repository.AssessmentBatchRepository,
 	dims repository.DimensionRepository,
-	gen *suggestgen.Generator,
+	gen SuggestGenerator,
 	enq SuggestEnqueuer,
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	staffs userapiClient,
-	inject SuggestGeneratorInjector,
 ) *SuggestService {
-	if inject == nil {
-		g := gen
-		inject = func() SuggestGenerator { return g }
-	}
 	return &SuggestService{
 		suggestions: suggestions,
 		queries:     queries,
 		batches:     batches,
 		dims:        dims,
-		gen:         inject,
+		gen:         gen,
 		enq:         enq,
 		secretRepo:  secretRepo,
 		encKey:      encKey,
@@ -90,11 +85,9 @@ func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 	}
 }
 
-// TickScan tick 拾取编排（specs §5.1.2 步1/步2/步6，03 §4.1）：
-// 建议行全量喂拾取扫描取最早待处理终态批次 → 无命中时先做滞留续投检查
-//（生成中行 UpdatedAt 超阈即建行后投递失败/进程崩溃的滞留恢复）→ 幂等建行/
-// 续作 → 投递 generate 任务。投递失败 err 透传交 tick 任务级重试，行保持
-// generating 由下个 tick 沿既有行续作或滞留续投。
+// TickScan tick 拾取编排（specs §5.1.2 步1/步2/步6，03 §4.1）：拾取扫描命中
+// 则幂等建行/续作并投递 generate，无命中走滞留续投检查。投递失败行保持
+// generating，由下个 tick 沿既有行续作。
 func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 	rows, err := s.suggestions.FindAll(ctx)
 	if err != nil {
@@ -124,10 +117,8 @@ func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 }
 
 // retryStuckGenerating 滞留续投（specs §5.1.4 规则5、§5.1.5 滞留恢复）：
-// 拾取扫描无命中时，取生成中且 UpdatedAt 早于阈值的最早行（period 口径），
-// 按行 BatchNo 定位批次重投 generate（幂等安全：Generate 对非 generating 行
-// 返 nil、MarkGenerated 条件写守卫）；批次已删则 MarkFailed 记因。与拾取判定
-// 解耦：仅在扫描无命中分支执行，不改变生成中行的拾取锁语义。
+// 拾取无命中时取超阈滞留行按 batch_no 重投 generate（幂等安全见 Generate
+// 终态守卫）；批次已删落 failed。仅在扫描无命中分支执行，与拾取判定解耦。
 func (s *SuggestService) retryStuckGenerating(ctx context.Context, rows []domain.TeamTrainingSuggestion, now time.Time) error {
 	stuckAt := now.Add(-suggestStuckThreshold)
 	var stuck *domain.TeamTrainingSuggestion
@@ -212,7 +203,7 @@ func (s *SuggestService) Generate(ctx context.Context, batchID int64) error {
 	if err != nil {
 		return err
 	}
-	out, modelName, err := s.gen().Generate(ctx, material)
+	out, modelName, err := s.gen.Generate(ctx, material)
 	if err != nil {
 		return fmt.Errorf("generate suggestion: %w", err)
 	}

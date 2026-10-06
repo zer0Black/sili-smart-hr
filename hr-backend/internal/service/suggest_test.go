@@ -174,7 +174,7 @@ func (f *fakeSuggestGenerator) Generate(_ context.Context, m suggestgen.Material
 	return f.out, f.model, f.err
 }
 
-// newSuggestSvc 通用构造器：gen 非 nil 时经注入器替换生成器（fake 注入）。
+// newSuggestSvc 通用构造器：gen 非 nil 时直接注入 fake。
 func newSuggestSvc(sug *fakeSuggestSuggestions, q *fakeSuggestQueries, b *fakeBatchRepo,
 	gen *fakeSuggestGenerator, enq *fakeSuggestEnqueuer, dims *fakeDashboardDimRepo, ua *fakeUserapiClient) *service.SuggestService {
 	encKey := crypto.DeriveKey("test-suggest")
@@ -183,11 +183,11 @@ func newSuggestSvc(sug *fakeSuggestSuggestions, q *fakeSuggestQueries, b *fakeBa
 		panic(err)
 	}
 	secretRepo := &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1, SecretCipher: cipher}}
-	var inject service.SuggestGeneratorInjector
+	var generator service.SuggestGenerator
 	if gen != nil {
-		inject = func() service.SuggestGenerator { return gen }
+		generator = gen
 	}
-	return service.NewSuggestService(sug, q, b, dims, nil, enq, secretRepo, encKey, ua, inject)
+	return service.NewSuggestService(sug, q, b, dims, generator, enq, secretRepo, encKey, ua)
 }
 
 // sugWeek 建议链路测试周期（与 dashWeek 同构，独立命名防串扰）。

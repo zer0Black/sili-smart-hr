@@ -19,9 +19,9 @@ const TypeSuggestGenerate = "dashboard:suggest-generate"
 // 重试边界自洽，调整 providers.go NewSuggestGenLLMClient 参数须同步该处。
 const suggestGenerateTimeout = 240 * time.Second
 
-// suggestMaxRetry 生成任务 Asynq 重试基准 3 次（specs §5.1.4 规则3，投递侧
-// AsynqSuggestEnqueuer 以 MaxRetry(3) 对齐）。
-const suggestMaxRetry = 3
+// SuggestMaxRetry 生成任务 Asynq 重试基准 3 次（specs §5.1.4 规则3），投递侧
+// AsynqSuggestEnqueuer 的 MaxRetry 选项同引本常量保单点。
+const SuggestMaxRetry = 3
 
 // SuggestGeneratePayload 任务载荷（03 §4.2）：batch_id 为雪花 ID 十进制字符串。
 type SuggestGeneratePayload struct {
@@ -36,10 +36,8 @@ type SuggestGenerateRunner interface {
 }
 
 // NewSuggestGenerateHandler 构造建议生成任务 handler（mux 注册归 health.go
-// NewMux）。坏格式/非正数 batch_id 属构造侧确定性错误，丢弃任务记 ERROR
-// 防毒丸；常规失败 err 非 nil 透传交 Asynq 任务级重试沿既有 generating 行
-// 续作；重试耗尽（GetRetryCount >= suggestMaxRetry）落 failed 终结返回 nil
-//（specs §5.1.4 规则3，03 §4.2 末段）。
+// NewMux）。坏格式/非正数 batch_id 丢弃记 ERROR 防毒丸；常规失败透传交 Asynq
+// 重试；重试耗尽落 failed 终结（specs §5.1.4 规则3，03 §4.2 末段）。
 func NewSuggestGenerateHandler(runner SuggestGenerateRunner) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		var p SuggestGeneratePayload
@@ -57,7 +55,7 @@ func NewSuggestGenerateHandler(runner SuggestGenerateRunner) asynq.HandlerFunc {
 
 		if err := runner.Generate(ctx, batchID); err != nil {
 			retried, _ := retryBudget(ctx)
-			if retried < suggestMaxRetry {
+			if retried < SuggestMaxRetry {
 				slog.Error("suggest generate failed, will retry",
 					"batch_id", batchID, "err", err)
 				return err

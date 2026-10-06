@@ -156,10 +156,10 @@ func TestSuggestGenerateErrorPropagatesBeforeExhausted(t *testing.T) {
 }
 
 // TestSuggestGenerateRetryExhausted 核心锚点（BR3）：GetRetryCount >=
-// suggestMaxRetry 时吞错调 MarkFailedIfExhausted，handler 返回 nil 终结
+// SuggestMaxRetry 时吞错调 MarkFailedIfExhausted，handler 返回 nil 终结
 //（specs §5.1.4 规则3，03 §4.2 末段）。
 func TestSuggestGenerateRetryExhausted(t *testing.T) {
-	withRetryBudget(t, suggestMaxRetry, suggestMaxRetry)
+	withRetryBudget(t, SuggestMaxRetry, SuggestMaxRetry)
 	r := &fakeSuggestGenerateRunner{genErr: errors.New("llm down")}
 	h := NewSuggestGenerateHandler(r)
 	if err := runSuggestTask(h, TypeSuggestGenerate, `{"batch_id":"123"}`); err != nil {
@@ -177,7 +177,7 @@ func TestSuggestGenerateRetryExhausted(t *testing.T) {
 // TestSuggestGenerateExhaustedMarkFailsStillErrors 边界补充：耗尽但落库失败时
 // 错误上抛保留下次执行收敛（落库失败 err 透传口径，specs §5.1.5 表）。
 func TestSuggestGenerateExhaustedMarkFailsStillErrors(t *testing.T) {
-	withRetryBudget(t, suggestMaxRetry, suggestMaxRetry)
+	withRetryBudget(t, SuggestMaxRetry, SuggestMaxRetry)
 	markErr := errors.New("db down")
 	r := &fakeSuggestGenerateRunner{genErr: errors.New("llm down"), exhaustErr: markErr}
 	h := NewSuggestGenerateHandler(r)
@@ -197,8 +197,8 @@ func TestSuggestGenerateTimeoutConst(t *testing.T) {
 // TestSuggestMaxRetryConst 核心锚点（BR3）：任务级重试基准精确 3 次
 //（specs §5.1.4 规则3）。
 func TestSuggestMaxRetryConst(t *testing.T) {
-	if suggestMaxRetry != 3 {
-		t.Errorf("suggestMaxRetry = %d, want 3", suggestMaxRetry)
+	if SuggestMaxRetry != 3 {
+		t.Errorf("SuggestMaxRetry = %d, want 3", SuggestMaxRetry)
 	}
 }
 

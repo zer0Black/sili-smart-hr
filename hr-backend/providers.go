@@ -658,7 +658,7 @@ func NewSuggestGenProvider(llmClient SuggestGenLLMClient, provider llm.EnabledMo
 }
 
 // NewSuggestServiceAdapter 是 Wire 装配适配器：转调 service.NewSuggestService
-// 十参形态，inject 尾参生产装配固定传 nil（沿用构造入参 gen，测试注入才用）。
+// 九参形态（gen 经 service.ProvideSuggestGenerator 适配窄接口）。
 func NewSuggestServiceAdapter(
 	suggestions repository.TeamTrainingSuggestionRepository,
 	queries repository.DashboardQueryRepository,
@@ -670,8 +670,9 @@ func NewSuggestServiceAdapter(
 	encKey []byte,
 	staffs *userapi.Client,
 ) *service.SuggestService {
-	return service.NewSuggestService(suggestions, queries, batches, dims, gen, enq,
-		secretRepo, encKey, service.ProvideUserapiClient(staffs), nil)
+	return service.NewSuggestService(suggestions, queries, batches, dims,
+		service.ProvideSuggestGenerator(gen), enq,
+		secretRepo, encKey, service.ProvideUserapiClient(staffs))
 }
 
 // AsynqSuggestEnqueuer 把 AsynqClient 适配为 service.SuggestEnqueuer 窄接口
@@ -686,8 +687,8 @@ func NewAsynqSuggestEnqueuer(client *asynq.Client) *AsynqSuggestEnqueuer {
 }
 
 // EnqueueSuggestGenerate 投递建议生成任务（default 队列，03 §4.2）：payload
-// 为雪花 ID 十进制字符串（worker/task 消费侧同构）。MaxRetry(3) 对齐
-// specs §5.1.4 规则3 基准（task.suggestMaxRetry），耗尽由 handler 落 failed 终结。
+// 为雪花 ID 十进制字符串（worker/task 消费侧同构）。MaxRetry 对齐
+// specs §5.1.4 规则3 基准（task.SuggestMaxRetry 单点），耗尽由 handler 落 failed 终结。
 func (e *AsynqSuggestEnqueuer) EnqueueSuggestGenerate(ctx context.Context, batchID int64) error {
 	payload, err := json.Marshal(task.SuggestGeneratePayload{BatchID: fmt.Sprintf("%d", batchID)})
 	if err != nil {
@@ -695,7 +696,7 @@ func (e *AsynqSuggestEnqueuer) EnqueueSuggestGenerate(ctx context.Context, batch
 	}
 	if _, err := e.client.EnqueueContext(ctx,
 		asynq.NewTask(task.TypeSuggestGenerate, payload),
-		asynq.MaxRetry(3),
+		asynq.MaxRetry(task.SuggestMaxRetry),
 		asynq.Queue(task.QueueDefault)); err != nil {
 		return fmt.Errorf("suggest generate 投递: %w", err)
 	}
