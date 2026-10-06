@@ -884,3 +884,132 @@ export interface DashboardTrend {
   composite: DashboardTrendComposite | null;
   dimensions: DashboardTrendDim[];
 }
+
+// 工作台域契约（与后端 workspace service DTO 同构，03_api_interface §1 W1。
+// 本域响应无雪花 ID，全 string/number 直译；null 语义按 §1.3 降级矩阵完整保留。）
+
+/** 态势与待处理统计卡区。恒返回对象，全字段按数据源独立降级可 null。 */
+export interface WorkspaceBatch {
+  /** 最新周期批次状态；null 为尚未发起评估空态（specs §4.1.4 规则4）。 */
+  status: 'running' | 'success' | 'partial_failed' | 'failed' | null;
+  /** 下次跑批时点 yyyy-MM-dd HH:mm；配置读取失败为 null。 */
+  next_trigger_at: string | null;
+  /** 告警 0/1 存在性计数（specs §4.1.4 规则2）；查询失败为 null。 */
+  alert_count: number | null;
+  overdue_count: number | null;
+  data_updated_at: string | null;
+}
+
+/** 本期区间（最新落库区间，含止日 yyyy-MM-dd）。 */
+export interface WorkspacePeriod {
+  period_start: string;
+  period_end: string;
+}
+
+/** 模块综合分序列（scores 与 periods 一一对应，无数据期为 null 断点）。 */
+export interface WorkspaceTrendSeries {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  scores: (number | null)[];
+  current_score: number | null;
+  change_vs_prev: number | null;
+}
+
+/** 活跃率与未使用两卡。 */
+export interface WorkspaceTrendActivity {
+  /** 本期活跃率一位小数。 */
+  active_ratio: number;
+  active_change_pp: number | null;
+  unused_count: number;
+  unused_change: number | null;
+}
+
+/** 团队能力演进区（近 8 期窗口）。 */
+export interface WorkspaceTrend {
+  periods: WorkspacePeriod[];
+  series: WorkspaceTrendSeries[];
+  activity: WorkspaceTrendActivity | null;
+}
+
+/** 雷达轴维度均分行。 */
+export interface WorkspaceDim {
+  dimension_code: string;
+  dimension_name: string;
+  /** 全员均分取整；< 3 人为 null 该轴断开。 */
+  avg_score: number | null;
+  is_weakness: boolean;
+}
+
+/** 模块雷达卡，恒含 AI_USAGE 与 AI_MGMT 两行。 */
+export interface WorkspaceModule {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  dimensions: WorkspaceDim[];
+  /** 全维度均值参考线；任一维度置空为 null。 */
+  overall_avg: number | null;
+}
+
+/** 九型分布条目（恒 9 项按型别序号升序）。 */
+export interface WorkspaceEnneagramItem {
+  /** 型别数字串 "1"-"9"，型名映射由前端 i18n 承载。 */
+  type: string;
+  count: number;
+  ratio: number;
+}
+
+/** 九型构成快照（最新判型集合，不随区间变化）。 */
+export interface WorkspaceEnneagram {
+  distribution: WorkspaceEnneagramItem[];
+  dominant_type: string;
+  dominant_ratio: number;
+}
+
+/** 共性短板标签条目：low_ratio 为低分占比一位小数。 */
+export interface WorkspaceWeakness {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  dimension_code: string;
+  dimension_name: string;
+  low_ratio: number;
+}
+
+/** 研判摘要（恒返回对象；非 generated 态 summary 为空串）。 */
+export interface WorkspaceSuggestion {
+  status: 'generated' | 'generating' | 'failed' | 'none';
+  summary: string;
+}
+
+/** 本期团队整体画像速览区。 */
+export interface WorkspaceProfile {
+  modules: WorkspaceModule[];
+  enneagram: WorkspaceEnneagram | null;
+  weaknesses: WorkspaceWeakness[];
+  suggestion: WorkspaceSuggestion;
+}
+
+/** 短板人群关注原因载体：低于 60 的模块条目（specs §4.1.2 D）。 */
+export interface WorkspaceWeakModule {
+  module: 'AI_USAGE' | 'AI_MGMT';
+  score: number;
+  /** 个人短板维度编码集合；未使用人群为空数组。 */
+  weak_dims: string[];
+}
+
+/** 需要关注的人表格行（至多 10 行）。 */
+export interface WorkspaceAttentionRow {
+  staff_name: string;
+  category: 'weak' | 'unused';
+  activity_level: 'active' | 'low_freq' | 'unused';
+  /** 无聚合行为 null（前端显示待评估）；< 60 红色由前端按值判定。 */
+  ai_usage_score: number | null;
+  ai_mgmt_score: number | null;
+  weak_modules: WorkspaceWeakModule[];
+  /** 未使用人群关注原因载体；短板人群为 null。 */
+  days_since_active: number | null;
+}
+
+/** GET /api/workspace 响应 data（03 §1 W1）。区块 null 为独立空态语义。 */
+export interface WorkspaceData {
+  batch: WorkspaceBatch;
+  current_period: WorkspacePeriod | null;
+  trend: WorkspaceTrend | null;
+  profile: WorkspaceProfile | null;
+  attention: WorkspaceAttentionRow[] | null;
+}
