@@ -1,5 +1,5 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
+import { createFileRoute, useNavigate, useSearch } from '@tanstack/react-router';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -23,6 +23,13 @@ import type { BatchListItem } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/assessment/')({
+  // search 预填（specs §7.2 声明的随本 feature 改造项）：tab=ai_mgmt|enneagram
+  // 落测试任务 tab；status=expired 预置已逾期筛选。一次性深链，消费后清参
+  //（profile 先例）。tab 落 aiUsage 时仅清参不切 tab（默认即 aiUsage）。
+  validateSearch: (search: Record<string, unknown>): { tab?: string; status?: string } => ({
+    tab: search.tab === 'ai_mgmt' || search.tab === 'enneagram' ? search.tab : undefined,
+    status: search.status === 'expired' ? 'expired' : undefined,
+  }),
   component: AssessmentCenterPage,
 });
 
@@ -31,6 +38,14 @@ type PageTab = 'aiUsage' | TestType;
 
 export function AssessmentCenterPage() {
   const { t } = useTranslation('assessment');
+  const navigate = useNavigate();
+  const search = useSearch({ from: '/_authenticated/assessment/' });
+
+  // 深链预填只在首挂载读一次 search（惰性初始化，profile 先例），后续清参重渲染不重置
+  const [initialSearch] = useState(() => ({
+    tab: search.tab === 'ai_mgmt' || search.tab === 'enneagram' ? search.tab : undefined,
+    status: search.status === 'expired' ? 'expired' : undefined,
+  }));
 
   // 页面状态机：弹窗开关 + 预填值（筛选与分页在各表格组件内部自治）
   const [createOpen, setCreateOpen] = useState(false);
@@ -49,6 +64,22 @@ export function AssessmentCenterPage() {
 
   // 双测试任务 tab 常驻挂载、隐藏非激活 tab，查询状态互不清空（specs §4.1.5）
   const [activeTab, setActiveTab] = useState<PageTab>('aiUsage');
+
+  // 首挂载消费预填（specs §4.1.3 逾期卡跳转）：tab 落测试任务 tab，status=expired
+  // 只随测试任务 tab 生效（tab=aiUsage 时忽略 status，仅清参）。消费后清参防刷新重入。
+  const initialTab = initialSearch.tab;
+  const initialStatus = initialSearch.status;
+  useEffect(() => {
+    if (initialTab === 'ai_mgmt' || initialTab === 'enneagram') {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  useEffect(() => {
+    if (search.tab || search.status) {
+      void navigate({ to: '/assessment', search: {}, replace: true });
+    }
+  }, [search.tab, search.status, navigate]);
 
   function onCreateSubmitted() {
     setTableResetKey((k) => k + 1);
@@ -180,6 +211,8 @@ export function AssessmentCenterPage() {
         <div key={type} className={activeTab === type ? 'contents' : 'hidden'}>
           <TestTaskTable
             testType={type}
+            // 深链 status=expired 只预填命中的测试任务 tab（specs §4.1.3 逾期卡跳转）
+            initialStatusFilter={initialTab === type ? initialStatus : undefined}
             onCreateOpen={() => openCreateDialog(null)}
             onLinkOpen={(taskId) => {
               // 打开即拉快照（specs §4.3.5）：清注入数据防上次重发链接串场

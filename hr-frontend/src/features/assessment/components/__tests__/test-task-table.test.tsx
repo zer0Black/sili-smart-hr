@@ -334,4 +334,43 @@ describe('TestTaskTable 两 tab 任务列表（specs §4.1.2/§4.1.3）', () => 
     fireEvent.click(screen.getByRole('button', { name: '发起评测' }));
     expect(props.onCreateOpen).toHaveBeenCalledTimes(1);
   });
+
+  it('TestTaskTableInitialStatusFilter：预填 expired 时首查携状态、Select 显示已逾期（specs §4.1.3 逾期卡深链预填）', async () => {
+    vi.mocked(fetchTestTasks).mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    useAuthStore.setState({ token: 'test-token' });
+
+    renderTable(<TestTaskTable {...makeProps()} initialStatusFilter="expired" />);
+
+    // 生效层同步预填：首查即携 status=expired
+    await waitFor(() =>
+      expect(fetchTestTasks).toHaveBeenCalledWith(expect.objectContaining({ status: 'expired', page: 1 })),
+    );
+    // 草稿层同步预填：Select 显示已逾期
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: '状态' })).toHaveTextContent('已逾期'),
+    );
+  });
+
+  it('TestTaskTableInitialStatusFilterReset：resetKey 重置语义回全部而非预填值（specs §4.2.3）', async () => {
+    vi.mocked(fetchTestTasks).mockResolvedValue({ list: [], total: 0, page: 1, page_size: 10 });
+    useAuthStore.setState({ token: 'test-token' });
+
+    const { rerender } = renderTable(<TestTaskTable {...makeProps()} initialStatusFilter="expired" />);
+    await waitFor(() =>
+      expect(fetchTestTasks).toHaveBeenCalledWith(expect.objectContaining({ status: 'expired' })),
+    );
+
+    // 外部重置信号变化：筛选回全部（ALL），不回预填值
+    rerender(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <TestTaskTable {...makeProps()} initialStatusFilter="expired" resetKey={1} />
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(fetchTestTasks).toHaveBeenCalledWith(
+        expect.objectContaining({ status: undefined, page: 1 }),
+      ),
+    );
+    expect(screen.getByRole('combobox', { name: '状态' })).toHaveTextContent('全部');
+  });
 });
