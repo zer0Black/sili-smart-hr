@@ -132,59 +132,62 @@ export function TrendEvolution(props: { data: WorkspaceTrend }): JSX.Element {
             </LineChart>
           </ResponsiveContainer>
         </div>
-        {/* 四张环比关键数卡（specs §4.1.2 B）：综合分 ±int、活跃率 % ±pp、未使用人数 ±int */}
-        {activity ? (
-          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
-            <StatCard
-              label={t('trend.legendUsage')}
-              value={usage?.current_score ?? '-'}
-              change={
-                usage?.change_vs_prev != null ? (
-                  <ChangeBadge value={usage.change_vs_prev} positiveWhenUp={true} />
-                ) : null
-              }
-            />
-            <StatCard
-              label={t('trend.legendMgmt')}
-              value={mgmt?.current_score ?? '-'}
-              change={
-                mgmt?.change_vs_prev != null ? (
-                  <ChangeBadge value={mgmt.change_vs_prev} positiveWhenUp={true} />
-                ) : null
-              }
-            />
-            <StatCard
-              label={t('trend.activeRatio')}
-              value={`${activity.active_ratio.toFixed(1)}%`}
-              change={
-                activity.active_change_pp != null ? (
-                  <ChangeBadge
-                    value={activity.active_change_pp}
-                    unit="pp"
-                    positiveWhenUp={true}
-                  />
-                ) : null
-              }
-            />
-            {/* 未使用人数卡整卡可点击，携 unused_only 跳人员画像列表（specs §4.1.3 / BR5） */}
-            <button
-              type="button"
-              aria-label={t('trend.unusedCount')}
-              onClick={() => {
-                void navigate({ to: '/profile', search: { unused_only: 'true' } });
-              }}
-              className="cursor-pointer rounded-lg border p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
-            >
-              <span className="block text-xs font-medium">{t('trend.unusedCount')}</span>
-              <span className="mt-1 flex items-baseline gap-2">
-                <span className="font-mono text-2xl font-semibold">{activity.unused_count}</span>
-                {activity.unused_change != null ? (
-                  <ChangeBadge value={activity.unused_change} positiveWhenUp={false} />
-                ) : null}
-              </span>
-            </button>
-          </div>
-        ) : null}
+        {/* 四张环比关键数卡（specs §4.1.2 B）：综合分 ±int、活跃率 % ±pp、未使用人数 ±int。
+            综合分两张卡数据在 series 中，不依赖名单（03 §1.3：名单失败仅活跃两张卡空态） */}
+        <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+          <StatCard
+            label={t('trend.legendUsage')}
+            value={usage?.current_score ?? '-'}
+            change={
+              usage?.change_vs_prev != null ? (
+                <ChangeBadge value={usage.change_vs_prev} positiveWhenUp={true} />
+              ) : null
+            }
+          />
+          <StatCard
+            label={t('trend.legendMgmt')}
+            value={mgmt?.current_score ?? '-'}
+            change={
+              mgmt?.change_vs_prev != null ? (
+                <ChangeBadge value={mgmt.change_vs_prev} positiveWhenUp={true} />
+              ) : null
+            }
+          />
+          {activity ? (
+            <>
+              <StatCard
+                label={t('trend.activeRatio')}
+                value={`${activity.active_ratio.toFixed(1)}%`}
+                change={
+                  activity.active_change_pp != null ? (
+                    <ChangeBadge
+                      value={activity.active_change_pp}
+                      unit="pp"
+                      positiveWhenUp={true}
+                    />
+                  ) : null
+                }
+              />
+              {/* 未使用人数卡整卡可点击，携 unused_only 跳人员画像列表（specs §4.1.3 / BR5） */}
+              <button
+                type="button"
+                aria-label={t('trend.unusedCount')}
+                onClick={() => {
+                  void navigate({ to: '/profile', search: { unused_only: 'true' } });
+                }}
+                className="cursor-pointer rounded-lg border p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
+              >
+                <span className="block text-xs font-medium">{t('trend.unusedCount')}</span>
+                <span className="mt-1 flex items-baseline gap-2">
+                  <span className="font-mono text-2xl font-semibold">{activity.unused_count}</span>
+                  {activity.unused_change != null ? (
+                    <ChangeBadge value={activity.unused_change} positiveWhenUp={false} />
+                  ) : null}
+                </span>
+              </button>
+            </>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

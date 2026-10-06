@@ -277,6 +277,20 @@ describe('TrendEvolution（specs §4.1.2 B / §4.1.5）', () => {
     expect(formatter!(75, 'AI 使用能力')).toEqual([75, 'AI 使用能力']);
     expect(formatter!(null, 'AI 管理能力')).toEqual(['-', 'AI 管理能力']);
   });
+
+  it('TestTrendEvolution_ActivityNullDegrade：activity null（名单失败）时综合分两卡照常、活跃两卡空态（03 §1.3）', () => {
+    render(<TrendEvolution data={{ ...trendData, activity: null }} />);
+
+    // 综合分两卡不依赖名单，照常渲染
+    expect(screen.getByText('75')).toBeInTheDocument();
+    expect(screen.getByText('+3')).toBeInTheDocument();
+    expect(screen.getByText('58')).toBeInTheDocument();
+    expect(screen.getByText('-2')).toBeInTheDocument();
+    // 活跃率与未使用两卡空态（不渲染）
+    expect(screen.queryByText('41.7%')).not.toBeInTheDocument();
+    expect(screen.queryByText('12')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /未使用人数/ })).not.toBeInTheDocument();
+  });
 });
 
 // ---------- ProfileBrief ----------

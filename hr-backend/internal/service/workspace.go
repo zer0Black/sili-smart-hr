@@ -645,7 +645,8 @@ func (s *workspaceService) buildAttention(ctx context.Context, cur repository.Pe
 }
 
 // buildWeakCandidates 短板人群：module_score 取整 < 60 入选，按取整最低总分
-//（仅低于 60 的模块参与）升序前 5；weak_dims 经 buildShortboardSets 同口径。
+//（仅低于 60 的模块参与）升序前 5；weak_dims 按模块复用 buildShortboardSets
+// 同口径（该人该模块短板集合，03 §1.5）。
 func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.DimensionScore,
 	actRows []domain.ActivityStat) []WorkspaceAttentionRow {
 	type cand struct {
@@ -667,7 +668,24 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 		k := profileModKey{r.TokenName, r.Module}
 		dimsBy[k] = append(dimsBy[k], r)
 	}
-	shortboard := buildShortboardSets(aggBy, dimsBy)
+	// 个人短板集合按模块拆分：weak_dims 作用域是该人该模块（03 §1.5），
+	// 逐模块过滤 (人,模块) 子集复用 buildShortboardSets 同口径。
+	shortByModule := map[string]map[string]map[string]struct{}{}
+	for _, m := range []string{domain.ModuleAIUsage, domain.ModuleAIMgmt} {
+		aggOne := make(map[profileModKey]domain.AggregateScore)
+		for k, v := range aggBy {
+			if k.module == m {
+				aggOne[k] = v
+			}
+		}
+		dimsOne := make(map[profileModKey][]domain.DimensionScore)
+		for k, v := range dimsBy {
+			if k.module == m {
+				dimsOne[k] = v
+			}
+		}
+		shortByModule[m] = buildShortboardSets(aggOne, dimsOne)
+	}
 
 	cands := map[string]*cand{}
 	for _, r := range aggRows {
@@ -718,7 +736,7 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 				continue
 			}
 			dims := []string{}
-			if set, hit := shortboard[c.staff]; hit {
+			if set, hit := shortByModule[m][c.staff]; hit {
 				for code := range set {
 					dims = append(dims, code)
 				}

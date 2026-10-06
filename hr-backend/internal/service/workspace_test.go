@@ -473,10 +473,19 @@ func TestWorkspaceOverview_Attention(t *testing.T) {
 			IncludedJSON: `[{"code":"U1","weight":50},{"code":"U2","weight":50}]`,
 		})
 	}
-	// 本期维度行（weak_dims 载体）：员001 U1=30/U2=50（仅 U1）；员005 U1=42/U2=42（并列全选）。
+	// 员001 两模块均 < 60：AI_MGMT 也入聚合（46.2 → 46），跨模块短板归模块内（03 §1.5）。
+	mgmtV := 46.2
+	aggRows = append(aggRows, domain.AggregateScore{
+		TokenName: name(1), Module: domain.ModuleAIMgmt, ModuleScore: &mgmtV,
+		PeriodStartAt: w0.StartAt, PeriodEndAt: w0.EndAt,
+		IncludedJSON: `[{"code":"M1","weight":100}]`,
+	})
+	// 本期维度行（weak_dims 载体）：员001 U1=30/U2=50（仅 U1）+ M1=35；员005 U1=42/U2=42（并列全选）。
+	// 员001 全局最低维度为 U1=30（AI_USAGE），修复前跨模块口径会把 U1 混入 AI_MGMT 条目。
 	curDimRows := []domain.DimensionScore{
 		wrkDimRow(w0, name(1), domain.ModuleAIUsage, domain.ScoreSourceConversation, "U1", 30),
 		wrkDimRow(w0, name(1), domain.ModuleAIUsage, domain.ScoreSourceConversation, "U2", 50),
+		wrkDimRow(w0, name(1), domain.ModuleAIMgmt, domain.ScoreSourceActiveTest, "M1", 35),
 		wrkDimRow(w0, name(5), domain.ModuleAIUsage, domain.ScoreSourceConversation, "U1", 42),
 		wrkDimRow(w0, name(5), domain.ModuleAIUsage, domain.ScoreSourceConversation, "U2", 42),
 	}
@@ -506,6 +515,7 @@ func TestWorkspaceOverview_Attention(t *testing.T) {
 	dims := &fakeDashboardDimRepo{all: []domain.Dimension{
 		{Code: "U1", ModuleCode: domain.ModuleAIUsage, Enabled: true, Name: "维度U1"},
 		{Code: "U2", ModuleCode: domain.ModuleAIUsage, Enabled: true, Name: "维度U2"},
+		{Code: "M1", ModuleCode: domain.ModuleAIMgmt, Enabled: true, Name: "子能力M1"},
 	}}
 	cfg, _, sug, ua := wkBaseDeps()
 	ua.staffs = wrkStaffNames(8)
@@ -541,10 +551,14 @@ func TestWorkspaceOverview_Attention(t *testing.T) {
 			t.Fatal("员006 应被前 5 截断")
 		}
 	}
-	// weak_dims：员001 仅 U1（最低 30）；员005 并列 U1/U2。
-	if wm := rows[0].WeakModules; len(wm) != 1 || wm[0].Module != domain.ModuleAIUsage || wm[0].Score != 40 ||
+	// weak_dims：员001 AI_USAGE 仅 U1（最低 30）；AI_MGMT 条目只含本模块 M1（不混入他模块 U1）。
+	if wm := rows[0].WeakModules; len(wm) != 2 || wm[0].Module != domain.ModuleAIUsage || wm[0].Score != 40 ||
 		len(wm[0].WeakDims) != 1 || wm[0].WeakDims[0] != "U1" {
-		t.Fatalf("员001 weak_modules want AI_USAGE/40/[U1], got %+v", wm)
+		t.Fatalf("员001 AI_USAGE 条目 want AI_USAGE/40/[U1], got %+v", wm)
+	}
+	if wm := rows[0].WeakModules[1]; wm.Module != domain.ModuleAIMgmt || wm.Score != 46 ||
+		len(wm.WeakDims) != 1 || wm.WeakDims[0] != "M1" {
+		t.Fatalf("员001 AI_MGMT 条目 want AI_MGMT/46/[M1]（模块内短板）, got %+v", wm)
 	}
 	if wm := rows[4].WeakModules; len(wm[0].WeakDims) != 2 {
 		t.Fatalf("员005 并列短板 want [U1 U2], got %+v", wm[0].WeakDims)
