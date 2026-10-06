@@ -688,11 +688,17 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 	}
 
 	cands := map[string]*cand{}
+	// 该人全部聚合行取整总分（总分列透传用，不参与入选判定与排序）。
+	allBy := map[string]map[string]int{}
 	for _, r := range aggRows {
 		if r.ModuleScore == nil {
 			continue
 		}
 		sc := int(math.Round(*r.ModuleScore))
+		if allBy[r.TokenName] == nil {
+			allBy[r.TokenName] = map[string]int{}
+		}
+		allBy[r.TokenName][r.Module] = sc
 		if sc >= weakScoreLine {
 			continue
 		}
@@ -744,10 +750,11 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 			sort.Strings(dims)
 			row.WeakModules = append(row.WeakModules, WorkspaceWeakModuleDTO{Module: m, Score: sc, WeakDims: dims})
 		}
-		if u, ok := c.scores[domain.ModuleAIUsage]; ok {
+		// 总分列按有无聚合行透传（specs §4.1.2 D，>= 60 也透传）；weak_modules 仍仅 < 60。
+		if u, ok := allBy[c.staff][domain.ModuleAIUsage]; ok {
 			row.AIUsageScore = &u
 		}
-		if g, ok := c.scores[domain.ModuleAIMgmt]; ok {
+		if g, ok := allBy[c.staff][domain.ModuleAIMgmt]; ok {
 			row.AIMGMTScore = &g
 		}
 		out = append(out, row)

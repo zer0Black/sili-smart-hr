@@ -480,6 +480,14 @@ func TestWorkspaceOverview_Attention(t *testing.T) {
 		PeriodStartAt: w0.StartAt, PeriodEndAt: w0.EndAt,
 		IncludedJSON: `[{"code":"M1","weight":100}]`,
 	})
+	// 员002 AI_MGMT >= 60（75.4 → 75）：总分列仍按聚合行透传（specs §4.1.2 D），
+	// weak_modules 不含该模块条目。
+	mgmtHigh := 75.4
+	aggRows = append(aggRows, domain.AggregateScore{
+		TokenName: name(2), Module: domain.ModuleAIMgmt, ModuleScore: &mgmtHigh,
+		PeriodStartAt: w0.StartAt, PeriodEndAt: w0.EndAt,
+		IncludedJSON: `[{"code":"M1","weight":100}]`,
+	})
 	// 本期维度行（weak_dims 载体）：员001 U1=30/U2=50（仅 U1）+ M1=35；员005 U1=42/U2=42（并列全选）。
 	// 员001 全局最低维度为 U1=30（AI_USAGE），修复前跨模块口径会把 U1 混入 AI_MGMT 条目。
 	curDimRows := []domain.DimensionScore{
@@ -562,6 +570,18 @@ func TestWorkspaceOverview_Attention(t *testing.T) {
 	}
 	if wm := rows[4].WeakModules; len(wm[0].WeakDims) != 2 {
 		t.Fatalf("员005 并列短板 want [U1 U2], got %+v", wm[0].WeakDims)
+	}
+	// 员002 AI_MGMT >= 60：总分列透传 75，weak_modules 仅剩 AI_USAGE 条目。
+	if rows[1].AIMGMTScore == nil || *rows[1].AIMGMTScore != 75 {
+		t.Fatalf("员002 ai_mgmt_score want 75（>= 60 也透传）, got %+v", rows[1].AIMGMTScore)
+	}
+	if wm := rows[1].WeakModules; len(wm) != 1 || wm[0].Module != domain.ModuleAIUsage {
+		t.Fatalf("员002 weak_modules want 仅 AI_USAGE 条目, got %+v", wm)
+	}
+	// 员001 两模块总分均透传（40/46）。
+	if rows[0].AIUsageScore == nil || *rows[0].AIUsageScore != 40 ||
+		rows[0].AIMGMTScore == nil || *rows[0].AIMGMTScore != 46 {
+		t.Fatalf("员001 总分 want 40/46, got %+v/%+v", rows[0].AIUsageScore, rows[0].AIMGMTScore)
 	}
 	// 活跃度：员001 low_freq、员002 active。
 	if rows[0].ActivityLevel != domain.ActiveLevelLowFreq || rows[1].ActivityLevel != domain.ActiveLevelActive {
