@@ -39,6 +39,7 @@ func NewRouter(
 	scaleHandler *handler.ScaleHandler,
 	profileHandler *handler.ProfileHandler,
 	dashboardHandler *handler.DashboardHandler,
+	workspaceHandler *handler.WorkspaceHandler,
 	rdb *redis.Client,
 ) *gin.Engine {
 	r := gin.New()
@@ -182,6 +183,9 @@ func NewRouter(
 	//（specs §2.2/§5.2.1 / BR1、BR3）。无单独限流（沿用受保护组既有策略）。
 	auth.GET("/dashboard", dashboardHandler.Overview)
 	auth.GET("/dashboard/trend", dashboardHandler.Trend)
+	// 工作台域：单接口 JWT 鉴权挂 auth 组，GET 只读聚合实时计算不落库（specs
+	// P2_WRK_001 §2.2/§5.1 / BR1、BR2）。无单独限流（沿用受保护组既有策略）。
+	auth.GET("/workspace", workspaceHandler.Overview)
 
 	return r
 }
