@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "feature_id": "P2_WRK_001_FEAT_工作台",
+  "subplans": {
+    "01": {
+      "base_sha": "72a54d2e2fbc13665fb06f1e73e4e9ff6f7f34c2",
+      "plan_digest": "69684d8500840c989d45a2b9c9368cf3c9c24f686006b2b70cc010b3ae97b5fc",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "646dacd9277cb05ec1f1c8de601d81e8e27d3155040082bd80322fb576a53d19",
+        "../03_api_interface.md": "2373a21fdf03aa3bdc6c0373c672ca18eafb8439b47f9b2f59542d939f345273",
+        "../04_model_interface.md": "1c5c40322c2683b424fffc04f5c83cc3312f4aaf9defcc6ca627d3679c930fbb"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T1",
+          "status": "verified",
+          "base_sha": "72a54d2e2fbc13665fb06f1e73e4e9ff6f7f34c2",
+          "head_sha": "fe522f6318e40477ccc25c0c9560cffab1353f76",
+          "verification": {
+            "path": "execution-evidence/01_T1_fe522f63.md",
+            "digest": "86e93a1cfccab114a1b2ad5cecb32db352095bb3a671fa5b5f13e5a61bf4deb9",
+            "head_sha": "fe522f6318e40477ccc25c0c9560cffab1353f76",
+            "recorded_at": "2026-10-06T17:18:53Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T2",
+          "status": "verified",
+          "base_sha": "fe522f6318e40477ccc25c0c9560cffab1353f76",
+          "head_sha": "3d54c05ded321b528d4eccceeb78e257fb099044",
+          "verification": {
+            "path": "execution-evidence/01_T2r2_3d54c05d.md",
+            "digest": "2cc5cb28f2cc05cb4949b0d2570c4a8126875e5b3576b253f37872d9f477fe25",
+            "head_sha": "3d54c05ded321b528d4eccceeb78e257fb099044",
+            "recorded_at": "2026-10-06T18:44:41Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T3",
+          "status": "verified",
+          "base_sha": "7c8e71998affd60c5b77433df745a26e55677b1a",
+          "head_sha": "9514ee5bfcdc32d6311a4ecfdae5a77087520695",
+          "verification": {
+            "path": "execution-evidence/01_T3_9514ee5b.md",
+            "digest": "24ab42996d5bf293d0fab2d8a6d43d30ac30207eeab79cf7cb5062799c440851",
+            "head_sha": "9514ee5bfcdc32d6311a4ecfdae5a77087520695",
+            "recorded_at": "2026-10-06T17:47:59Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T4",
+          "status": "verified",
+          "base_sha": "9514ee5bfcdc32d6311a4ecfdae5a77087520695",
+          "head_sha": "4ded0fd670fd55cb34e178c93ce7972780a7ce89",
+          "verification": {
+            "path": "execution-evidence/01_T4_4ded0fd6.md",
+            "digest": "b2587356095f84060c88fbe85815211cb2e00a515d2b6ca3deeef6fb6de03bbe",
+            "head_sha": "4ded0fd670fd55cb34e178c93ce7972780a7ce89",
+            "recorded_at": "2026-10-06T17:59:14Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T5",
+          "status": "verified",
+          "base_sha": "4ded0fd670fd55cb34e178c93ce7972780a7ce89",
+          "head_sha": "126f33dcef94286d64075f8b2bfab278ad9b225d",
+          "verification": {
+            "path": "execution-evidence/01_T5_126f33dc.md",
+            "digest": "7d57cbd697b8a5eae4f80bd8fbae6157642c2f17bdd54f68b6a0f2790847bfc8",
+            "head_sha": "126f33dcef94286d64075f8b2bfab278ad9b225d",
+            "recorded_at": "2026-10-06T18:04:09Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P2_WRK_001_FEAT_工作台/01/T6",
+          "status": "verified",
+          "base_sha": "126f33dcef94286d64075f8b2bfab278ad9b225d",
+          "head_sha": "96179aab5657b68af1756e348de6c5d230553315",
+          "verification": {
+            "path": "execution-evidence/01_T6r_96179aa.md",
+            "digest": "52a9e23835b75569a7188d79d2360d9eeee3056adad42e83446a7cedd4665057",
+            "head_sha": "96179aab5657b68af1756e348de6c5d230553315",
+            "recorded_at": "2026-10-06T18:27:32Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01_review_passed_3d54c05.md",
+        "digest": "677cb09253578d62935fc45af56dd345b70f36691a14543dab1659dc21c0d0ab",
+        "head_sha": "3d54c05ded321b528d4eccceeb78e257fb099044",
+        "base_sha": "72a54d2e2fbc13665fb06f1e73e4e9ff6f7f34c2",
+        "passed": true,
+        "recorded_at": "2026-10-06T18:50:45Z"
+      },
+      "review_failures": 2
+    }
+  },
+  "updated_at": "2026-10-06T18:50:45Z"
+}
