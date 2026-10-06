@@ -1290,6 +1290,7 @@
       "periodLabel": "Evaluation period",
       "periodPlaceholder": "Select period",
       "current": "Current",
+      "currentLabel": "{{range}} (Current)",
       "updatedAt": "Data updated at {{time}}"
     },
     "activity": {

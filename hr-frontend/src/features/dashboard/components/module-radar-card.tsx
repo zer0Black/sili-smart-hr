@@ -93,7 +93,7 @@ export function ModuleRadarCard(props: { data: DashboardModule }): JSX.Element {
                 fillOpacity={0.15}
                 isAnimationActive={false}
               />
-              <Tooltip formatter={(value) => (typeof value === 'number' ? value : value)} />
+              <Tooltip formatter={(value) => (typeof value === 'number' ? value : '-')} />
             </RadarChart>
           </ResponsiveContainer>
         </div>

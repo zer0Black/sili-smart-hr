@@ -437,6 +437,19 @@ describe('列表页 URL 参数预填（specs §4.1.3 / §7.2）', () => {
     expect(latest.dimension_code).toBe('AI_WRITING');
   });
 
+  it('TestProfilePage_PrefillInvalidDimCleared：携无效 dimension_code 进入，维度树就绪后清空筛选按 undefined 重查（§7.2 无效值按 undefined 处理）', async () => {
+    listMock.mockResolvedValue(twoRowList());
+
+    await renderAt('/profile', undefined, { dimension_code: 'NOT_EXIST' });
+
+    // 维度树（makeTree 含 AI_COMMUNICATION/AI_WRITING/MGMT_PLAN）就绪后无效 code 被清空
+    await waitFor(() => {
+      const latest = listMock.mock.calls[listMock.mock.calls.length - 1][0] as { dimension_code?: string };
+      expect(latest.dimension_code).toBeUndefined();
+    });
+    expect(await screen.findByText('张三')).toBeInTheDocument();
+  });
+
   it('TestProfilePage_ManualFilterUnchanged：无参数进入首查不含筛选参数，行为与现状一致（回归锚点）', async () => {
     listMock.mockResolvedValue(twoRowList());
 

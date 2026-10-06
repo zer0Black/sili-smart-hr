@@ -1,6 +1,6 @@
 // 人员画像列表表格（specs P2_PRF_001 §4.1）：筛选区（姓名/活跃度/短板维度/仅看未使用）
 // + 工具栏（导出）+ 表格 + 分页。筛选与分页状态组件内部自治（batch-table 样板）。
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -85,6 +85,15 @@ export function ProfileTable(props: {
     .filter((m) => m.module_code === 'AI_USAGE' || m.module_code === 'AI_MGMT')
     .flatMap((m) => (m.groups ? m.groups.flatMap((g) => g.dimensions) : (m.dimensions ?? [])))
     .filter((d) => d.enabled);
+
+  // 深链预填值域校验（specs P2_TMD_001 §7.2）：维度树就绪后校验 dimension_code，
+  // 无效 code（手改 URL）清空筛选按 undefined 处理，避免空下拉挂死与无谓请求。
+  const initialDim = props.initialFilter?.dimension_code;
+  useEffect(() => {
+    if (initialDim && treeQ.data && !dimensionOptions.some((d) => d.code === initialDim)) {
+      setFilter((f) => (f.dimension_code === initialDim ? { ...f, dimension_code: undefined } : f));
+    }
+  }, [initialDim, treeQ.data, dimensionOptions]);
 
   // 外部 resetKey（跳过首挂载）：清筛选回第一页，filter 变化触发重查
   useResetSignal(props.resetKey, () => {

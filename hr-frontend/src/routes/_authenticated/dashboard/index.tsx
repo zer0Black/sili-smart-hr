@@ -45,7 +45,9 @@ export function DashboardPage(): JSX.Element {
   }, [query.data]);
 
   const data = query.data;
-  const loading = query.isPending || query.isFetching;
+  // 仅判 isPending（首次加载与切区间新 queryKey）：后台静默刷新（isFetching）
+  // 保持已可见数据，刷新完成后自然替换，防重访闪整块加载态。
+  const loading = query.isPending;
 
   if (query.isError) {
     // 整页接口失败（含 1305）错误占位 + 重试，不用部分数据降级渲染（specs §4.1.5）

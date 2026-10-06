@@ -15,15 +15,11 @@ import {
 } from 'recharts';
 
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { changeColorClass } from '@/features/dashboard/types';
 import type { DashboardTrendDim } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
 const LINE_COLOR = 'var(--chart-1)';
-
-/** 环比方向色（specs §4.2.2 B）：正 chart-2、负 warning、0 灰。 */
-const CHANGE_UP = 'text-chart-2';
-const CHANGE_DOWN = 'text-warning';
-const CHANGE_FLAT = 'text-muted-foreground';
 
 export function TrendDimensionCard(props: { data: DashboardTrendDim }): JSX.Element {
   const { t } = useTranslation('dashboard');
@@ -64,7 +60,7 @@ export function TrendDimensionCard(props: { data: DashboardTrendDim }): JSX.Elem
               <span
                 className={cn(
                   'inline-flex items-center gap-0.5 text-xs font-medium',
-                  change > 0 ? CHANGE_UP : change < 0 ? CHANGE_DOWN : CHANGE_FLAT,
+                  changeColorClass(change),
                 )}
               >
                 {change > 0 ? (

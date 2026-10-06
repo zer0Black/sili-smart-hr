@@ -18,12 +18,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { changeColorClass } from '@/features/dashboard/types';
 import type { DashboardTrendDim } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
-
-const CHANGE_UP = 'text-chart-2';
-const CHANGE_DOWN = 'text-warning';
-const CHANGE_FLAT = 'text-muted-foreground';
 
 export function TrendChangeTable(props: {
   dimensions: DashboardTrendDim[];
@@ -32,8 +29,7 @@ export function TrendChangeTable(props: {
   const { dimensions } = props;
 
   const changeText = (v: number) => (v > 0 ? `+${v}` : `${v}`);
-  const changeClass = (v: number) =>
-    v > 0 ? CHANGE_UP : v < 0 ? CHANGE_DOWN : CHANGE_FLAT;
+  const changeClass = changeColorClass;
 
   return (
     <Card>

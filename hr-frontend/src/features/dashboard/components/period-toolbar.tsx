@@ -43,8 +43,9 @@ export function PeriodToolbar(props: {
         <SelectContent>
           {periods.map((p) => (
             <SelectItem key={periodValue(p)} value={periodValue(p)}>
-              {p.period_start} ~ {p.period_end}
-              {p.is_current ? `（${t('toolbar.current')}）` : ''}
+              {p.is_current
+                ? t('toolbar.currentLabel', { range: `${p.period_start} ~ ${p.period_end}` })
+                : `${p.period_start} ~ ${p.period_end}`}
             </SelectItem>
           ))}
         </SelectContent>

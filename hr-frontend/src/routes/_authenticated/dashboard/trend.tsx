@@ -17,7 +17,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { TrendChangeTable } from '@/features/dashboard/components/trend-change-table';
 import { TrendDimensionCard } from '@/features/dashboard/components/trend-dimension-card';
 import { useDashboardTrend } from '@/features/dashboard/hooks';
-import { normalizeAbilityType, type DashboardAbilityType } from '@/features/dashboard/types';
+import { changeColorClass, normalizeAbilityType, type DashboardAbilityType } from '@/features/dashboard/types';
 import { cn } from '@/lib/utils';
 
 export const Route = createFileRoute('/_authenticated/dashboard/trend')({
@@ -41,11 +41,6 @@ const SOURCE_KEY: Record<DashboardAbilityType, string> = {
   use: 'trend.sourceUsage',
   manage: 'trend.sourceMgmt',
 };
-
-/** 环比方向色（specs §4.2.2 A 上升/下降/持平方向色）。 */
-const CHANGE_UP = 'text-chart-2';
-const CHANGE_DOWN = 'text-warning';
-const CHANGE_FLAT = 'text-muted-foreground';
 
 function TrendLoadingBlock(): JSX.Element {
   const { t } = useTranslation('dashboard');
@@ -143,11 +138,7 @@ export function DashboardTrendPage(): JSX.Element {
               <span
                 className={cn(
                   'inline-flex items-center gap-0.5 text-xs font-medium',
-                  composite.change_vs_prev > 0
-                    ? CHANGE_UP
-                    : composite.change_vs_prev < 0
-                      ? CHANGE_DOWN
-                      : CHANGE_FLAT,
+                  changeColorClass(composite.change_vs_prev),
                 )}
               >
                 {composite.change_vs_prev > 0

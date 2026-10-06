@@ -1290,6 +1290,7 @@
       "periodLabel": "评估区间",
       "periodPlaceholder": "选择区间",
       "current": "本期",
+      "currentLabel": "{{range}}（本期）",
       "updatedAt": "数据更新于 {{time}}"
     },
     "activity": {
