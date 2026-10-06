@@ -87,7 +87,7 @@ func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 
 // TickScan tick 拾取编排（specs §5.1.2 步1/步2/步6，03 §4.1）：拾取扫描命中
 // 则幂等建行/续作并投递 generate，无命中走滞留续投检查。投递失败行保持
-// generating，由下个 tick 沿既有行续作。
+// generating，重试 tick 被拾取锁拦下空转，滞留超阈值后由续投兜底（步5）。
 func (s *SuggestService) TickScan(ctx context.Context, now time.Time) error {
 	rows, err := s.suggestions.FindAll(ctx)
 	if err != nil {
@@ -158,7 +158,8 @@ func (s *SuggestService) retryStuckGenerating(ctx context.Context, rows []domain
 // Generate 生成任务编排（specs §5.1.2 步2-5，03 §4.2）：批次与建议行定位
 //（竞态残留幂等返 nil）→ 数据异常判定（三素材表均无行落 failed 避免重扫）→
 // 素材汇总（口径同看板）→ 引擎生成 → generated 终态落库。
-// 常规 err 上抛交 Asynq 任务级重试，沿既有 generating 行续作（specs §5.1.4 规则3）。
+// 常规 err 上抛交 Asynq 任务级重试，重试沿既有 generating 行续作（generate
+// 任务的 status=generating 守卫收敛竞态）。
 func (s *SuggestService) Generate(ctx context.Context, batchID int64) error {
 	batch, err := s.batches.GetByID(ctx, batchID)
 	if err != nil {

@@ -380,7 +380,7 @@ GET /api/dashboard/trend?type=manage
              批次号随行更新（period 唯一约束兜底，uk_suggestion_period）
        4. 投递 dashboard:suggest-generate 任务（payload 携批次雪花 ID 十进制
           字符串），投递失败 err 透传交 Asynq 任务级重试（行保持 generating，
-          重试 tick 沿既有生成中行续作，不重复拾取）
+          重试 tick 被生成中拾取锁拦下空转，恢复由步5 滞留续投兜底）
        5. 滞留续投兜底（specs/03 原始定义未覆盖的实现期补充）：
           生成中行超 suggestStuckThreshold（20min）未更新视为任务丢失，
           touch 更新时间后按行内 batch_no 重投生成任务；行内批次已不存在
@@ -418,9 +418,10 @@ GET /api/dashboard/trend?type=manage
           c. 活跃度三态计数（activity_stats 该区间全行）
           d. 共性短板维度清单与维度口径快照（dimensions 评分锚点摘要）
        3. 批次数据异常判定（specs §5.1.5 末行）：该 period 在
-          dimension_scores 与 aggregate_scores 均无任何行（两表有一即视为
-          有素材）→ 建议行落 failed（记因）返回 nil，避免 tick 反复重扫；
-          仅 activity_stats 有行的正常周期按可用素材照常生成
+          dimension_scores、aggregate_scores 与 activity_stats 三表均无
+          任何行（任一表有行即视为有素材）→ 建议行落 failed（记因）返回
+          nil，避免 tick 反复重扫；仅 activity_stats 有行的正常周期按可用
+          素材照常生成
        4. 组装提示词（固定模板 + 结构化素材，不含任何单人明细与对话原文，
           specs §5.1.4 规则4）调用当前启用大模型（专用 client，§4.4），
           要求产出两模块各 2-4 条培训方向建议（每条含方向名称与说明）

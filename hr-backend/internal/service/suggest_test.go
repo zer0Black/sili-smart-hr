@@ -1,6 +1,6 @@
 // suggest_test 对建议生成编排做黑盒单元测试（specs P2_TMD_001 §5.1.2/§5.1.4/§5.1.5）。
 //
-// fake 仓储 + fake 生成器经 SuggestGeneratorInjector 注入，不依赖真实 DB / LLM。
+// fake 仓储 + fake 生成器经 NewSuggestService 参数注入，不依赖真实 DB / LLM。
 // 覆盖：tick 拾取最早批次、无命中空转、投递失败行保持 generating、generate
 // 竞态残留幂等、批次数据异常落 failed、仅 activity 有行照常生成、素材汇总口径
 // 同看板、成功路径终态落库、LLM 失败 err 透传、重试耗尽钩子幂等。
@@ -276,7 +276,7 @@ func TestTickScan_NoHit(t *testing.T) {
 }
 
 // TestTickScan_EnqueueFailKeepsRow 验证投递失败 err 透传且建行保持 generating
-//（specs §5.1.4 规则5、03 §4.1 步4：行不回滚，重试 tick 沿既有生成中行续作）。
+//（specs §5.1.4 规则5、03 §4.1 步4：行不回滚，滞留超阈值后由续投兜底恢复）。
 func TestTickScan_EnqueueFailKeepsRow(t *testing.T) {
 	w0 := sugWeek(0)
 	sug := &fakeSuggestSuggestions{}

@@ -29,6 +29,9 @@ export function EnneagramPanel(props: {
 
   const typeName = (type: string) =>
     type >= '1' && type <= '9' ? tp(`enneagram.type${type}`) : type;
+  // 契约外值域直接落空串，防 t() 渲染原始键名（与 typeName 同款守卫）
+  const traitText = (type: string) =>
+    type >= '1' && type <= '9' ? t(`enneagram.trait${type}`) : '';
 
   return (
     <Card>
@@ -54,7 +57,7 @@ export function EnneagramPanel(props: {
                   </span>
                 </dd>
                 <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
-                  {t(`enneagram.trait${data.dominant_type}`)}
+                  {traitText(data.dominant_type)}
                 </p>
               </div>
               <div>
@@ -66,7 +69,7 @@ export function EnneagramPanel(props: {
                   </span>
                 </dd>
                 <p className="text-muted-foreground mt-0.5 text-xs leading-relaxed">
-                  {t(`enneagram.trait${data.secondary_type}`)}
+                  {traitText(data.secondary_type)}
                 </p>
               </div>
               <div>

@@ -1,6 +1,6 @@
 // 本期较上期变化表（specs P2_TMD_001 §4.2.2 C / §4.2.4 规则2/规则3）：
 // 四列表格（维度[含色点与短板标签]/上期分/本期分/变化），固定行数无分页（specs §8.3 偏离记录）。
-// prev/current/change 任一 null 显示 -；变化非 null 按升绿降红持平灰着色。
+// prev/current/change 任一 null 显示 -；变化非 null 按方向着色（升 chart-2、降 warning、持平灰，计划 T2 裁定口径）。
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
 

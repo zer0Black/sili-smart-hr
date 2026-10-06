@@ -36,7 +36,8 @@ export function ModuleRadarCard(props: { data: DashboardModule }): JSX.Element {
   const type = ABILITY_OF_MODULE[data.module];
   const weaknesses = data.dimensions.filter((d) => d.is_weakness);
 
-  // avg_score null 的轴数据点为 undefined，Radar 不画该点（断轴，数据层 null 传导）
+  // avg_score null 的轴数据点为 undefined，recharts 对 nullish 取 radius=0，
+  // 该轴塌陷到圆心（非断线，specs §4.1.4 规则3「断开」的数据层传导口径）
   const radarData = data.dimensions.map((d) => ({
     dimension: d.dimension_name,
     avg: d.avg_score ?? undefined,

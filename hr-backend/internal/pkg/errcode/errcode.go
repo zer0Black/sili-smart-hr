@@ -65,7 +65,7 @@ const (
 	// 个人画像 20xx 段（P2_PRF_001）。
 	ProfilePeriodInvalid = 2001 // 所选区间不在该人区间列表内（回落最新区间）
 	// 团队看板 21xx 段（P2_TMD_001）。
-	DashboardPeriodInvalid = 2101 // 所选区间不在落库区间列表内（回落最新区间）
+	DashboardPeriodInvalid = 2101 // 所选区间不在落库区间列表内（整页错误态）
 )
 
 var messages = map[int]string{

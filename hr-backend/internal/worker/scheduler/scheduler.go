@@ -9,7 +9,9 @@ import (
 	"sili-smart-hr/backend/internal/worker/task"
 )
 
-// healthCheckCron 是 no-op 健康任务与批次 tick 任务的触发周期，每分钟一次。
+// tickCron 是四类分钟级任务的触发周期，每分钟一次：no-op 健康任务、批次
+// tick、主动测试逾期 tick 与建议生成 tick（同频共用，语义等价于各域独立
+// cron 常量，单点收敛避免同值散布）。
 const healthCheckCron = "*/1 * * * *"
 
 // NewScheduler 构造 Asynq scheduler 并注册 no-op 健康任务、批次 tick 任务、

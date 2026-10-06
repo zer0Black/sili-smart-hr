@@ -122,7 +122,7 @@ func TestDashboardOverview_Params(t *testing.T) {
 }
 
 // TestDashboardOverview_2101 覆盖核心断言：fake 返 *service.Error{2101} 时
-// HTTP 200 + body code 2101（specs §5.2.4 规则2 错误语义，前端提示并回落最新区间）。
+// HTTP 200 + body code 2101（specs §5.2.4 规则2 错误语义，前端按通用错误态整页占位处理）。
 func TestDashboardOverview_2101(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &fakeDashboardSvc{overviewErr: service.NewError(errcode.DashboardPeriodInvalid)}

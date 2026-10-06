@@ -184,7 +184,7 @@ function DimensionRadar(props: { rows: ProfileDimensionRow[] }): JSX.Element {
   const data = props.rows.map((r) => ({
     dimension: r.dimension_name,
     personal: r.score === null ? undefined : r.score,
-    // company_avg null（<3 人）对照值为 undefined，Radar 不画该线段（specs §4.2.4 规则4）
+    // company_avg null（<3 人）对照值为 undefined，recharts 对 nullish 取 radius=0 塌陷圆心（非断线，specs §4.2.4 规则4）
     company: r.company_avg === null ? undefined : r.company_avg,
   }));
   const hasCompany = data.some((d) => d.company !== undefined);

@@ -23,8 +23,8 @@ type SuggestTickRunner interface {
 
 // NewSuggestTickHandler 构造建议 tick 任务 handler（mux 注册归 health.go NewMux）。
 // 零 payload 极简（batch_tick 同款）；无命中空转 err==nil，扫描/建行/投递
-// 失败 err 非 nil 透传交 Asynq 任务级重试，行保持 generating 由下个 tick
-// 沿既有行续作（03 §4.1）。
+// 失败 err 非 nil 透传交 Asynq 任务级重试，行保持 generating，滞留超阈值后
+// 由续投兜底（03 §4.1 步5）。
 func NewSuggestTickHandler(runner SuggestTickRunner) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
 		return runner.TickScan(ctx, time.Now())
