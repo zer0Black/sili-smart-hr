@@ -1360,5 +1360,77 @@
       "colCurrent": "本期分",
       "colChange": "变化"
     }
+  },
+  "workspace": {
+    "page": {
+      "title": "工作台",
+      "subtitle": "本期评估态势、团队画像与待办聚合总览",
+      "loading": "加载中…",
+      "loadError": "工作台数据加载失败，请重试",
+      "retry": "重试",
+      "sectionEmpty": "暂无数据"
+    },
+    "batch": {
+      "title": "态势与待处理",
+      "statusLabel": "本期批次",
+      "status": {
+        "running": "进行中",
+        "success": "成功",
+        "partial_failed": "部分失败",
+        "failed": "失败"
+      },
+      "nextTrigger": "下次跑批 {{time}}",
+      "dataUpdatedAt": "数据更新时间 {{time}}",
+      "runCard": "跑批态势",
+      "runCardHint": "查看批次与跑批计划",
+      "alertCard": "告警次数",
+      "alertHint": "失败超阈告警，点击核查",
+      "overdueCard": "逾期任务数",
+      "overdueHint": "逾期的主动测试任务，点击处置",
+      "emptyTitle": "尚未发起评估",
+      "emptyHint": "发起首次周期评估后，这里将呈现本期态势",
+      "emptyGo": "前往评测运营中心"
+    },
+    "trend": {
+      "title": "团队能力演进",
+      "subtitle": "两模块综合分近 8 期走势与环比",
+      "legendUsage": "AI 使用能力",
+      "legendMgmt": "AI 管理能力",
+      "periodAxis": "区间止日",
+      "usageScore": "AI 使用能力综合分",
+      "mgmtScore": "AI 管理能力综合分",
+      "activeRatio": "活跃率",
+      "unusedCount": "未使用人数",
+      "score": "分"
+    },
+    "profile": {
+      "title": "团队整体画像速览",
+      "viewDashboard": "查看完整团队看板",
+      "weaknessTitle": "共性短板",
+      "lowRatio": "低分占比",
+      "suggestionTitle": "研判摘要",
+      "suggestionEmpty": "暂无数据",
+      "enneagramTitle": "九型构成",
+      "enneagramEmpty": "暂无九型人格测评数据",
+      "dominantType": "主导型"
+    },
+    "attention": {
+      "title": "需要关注的人",
+      "viewAll": "查看全员画像",
+      "colName": "姓名",
+      "colActivity": "活跃度",
+      "colAiUsage": "AI 使用能力总分",
+      "colAiMgmt": "AI 管理能力总分",
+      "colReason": "关注原因",
+      "colActions": "操作",
+      "actionView": "查看画像",
+      "pendingScore": "待评估",
+      "empty": "暂无需要关注的人"
+    },
+    "activityLevel": {
+      "active": "活跃",
+      "low_freq": "低频",
+      "unused": "未使用"
+    }
   }
 }

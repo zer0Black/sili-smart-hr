@@ -122,6 +122,12 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewTeamTrainingSuggestionRepository,
 		service.NewDashboardService,
 		handler.NewDashboardHandler,
+		// 工作台域（specs P2_WRK_001）：workspace 仓储 + service（消费既有 dashboard
+		// 仓储/维度/配置/密钥装配，时钟经 NowFunc 适配器转裸 func）+ handler（03 W1
+		// 单 GET 只读聚合实时计算不落库）。
+		repository.NewWorkspaceQueryRepository,
+		NewWorkspaceServiceAdapter,
+		handler.NewWorkspaceHandler,
 		// 建议生成两段任务（specs §5.1，03 §4.1/§4.2）：suggestgen 引擎（专用
 		// LLM client 180s 独立 gate）+ SuggestService（adapter 固定 inject=nil）+
 		// suggest-tick / suggest-generate 两 handler 经参数注入 NewMux + Asynq

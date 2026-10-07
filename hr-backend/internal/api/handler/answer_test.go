@@ -131,6 +131,7 @@ func newAnswerEngine(t *testing.T, svc *fakeAnswerSvc) http.Handler {
 		nil, // scaleHandler
 		nil, // profileHandler
 		nil, // dashboardHandler
+		nil, // workspaceHandler
 		rdb,
 	)
 }

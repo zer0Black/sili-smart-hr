@@ -1360,5 +1360,77 @@
       "colCurrent": "Current score",
       "colChange": "Change"
     }
+  },
+  "workspace": {
+    "page": {
+      "title": "Workspace",
+      "subtitle": "Current period posture, team profile and pending items at a glance",
+      "loading": "Loading…",
+      "loadError": "Failed to load workspace data, please retry",
+      "retry": "Retry",
+      "sectionEmpty": "No data yet"
+    },
+    "batch": {
+      "title": "Posture & Pending",
+      "statusLabel": "Current batch",
+      "status": {
+        "running": "Running",
+        "success": "Success",
+        "partial_failed": "Partial failed",
+        "failed": "Failed"
+      },
+      "nextTrigger": "Next run {{time}}",
+      "dataUpdatedAt": "Data updated at {{time}}",
+      "runCard": "Batch posture",
+      "runCardHint": "View batches and run plan",
+      "alertCard": "Alerts",
+      "alertHint": "Failure threshold alerts, click to inspect",
+      "overdueCard": "Overdue tasks",
+      "overdueHint": "Overdue active test tasks, click to handle",
+      "emptyTitle": "No assessment initiated yet",
+      "emptyHint": "Posture shows up after the first periodic assessment completes",
+      "emptyGo": "Go to assessment center"
+    },
+    "trend": {
+      "title": "Team Capability Evolution",
+      "subtitle": "Composite scores of both modules over last 8 periods",
+      "legendUsage": "AI Usage",
+      "legendMgmt": "AI Management",
+      "periodAxis": "Period end",
+      "usageScore": "AI usage composite score",
+      "mgmtScore": "AI management composite score",
+      "activeRatio": "Active ratio",
+      "unusedCount": "Unused members",
+      "score": "pts"
+    },
+    "profile": {
+      "title": "Team Profile Brief",
+      "viewDashboard": "View full team dashboard",
+      "weaknessTitle": "Common weaknesses",
+      "lowRatio": "Low-score ratio",
+      "suggestionTitle": "Assessment summary",
+      "suggestionEmpty": "No data yet",
+      "enneagramTitle": "Enneagram mix",
+      "enneagramEmpty": "No enneagram assessment data yet",
+      "dominantType": "Dominant type"
+    },
+    "attention": {
+      "title": "People Needing Attention",
+      "viewAll": "View all profiles",
+      "colName": "Name",
+      "colActivity": "Activity",
+      "colAiUsage": "AI usage score",
+      "colAiMgmt": "AI management score",
+      "colReason": "Reason",
+      "colActions": "Actions",
+      "actionView": "View profile",
+      "pendingScore": "Pending",
+      "empty": "No one needs attention"
+    },
+    "activityLevel": {
+      "active": "Active",
+      "low_freq": "Low frequency",
+      "unused": "Unused"
+    }
   }
 }

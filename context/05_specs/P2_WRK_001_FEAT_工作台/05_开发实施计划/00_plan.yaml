@@ -20,7 +20,7 @@ sub_plans:
   - id: "01"
     name: "工作台总览"
     file: "01_工作台总览.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"

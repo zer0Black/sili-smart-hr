@@ -426,6 +426,24 @@ func NewAnswerServiceAdapter(
 	return service.NewAnswerService(answerRepo, taskRepo, taskSvc, questionRepo, dimRepo, (func() time.Time)(now))
 }
 
+// NewWorkspaceServiceAdapter 是 Wire 装配适配器：接收 NowFunc 命名类型，内部转
+// 裸 func 调 service.NewWorkspaceService（userapiClient 经 service.ProvideUserapiClient
+// 绑定，NewAnswerServiceAdapter 同款）。
+func NewWorkspaceServiceAdapter(
+	queries repository.WorkspaceQueryRepository,
+	dashboard repository.DashboardQueryRepository,
+	suggestions repository.TeamTrainingSuggestionRepository,
+	dims repository.DimensionRepository,
+	configRepo repository.AssessmentConfigRepository,
+	staffs *userapi.Client,
+	secretRepo repository.IntegrationSecretRepository,
+	encKey []byte,
+	now NowFunc,
+) service.WorkspaceService {
+	return service.NewWorkspaceService(queries, dashboard, suggestions, dims, configRepo,
+		service.ProvideUserapiClient(staffs), secretRepo, encKey, (func() time.Time)(now))
+}
+
 // NewBatchTickHandlerTyped 构造 batch-tick handler（命名类型透出）。
 func NewBatchTickHandlerTyped(orch *pipeline.Orchestrator) BatchTickHandler {
 	return BatchTickHandler(task.NewBatchTickHandler(orch))

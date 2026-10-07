@@ -61,6 +61,9 @@ export interface TestTaskTableProps {
   resetKey?: number;
   /** 轮询开关：当前类型存在未终态任务时由父级 poll-counts 探针驱动（specs §4.1.3）。 */
   polling?: boolean;
+  /** 深链预填状态筛选（specs §4.1.3 逾期卡跳转）：同时初始化草稿与生效两层，
+   *  仅首挂载生效；resetKey 重置仍回全部。 */
+  initialStatusFilter?: string;
 }
 
 export const DEFAULT_PAGE_SIZE = 10;
@@ -94,19 +97,25 @@ export function TestTaskTable({
   resendingId,
   resetKey,
   polling,
+  initialStatusFilter,
 }: TestTaskTableProps): JSX.Element {
   const { t } = useTranslation('assessment');
   // 九型 tab 阅卷状态列呈现为判型状态、已评分呈现为已判定（specs §4.1.2 B）
   const isEnneagram = testType === 'enneagram';
 
-  const [draftStatus, setDraftStatus] = useState<string>(ALL);
+  // 深链预填：草稿与生效两层同初始化，Select 显示与查询生效同步（specs §4.1.3）
+  const [draftStatus, setDraftStatus] = useState<string>(initialStatusFilter ?? ALL);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [filter, setFilter] = useState<{
     status?: TestTaskStatus;
     keyword?: string;
     page: number;
     page_size: number;
-  }>({ page: 1, page_size: DEFAULT_PAGE_SIZE });
+  }>({
+    status: initialStatusFilter as TestTaskStatus | undefined,
+    page: 1,
+    page_size: DEFAULT_PAGE_SIZE,
+  });
   // 取消二次确认（specs §4.1.3 / §8.3 偏离4）：null 为关、非 null 为待取消行
   const [cancelTarget, setCancelTarget] = useState<TestTaskListItem | null>(null);
 
