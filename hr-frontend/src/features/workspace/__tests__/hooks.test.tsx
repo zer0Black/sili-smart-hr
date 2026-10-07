@@ -59,6 +59,13 @@ const dimNames: Record<string, string> = {
 };
 const formatDimension = (code: string) => dimNames[code] ?? code;
 
+// 句式模板：与 zh locale 的 attention.reason* key 同文案（真实组件经 i18n 注入）
+const reasonLabels = {
+  daysSinceActive: (n: number) => `最近活跃距今 ${n} 天`,
+  weakModule: (module: string, score: number, dims: string) =>
+    `${module} ${score} 分${dims === '' ? '' : `（短板：${dims}）`}`,
+};
+
 function makeRow(partial: Partial<WorkspaceAttentionRow>): WorkspaceAttentionRow {
   return {
     staff_name: '李芳',
@@ -111,7 +118,7 @@ describe('buildAttentionReason', () => {
       ],
     });
 
-    const reason = buildAttentionReason(row, formatModule, formatDimension);
+    const reason = buildAttentionReason(row, reasonLabels, formatModule, formatDimension);
 
     expect(reason).toContain('AI 使用能力');
     expect(reason).toContain('52');
@@ -132,7 +139,7 @@ describe('buildAttentionReason', () => {
       days_since_active: 12,
     });
 
-    const reason = buildAttentionReason(row, formatModule, formatDimension);
+    const reason = buildAttentionReason(row, reasonLabels, formatModule, formatDimension);
 
     expect(reason).toContain('12');
     expect(reason).toContain('天');
@@ -143,7 +150,7 @@ describe('buildAttentionReason', () => {
       weak_modules: [{ module: 'AI_USAGE', score: 58, weak_dims: [] }],
     });
 
-    const reason = buildAttentionReason(row, formatModule, formatDimension);
+    const reason = buildAttentionReason(row, reasonLabels, formatModule, formatDimension);
 
     expect(reason).toContain('AI 使用能力');
     expect(reason).toContain('58');
@@ -151,10 +158,11 @@ describe('buildAttentionReason', () => {
   });
 
   it('TestBuildAttentionReason_EmptyCarriers：载体为空（weak 无模块 / unused 无天数）兜底为空串', () => {
-    expect(buildAttentionReason(makeRow({}), formatModule, formatDimension)).toBe('');
+    expect(buildAttentionReason(makeRow({}), reasonLabels, formatModule, formatDimension)).toBe('');
     expect(
       buildAttentionReason(
         makeRow({ category: 'unused', days_since_active: null }),
+        reasonLabels,
         formatModule,
         formatDimension,
       ),

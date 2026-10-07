@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"math"
 	"sort"
-	"strconv"
 	"time"
 
 	"sili-smart-hr/backend/internal/domain"
@@ -23,6 +22,16 @@ const (
 	attentionLimitPerCategory = 5 // 关注人群每类配额（specs §4.1.4 规则3，不跨类补足）
 	weakScoreLine             = 60 // 短板人群模块总分判定线（取整后 < 60，与 lowScoreLine 同值不同语义）
 )
+
+// workspaceModuleSources 模块与评分来源对照单点：trend.series、profile 雷达、
+// attention 短板与 overall_avg 共用（两模块各配一个 source，03 §4.1）。
+var workspaceModuleSources = []struct{ module, source string }{
+	{domain.ModuleAIUsage, domain.ScoreSourceConversation},
+	{domain.ModuleAIMgmt, domain.ScoreSourceActiveTest},
+}
+
+// workspaceModuleCodes 模块码序列（attention 短板集合按模块拆分用，单点保序）。
+var workspaceModuleCodes = []string{domain.ModuleAIUsage, domain.ModuleAIMgmt}
 
 // WorkspaceService 工作台域只读聚合服务（specs §5.1，03 W1）。
 type WorkspaceService interface {
@@ -182,9 +191,6 @@ func NewWorkspaceService(
 func (s *workspaceService) Overview(ctx context.Context) (*WorkspaceDTO, error) {
 	dto := &WorkspaceDTO{Batch: &WorkspaceBatchDTO{}}
 
-	// 名单（03 §4.1 步5 前置拉取）：失败仅 trend.activity 与 attention 降级。
-	names, namesOK := s.fetchStaffNames(ctx)
-
 	bounds, periodsErr := s.dashboard.ListPeriods(ctx)
 	if periodsErr != nil {
 		slog.Error("workspace degrade: list periods", "err", periodsErr)
@@ -196,8 +202,12 @@ func (s *workspaceService) Overview(ctx context.Context) (*WorkspaceDTO, error) 
 
 	if len(bounds) == 0 {
 		// 无落库区间：下游三区块空态（specs §4.1.4 规则4/规则1）；批次表空时 status 已 nil。
+		// 名单（03 §4.1 步5）延后至此分支之后拉取：空态不消费名单，免一次无谓外部调用。
 		return dto, nil
 	}
+	// 名单（03 §4.1 步5 前置拉取）：失败仅 trend.activity 与 attention 降级。
+	names, namesOK := s.fetchStaffNames(ctx)
+
 	cur := bounds[0]
 	dto.CurrentPeriod = &WorkspacePeriodDTO{
 		PeriodStart: cur.StartAt.Local().Format(layoutDate),
@@ -240,8 +250,8 @@ func (s *workspaceService) fetchStaffNames(ctx context.Context) ([]string, bool)
 	return names, true
 }
 
-// buildBatch 态势卡（03 §4.1 步1，各源独立降级）：next_trigger_at 推算、批次状态定位
-//（§1.4 两级回退）、alert 存在性、逾期计数、数据更新时间。
+// buildBatch 态势卡（03 §4.1 步1）：next_trigger_at 推算、批次状态两级回退定位
+//（终态 finished_at 最新 → 无终态 triggered_at 最新）、alert 存在性、逾期计数、数据更新时间。
 func (s *workspaceService) buildBatch(ctx context.Context, bounds []repository.PeriodBound) *WorkspaceBatchDTO {
 	b := &WorkspaceBatchDTO{}
 
@@ -375,7 +385,7 @@ func workspaceTrendWindow(bounds []repository.PeriodBound) []repository.PeriodBo
 }
 
 // buildTrend 演进区（03 §4.1 步2）：series 逐期综合分 + activity 三态与环比。
-// 维度窗口行查询失败返回 nil（trend 整区块降级，03 §1.3 dimension_scores 行）。
+// 维度窗口行查询失败返回 nil（trend 整区块降级，同 §1.3 dimension_scores 窗口行）。
 func (s *workspaceService) buildTrend(ctx context.Context, window []repository.PeriodBound, names []string, namesOK bool) *WorkspaceTrendDTO {
 	trend := &WorkspaceTrendDTO{Periods: make([]WorkspacePeriodDTO, 0, len(window))}
 	for _, b := range window {
@@ -388,10 +398,7 @@ func (s *workspaceService) buildTrend(ctx context.Context, window []repository.P
 		return nil
 	}
 	trend.Series = make([]WorkspaceTrendSeriesDTO, 0, 2)
-	for _, m := range []struct{ module, source string }{
-		{domain.ModuleAIUsage, domain.ScoreSourceConversation},
-		{domain.ModuleAIMgmt, domain.ScoreSourceActiveTest},
-	} {
+	for _, m := range workspaceModuleSources {
 		trend.Series = append(trend.Series, workspaceSeries(window, rows, m.module, m.source))
 	}
 
@@ -472,24 +479,15 @@ func (s *workspaceService) buildTrendActivity(ctx context.Context, window []repo
 	return dto, nil
 }
 
-// countWorkspaceActivity 三态计数（buildActivity 同口径）：active 计 active 行，
+// countWorkspaceActivity 三态计数（countActivityLevels 同口径）：active 计 active 行，
 // unused = unused 行 + 名单无统计行；无统计行计数为负时钳 0。
 func countWorkspaceActivity(rows []domain.ActivityStat, staffTotal int) (active, unused int) {
-	seen := map[string]struct{}{}
-	for _, r := range rows {
-		switch r.ActiveLevel {
-		case domain.ActiveLevelActive:
-			active++
-		case domain.ActiveLevelUnused:
-			unused++
-		}
-		seen[r.TokenName] = struct{}{}
-	}
-	noRow := staffTotal - len(seen)
+	a, _, unusedRows, involved := countActivityLevels(rows)
+	noRow := staffTotal - involved
 	if noRow > 0 {
-		unused += noRow
+		unusedRows += noRow
 	}
-	return active, unused
+	return a, unusedRows
 }
 
 // buildProfile 画像速览区（03 §4.1 步3）：雷达 + 共性短板 + 九型 + 研判。
@@ -505,10 +503,7 @@ func (s *workspaceService) buildProfile(ctx context.Context, cur repository.Peri
 		Suggestion: WorkspaceSuggestionDTO{Status: "none"},
 	}
 	// 雷达与短板清单：buildDashboardModules 同口径组装，weaknessSet 同源补 low_ratio。
-	for _, m := range []struct{ module, source string }{
-		{domain.ModuleAIUsage, domain.ScoreSourceConversation},
-		{domain.ModuleAIMgmt, domain.ScoreSourceActiveTest},
-	} {
+	for _, m := range workspaceModuleSources {
 		aggs := aggregateDimScores(rows, m.source)
 		weak := weaknessSet(aggs)
 		item := WorkspaceModuleDTO{Module: m.module, Dimensions: []WorkspaceDimItemDTO{}}
@@ -555,10 +550,11 @@ func (s *workspaceService) buildProfile(ctx context.Context, cur repository.Peri
 
 // aggsByModuleOf 按模块分流的聚合结果（雷达 overall_avg 计算）。
 func aggsByModuleOf(rows []domain.DimensionScore) map[string]map[string]dimAvg {
-	return map[string]map[string]dimAvg{
-		domain.ModuleAIUsage: aggregateDimScores(rows, domain.ScoreSourceConversation),
-		domain.ModuleAIMgmt:  aggregateDimScores(rows, domain.ScoreSourceActiveTest),
+	out := make(map[string]map[string]dimAvg, len(workspaceModuleSources))
+	for _, m := range workspaceModuleSources {
+		out[m.module] = aggregateDimScores(rows, m.source)
 	}
+	return out
 }
 
 // fillWorkspaceOverallAvg 补各模块 overall_avg（同 buildDashboardModules 参考线口径）。
@@ -597,12 +593,7 @@ func workspaceEnneagram(byStaff map[string]domain.AssessmentTestResult) *Workspa
 	if scored == 0 {
 		return nil
 	}
-	distribution := make([]DashboardEnneagramItem, 0, 9)
-	for i := 1; i <= 9; i++ {
-		typ := strconv.Itoa(i)
-		c := counts[typ]
-		distribution = append(distribution, DashboardEnneagramItem{Type: typ, Count: c, Ratio: round1Percent(c, scored)})
-	}
+	distribution := enneagramDistribution(counts, scored)
 	dom := distribution[0]
 	for _, item := range distribution[1:] {
 		if item.Count > dom.Count {
@@ -612,8 +603,8 @@ func workspaceEnneagram(byStaff map[string]domain.AssessmentTestResult) *Workspa
 	return &WorkspaceEnneagramDTO{Distribution: distribution, DominantType: dom.Type, DominantRatio: dom.Ratio}
 }
 
-// buildAttention 关注人群（03 §4.1 步4、03 §1.5）：短板前 5 升序在前 + 未使用
-// 前 5 天数降序在后。任一数据源失败返回 nil（attention 区块空标记，03 §1.3）。
+// buildAttention 关注人群（03 §4.1 步4）：短板前 5 升序在前 + 未使用前 5 天数
+// 降序在后（判定与排序口径 §1.5）。任一数据源失败返回 nil（attention 区块空标记）。
 func (s *workspaceService) buildAttention(ctx context.Context, cur repository.PeriodBound,
 	bounds []repository.PeriodBound, dims []domain.Dimension, names []string) []WorkspaceAttentionRow {
 	aggRows, err := s.dashboard.ListModuleAggScoresByPeriods(ctx, []repository.PeriodBound{cur})
@@ -671,7 +662,7 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 	// 个人短板集合按模块拆分：weak_dims 作用域是该人该模块（03 §1.5），
 	// 逐模块过滤 (人,模块) 子集复用 buildShortboardSets 同口径。
 	shortByModule := map[string]map[string]map[string]struct{}{}
-	for _, m := range []string{domain.ModuleAIUsage, domain.ModuleAIMgmt} {
+	for _, m := range workspaceModuleCodes {
 		aggOne := make(map[profileModKey]domain.AggregateScore)
 		for k, v := range aggBy {
 			if k.module == m {
@@ -736,7 +727,7 @@ func buildWeakCandidates(aggRows []domain.AggregateScore, dimRows []domain.Dimen
 		if row.ActivityLevel == "" {
 			row.ActivityLevel = domain.ActiveLevelUnused
 		}
-		for _, m := range []string{domain.ModuleAIUsage, domain.ModuleAIMgmt} {
+		for _, m := range workspaceModuleCodes {
 			sc, ok := c.scores[m]
 			if !ok {
 				continue

@@ -8,6 +8,7 @@ import type { JSX } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ClickableStatCard } from '@/features/workspace/components/stat-card';
 import type { WorkspaceBatch } from '@/lib/contracts';
 
 /** 状态标签变体：running 中性、success 系统、partial/failed 警示（F6 batch-table 同款）。 */
@@ -17,28 +18,6 @@ function statusVariant(
   if (status === 'success') return 'secondary';
   if (status === 'partial_failed' || status === 'failed') return 'destructive';
   return 'default';
-}
-
-/** 可点击统计卡：label + 主数值 + 副提示，hover 边框/底色与 StatCard 形态一致。 */
-function ClickableCard(props: {
-  label: string;
-  value: number | string;
-  hint?: string;
-  onClick: () => void;
-}): JSX.Element {
-  const { label, value, hint, onClick } = props;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      className="cursor-pointer rounded-lg border p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
-    >
-      <span className="block text-xs font-medium">{label}</span>
-      <span className="mt-1 block font-mono text-2xl font-semibold">{value}</span>
-      {hint ? <span className="text-muted-foreground mt-1 block text-xs">{hint}</span> : null}
-    </button>
-  );
 }
 
 export function BatchSituationCards(props: { data: WorkspaceBatch }): JSX.Element {
@@ -98,7 +77,7 @@ export function BatchSituationCards(props: { data: WorkspaceBatch }): JSX.Elemen
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           {/* 跑批态势卡跳评测运营中心 AI 使用能力 tab（specs §4.1.3 / BR2） */}
-          <ClickableCard
+          <ClickableStatCard
             label={t('batch.runCard')}
             value={t(`batch.status.${data.status}`)}
             hint={t('batch.runCardHint')}
@@ -107,7 +86,7 @@ export function BatchSituationCards(props: { data: WorkspaceBatch }): JSX.Elemen
             }}
           />
           {/* 告警卡跳评测运营中心，由批次列表与失败明细处置（specs §4.1.3 / BR3） */}
-          <ClickableCard
+          <ClickableStatCard
             label={t('batch.alertCard')}
             value={data.alert_count ?? '-'}
             hint={t('batch.alertHint')}
@@ -116,7 +95,7 @@ export function BatchSituationCards(props: { data: WorkspaceBatch }): JSX.Elemen
             }}
           />
           {/* 逾期卡携 tab=ai_mgmt&status=expired 直达任务列表（specs §4.1.3 / BR4，已确认落 AI 管理能力 tab） */}
-          <ClickableCard
+          <ClickableStatCard
             label={t('batch.overdueCard')}
             value={data.overdue_count ?? '-'}
             hint={t('batch.overdueHint')}

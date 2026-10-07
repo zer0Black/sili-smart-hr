@@ -548,6 +548,18 @@ func buildDashboardModules(dims []domain.Dimension, rows []domain.DimensionScore
 	return out
 }
 
+// enneagramDistribution 判型计数转恒 9 项分布（dashboard 与 workspace 共用口径）：
+// 按型别 1-9 升序、占比一位小数（分母由调用方决定）。
+func enneagramDistribution(counts map[string]int, denom int) []DashboardEnneagramItem {
+	distribution := make([]DashboardEnneagramItem, 0, 9)
+	for i := 1; i <= 9; i++ {
+		typ := strconv.Itoa(i)
+		c := counts[typ]
+		distribution = append(distribution, DashboardEnneagramItem{Type: typ, Count: c, Ratio: round1Percent(c, denom)})
+	}
+	return distribution
+}
+
 // buildEnneagram 九型构成快照（specs §4.1.4 规则5）：全员最新 scored 判型集合统计，
 // 恒 9 项按型别升序，主导/次主导取占比最高两型（并列按型别序号升序取先）；
 // 名单空或无判型行时 nil。
@@ -572,12 +584,7 @@ func (s *dashboardService) buildEnneagram(ctx context.Context, names []string, s
 	if scored == 0 {
 		return nil, nil
 	}
-	distribution := make([]DashboardEnneagramItem, 0, 9)
-	for i := 1; i <= 9; i++ {
-		typ := strconv.Itoa(i)
-		c := counts[typ]
-		distribution = append(distribution, DashboardEnneagramItem{Type: typ, Count: c, Ratio: round1Percent(c, scored)})
-	}
+	distribution := enneagramDistribution(counts, scored)
 	order := []int{0, 1, 2, 3, 4, 5, 6, 7, 8}
 	sort.SliceStable(order, func(i, j int) bool {
 		a, b := distribution[order[i]], distribution[order[j]]
@@ -602,31 +609,33 @@ func (s *dashboardService) buildEnneagram(ctx context.Context, names []string, s
 	}, nil
 }
 
+// countActivityLevels 活跃度行三态计数（dashboard 与 workspace 共用口径）：
+// 返回 active/low/unused 行数与去重人数（无统计行并入未使用由调用方按名单合计）。
+func countActivityLevels(rows []domain.ActivityStat) (active, low, unused, involved int) {
+	seen := map[string]struct{}{}
+	for _, r := range rows {
+		switch r.ActiveLevel {
+		case domain.ActiveLevelActive:
+			active++
+		case domain.ActiveLevelLowFreq:
+			low++
+		case domain.ActiveLevelUnused:
+			unused++
+		}
+		seen[r.TokenName] = struct{}{}
+	}
+	return active, low, unused, len(seen)
+}
+
 // buildActivity 活跃度三态与环比（specs §4.1.4 规则2）：无统计行人员并入未使用；
 // 环比取区间列表下一项（更旧一期）同口径计数差，所选为最早区间时 mom=nil。
 func (s *dashboardService) buildActivity(ctx context.Context, bounds []repository.PeriodBound, selIdx, staffTotal int) (*DashboardActivityDTO, error) {
-	countActivity := func(rows []domain.ActivityStat) (active, low, unused, involved int) {
-		seen := map[string]struct{}{}
-		for _, r := range rows {
-			switch r.ActiveLevel {
-			case domain.ActiveLevelActive:
-				active++
-			case domain.ActiveLevelLowFreq:
-				low++
-			case domain.ActiveLevelUnused:
-				unused++
-			}
-			seen[r.TokenName] = struct{}{}
-		}
-		return active, low, unused, len(seen)
-	}
-
 	sel := bounds[selIdx]
 	rows, err := s.queries.ListActivityByPeriod(ctx, sel.StartAt.Unix(), sel.EndAt.Unix())
 	if err != nil {
 		return nil, fmt.Errorf("list activity stats: %w", err)
 	}
-	active, low, unusedRows, involved := countActivity(rows)
+	active, low, unusedRows, involved := countActivityLevels(rows)
 	unusedNoRow := staffTotal - involved
 	if unusedNoRow < 0 {
 		unusedNoRow = 0
@@ -646,7 +655,7 @@ func (s *dashboardService) buildActivity(ctx context.Context, bounds []repositor
 	if err != nil {
 		return nil, fmt.Errorf("list prev activity stats: %w", err)
 	}
-	pActive, _, pUnusedRows, pInvolved := countActivity(prevRows)
+	pActive, _, pUnusedRows, pInvolved := countActivityLevels(prevRows)
 	pUnusedNoRow := staffTotal - pInvolved
 	if pUnusedNoRow < 0 {
 		pUnusedNoRow = 0

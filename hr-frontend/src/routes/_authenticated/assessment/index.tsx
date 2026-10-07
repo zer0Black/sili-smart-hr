@@ -27,7 +27,7 @@ export const Route = createFileRoute('/_authenticated/assessment/')({
   // 落测试任务 tab；status=expired 预置已逾期筛选。一次性深链，消费后清参
   //（profile 先例）。tab 落 aiUsage 时仅清参不切 tab（默认即 aiUsage）。
   validateSearch: (search: Record<string, unknown>): { tab?: string; status?: string } => ({
-    tab: search.tab === 'ai_mgmt' || search.tab === 'enneagram' ? search.tab : undefined,
+    tab: isTestTab(search.tab) ? search.tab : undefined,
     status: search.status === 'expired' ? 'expired' : undefined,
   }),
   component: AssessmentCenterPage,
@@ -36,6 +36,11 @@ export const Route = createFileRoute('/_authenticated/assessment/')({
 /** 页内 tab：aiUsage=F6 对话分析，另两类为主动测试任务（specs §4.1.1）。 */
 type PageTab = 'aiUsage' | TestType;
 
+/** 深链 tab 白名单（validateSearch 与首挂载预填共用单点）。 */
+function isTestTab(v: unknown): v is 'ai_mgmt' | 'enneagram' {
+  return v === 'ai_mgmt' || v === 'enneagram';
+}
+
 export function AssessmentCenterPage() {
   const { t } = useTranslation('assessment');
   const navigate = useNavigate();
@@ -43,7 +48,7 @@ export function AssessmentCenterPage() {
 
   // 深链预填只在首挂载读一次 search（惰性初始化，profile 先例），后续清参重渲染不重置
   const [initialSearch] = useState(() => ({
-    tab: search.tab === 'ai_mgmt' || search.tab === 'enneagram' ? search.tab : undefined,
+    tab: isTestTab(search.tab) ? search.tab : undefined,
     status: search.status === 'expired' ? 'expired' : undefined,
   }));
 
@@ -70,7 +75,7 @@ export function AssessmentCenterPage() {
   const initialTab = initialSearch.tab;
   const initialStatus = initialSearch.status;
   useEffect(() => {
-    if (initialTab === 'ai_mgmt' || initialTab === 'enneagram') {
+    if (isTestTab(initialTab)) {
       setActiveTab(initialTab);
     }
   }, [initialTab]);

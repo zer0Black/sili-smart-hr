@@ -1393,21 +1393,15 @@
     },
     "trend": {
       "title": "Team Capability Evolution",
-      "subtitle": "Composite scores of both modules over last 8 periods",
       "legendUsage": "AI Usage",
       "legendMgmt": "AI Management",
-      "periodAxis": "Period end",
-      "usageScore": "AI usage composite score",
-      "mgmtScore": "AI management composite score",
       "activeRatio": "Active ratio",
-      "unusedCount": "Unused members",
-      "score": "pts"
+      "unusedCount": "Unused members"
     },
     "profile": {
       "title": "Team Profile Brief",
       "viewDashboard": "View full team dashboard",
       "weaknessTitle": "Common weaknesses",
-      "lowRatio": "Low-score ratio",
       "suggestionTitle": "Assessment summary",
       "suggestionEmpty": "No data yet",
       "enneagramTitle": "Enneagram mix",
@@ -1425,7 +1419,10 @@
       "colActions": "Actions",
       "actionView": "View profile",
       "pendingScore": "Pending",
-      "empty": "No one needs attention"
+      "empty": "No one needs attention",
+      "reasonDays": "Last active {{n}} days ago",
+      "reasonWeak": "{{module}} {{score}} pts{{dims}}",
+      "reasonWeakDims": " (weak: {{dims}})"
     },
     "activityLevel": {
       "active": "Active",

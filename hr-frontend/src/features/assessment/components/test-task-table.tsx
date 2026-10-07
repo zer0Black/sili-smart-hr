@@ -81,6 +81,13 @@ function statusVariant(status: TestTaskListItem['status']): 'default' | 'seconda
   return 'default';
 }
 
+/** 状态枚举守卫：深链入参白名单收敛，未知值按未预填处理。 */
+function isTestTaskStatus(v: string): v is TestTaskStatus {
+  return (
+    v === 'pending' || v === 'in_progress' || v === 'completed' || v === 'expired' || v === 'canceled'
+  );
+}
+
 /** 阅卷状态标签变体：scored 成功、degraded 警示、waiting/grading 中性。 */
 function gradingVariant(status: TestTaskListItem['grading_status']): 'default' | 'secondary' | 'destructive' {
   if (status === 'scored') return 'secondary';
@@ -103,8 +110,13 @@ export function TestTaskTable({
   // 九型 tab 阅卷状态列呈现为判型状态、已评分呈现为已判定（specs §4.1.2 B）
   const isEnneagram = testType === 'enneagram';
 
-  // 深链预填：草稿与生效两层同初始化，Select 显示与查询生效同步（specs §4.1.3）
-  const [draftStatus, setDraftStatus] = useState<string>(initialStatusFilter ?? ALL);
+  // 深链预填：草稿与生效两层同初始化，Select 显示与查询生效同步（specs §4.1.3）。
+  // 入参先过枚举守卫，未知值（含页面白名单外的 status）不进查询条件。
+  const presetStatus =
+    initialStatusFilter !== undefined && isTestTaskStatus(initialStatusFilter)
+      ? initialStatusFilter
+      : undefined;
+  const [draftStatus, setDraftStatus] = useState<string>(presetStatus ?? ALL);
   const [draftKeyword, setDraftKeyword] = useState('');
   const [filter, setFilter] = useState<{
     status?: TestTaskStatus;
@@ -112,7 +124,7 @@ export function TestTaskTable({
     page: number;
     page_size: number;
   }>({
-    status: initialStatusFilter as TestTaskStatus | undefined,
+    status: presetStatus,
     page: 1,
     page_size: DEFAULT_PAGE_SIZE,
   });

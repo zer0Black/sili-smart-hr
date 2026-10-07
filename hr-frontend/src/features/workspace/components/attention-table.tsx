@@ -5,6 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import type { JSX } from 'react';
 
+import i18n from '@/i18n/config';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -16,9 +17,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { buildAttentionReason, type WorkspaceModuleCode } from '@/features/workspace/types';
+import { buildAttentionReason, type AttentionReasonLabels, type WorkspaceModuleCode } from '@/features/workspace/types';
 import type { WorkspaceAttentionRow } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
+
+/** 关注原因句式模板（i18n，specs §4.1.2 D）：weak 条目与 unused 天数两态。 */
+const reasonLabels: AttentionReasonLabels = {
+  daysSinceActive: (n) => i18n.t('workspace:attention.reasonDays', { n }),
+  weakModule: (module, score, dims) =>
+    i18n.t('workspace:attention.reasonWeak', { module, score, dims: dims === '' ? '' : i18n.t('workspace:attention.reasonWeakDims', { dims }) }),
+};
 
 /** 首字母头像占位：取姓名首个字符。 */
 function AvatarInitial(props: { name: string }): JSX.Element {
@@ -107,7 +115,7 @@ export function AttentionTable(props: {
                     <ScoreCell score={row.ai_mgmt_score} />
                   </TableCell>
                   <TableCell className="max-w-72 text-sm">
-                    {buildAttentionReason(row, formatModule, formatDimension) || '-'}
+                    {buildAttentionReason(row, reasonLabels, formatModule, formatDimension) || '-'}
                   </TableCell>
                   <TableCell className="text-right">
                     {/* 查看画像跳个人画像详情（specs §4.1.3 / BR8） */}

@@ -1393,21 +1393,15 @@
     },
     "trend": {
       "title": "团队能力演进",
-      "subtitle": "两模块综合分近 8 期走势与环比",
       "legendUsage": "AI 使用能力",
       "legendMgmt": "AI 管理能力",
-      "periodAxis": "区间止日",
-      "usageScore": "AI 使用能力综合分",
-      "mgmtScore": "AI 管理能力综合分",
       "activeRatio": "活跃率",
-      "unusedCount": "未使用人数",
-      "score": "分"
+      "unusedCount": "未使用人数"
     },
     "profile": {
       "title": "团队整体画像速览",
       "viewDashboard": "查看完整团队看板",
       "weaknessTitle": "共性短板",
-      "lowRatio": "低分占比",
       "suggestionTitle": "研判摘要",
       "suggestionEmpty": "暂无数据",
       "enneagramTitle": "九型构成",
@@ -1425,7 +1419,10 @@
       "colActions": "操作",
       "actionView": "查看画像",
       "pendingScore": "待评估",
-      "empty": "暂无需要关注的人"
+      "empty": "暂无需要关注的人",
+      "reasonDays": "最近活跃距今 {{n}} 天",
+      "reasonWeak": "{{module}} {{score}} 分{{dims}}",
+      "reasonWeakDims": "（短板：{{dims}}）"
     },
     "activityLevel": {
       "active": "活跃",

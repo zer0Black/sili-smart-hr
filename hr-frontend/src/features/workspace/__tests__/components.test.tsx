@@ -393,6 +393,14 @@ describe('ProfileBrief（specs §4.1.2 C / §4.1.4 规则5）', () => {
 
     expect(navigateMock).toHaveBeenCalledWith({ to: '/dashboard' });
   });
+
+  it('TestProfileBrief_EnneagramNullEmpty：enneagram=null 显示九型空态文案（03 §1.3 降级矩阵）', () => {
+    render(<ProfileBrief data={{ ...profileData, enneagram: null }} />);
+
+    expect(screen.getByText('暂无九型人格测评数据')).toBeInTheDocument();
+    // 空态不渲染柱（chart-cell 仅柱状图使用）
+    expect(screen.queryAllByTestId('chart-cell')).toHaveLength(0);
+  });
 });
 
 // ---------- AttentionTable ----------
@@ -576,6 +584,43 @@ describe('WorkspacePage（specs §4.1.1 / §4.1.4 规则4）', () => {
     expect(screen.getAllByText('暂无数据').length).toBeGreaterThanOrEqual(2);
     // 关注表空态照常
     expect(screen.getByText('暂无需要关注的人')).toBeInTheDocument();
+  });
+
+  it('TestWorkspacePage_RowsChangeRerender：attention 行数与模块数在两次渲染间变化不崩溃（hook 出数据循环的回归锚点）', () => {
+    // 首渲染 2 行（weak 1 模块 + unused），refetch 后变为 3 行且 weak 行带双模块
+    workspaceMockReturnValue(makeQueryResult(fullData, 'success'));
+    const { rerender } = render(<WorkspacePage />);
+    expect(screen.getByText('李芳')).toBeInTheDocument();
+
+    const grown: WorkspaceData = {
+      ...fullData,
+      attention: [
+        ...attentionRows,
+        makeRow({
+          staff_name: '赵敏',
+          weak_modules: [
+            { module: 'AI_USAGE', score: 55, weak_dims: ['AI_UPPER_PLAN'] },
+            { module: 'AI_MGMT', score: 48, weak_dims: ['MGT_DELEGATION'] },
+          ],
+        }),
+      ],
+    };
+    workspaceMockReturnValue(makeQueryResult(grown, 'success'));
+    // 模块名格式化已收进组件顶层 hook，行数变化不改变 hook 调用序列
+    expect(() => rerender(<WorkspacePage />)).not.toThrow();
+    expect(screen.getByText('赵敏')).toBeInTheDocument();
+    // 仍能渲染关注原因（模块名经 dashboard:module 命名空间解析）
+    expect(screen.getAllByText(/AI 使用能力 55 分/).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('TestWorkspacePage_AttentionDimNameFromProfile：weak_dims 经画像速览维度清单映射为维度名（specs §4.1.2 D）', () => {
+    // profileData 的维度清单含 AI_UPPER_PLAN=任务规划 / MGT_DELEGATION=授权分工
+    workspaceMockReturnValue(makeQueryResult(fullData, 'success'));
+    render(<WorkspacePage />);
+
+    expect(screen.getByText(/短板：任务规划/)).toBeInTheDocument();
+    // 停用维度（画像清单外）回退 code 原值
+    expect(screen.getByText(/授权分工/)).toBeInTheDocument();
   });
 });
 

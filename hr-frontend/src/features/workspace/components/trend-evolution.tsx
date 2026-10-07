@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ClickableStatCard, StatCard } from '@/features/workspace/components/stat-card';
 import type { WorkspaceTrend } from '@/lib/contracts';
 import { cn } from '@/lib/utils';
 
@@ -24,19 +25,20 @@ const MGMT_COLOR = 'var(--chart-2)';
 const POSITIVE_COLOR = 'text-chart-2';
 const NEGATIVE_COLOR = 'text-warning';
 
-/** 环比区段：null 不渲染；方向色按 positiveWhenUp 判定（specs §4.1.5）。 */
+/** 环比区段：null 不渲染；方向色按 positiveWhenUp 判定（specs §4.1.5），0 持平中性色。 */
 function ChangeBadge(props: {
   value: number;
   unit?: string;
   positiveWhenUp: boolean;
 }): JSX.Element {
   const { value, unit = '', positiveWhenUp } = props;
+  const isFlat = value === 0;
   const isPositive = positiveWhenUp ? value > 0 : value < 0;
   return (
     <span
       className={cn(
         'inline-flex items-center gap-0.5 text-xs font-medium',
-        isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR,
+        isFlat ? 'text-muted-foreground' : isPositive ? POSITIVE_COLOR : NEGATIVE_COLOR,
       )}
     >
       {value > 0 ? (
@@ -169,44 +171,22 @@ export function TrendEvolution(props: { data: WorkspaceTrend }): JSX.Element {
                 }
               />
               {/* 未使用人数卡整卡可点击，携 unused_only 跳人员画像列表（specs §4.1.3 / BR5） */}
-              <button
-                type="button"
-                aria-label={t('trend.unusedCount')}
+              <ClickableStatCard
+                label={t('trend.unusedCount')}
+                value={activity.unused_count}
                 onClick={() => {
                   void navigate({ to: '/profile', search: { unused_only: 'true' } });
                 }}
-                className="cursor-pointer rounded-lg border p-4 text-left transition-colors hover:border-primary/40 hover:bg-accent/50"
-              >
-                <span className="block text-xs font-medium">{t('trend.unusedCount')}</span>
-                <span className="mt-1 flex items-baseline gap-2">
-                  <span className="font-mono text-2xl font-semibold">{activity.unused_count}</span>
-                  {activity.unused_change != null ? (
+                change={
+                  activity.unused_change != null ? (
                     <ChangeBadge value={activity.unused_change} positiveWhenUp={false} />
-                  ) : null}
-                </span>
-              </button>
+                  ) : null
+                }
+              />
             </>
           ) : null}
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-/** 综合分/活跃率卡：静态展示（不可点击），环比 null 时区段不渲染。 */
-function StatCard(props: {
-  label: string;
-  value: number | string;
-  change?: JSX.Element | null;
-}): JSX.Element {
-  const { label, value, change } = props;
-  return (
-    <div className="rounded-lg border p-4">
-      <span className="block text-xs font-medium">{label}</span>
-      <span className="mt-1 flex items-baseline gap-2">
-        <span className="font-mono text-2xl font-semibold">{value}</span>
-        {change ?? null}
-      </span>
-    </div>
   );
 }

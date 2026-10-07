@@ -33,7 +33,9 @@ specs §5.1.1 明文「一个只读聚合接口，一次返回工作台全量数
 | assessment_batches / assessment_alerts / test_tasks 查询 | `batch.status` / `batch.alert_count` / `batch.overdue_count` / `batch.data_updated_at` 各自 null | 态势卡对应字段空态 |
 | 三表区间并集（ListPeriods） | `current_period` / `trend` / `profile` / `attention` 全 null | 演进、画像、关注三区块空态 |
 | userapi 全员名单 | `trend.activity` null + `attention` null | 演进区活跃两张卡与关注表空态（specs §5.1.5 首行） |
-| dimension_scores / dimensions | `trend` null + `profile` null + `attention` null | 演进、画像与关注三区块空态（specs §5.1.5 次行；weak_dims 依赖 dimension_scores 同期行） |
+| dimension_scores 窗口行（ListDimScoresByPeriods） | `trend` null | 演进区块空态（窗口行仅演进区序列消费） |
+| dimension_scores 本期行（ListDimScoresByPeriod） | `profile` null + `attention` null | 画像与关注区块空态（specs §5.1.5 次行；weak_dims 依赖 dimension_scores 同期行） |
+| dimensions（ListAll） | `trend` null + `profile` null + `attention` null | 演进、画像与关注三区块空态（维度配置为三区块共用前置） |
 | activity_stats | `trend.activity` null + `attention` null | 同名单失败范围 |
 | aggregate_scores（ListModuleAggScoresByPeriods） | `attention` null | 关注表空态（短板人群与两模块总分不可判定，specs §5.1.5 聚合数据行；三表并集来源之一失败已由 ListPeriods 行覆盖） |
 | assessment_test_results（九型） | `profile.enneagram` null | 九型柱状区空态 |

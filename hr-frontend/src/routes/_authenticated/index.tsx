@@ -9,7 +9,7 @@ import { BatchSituationCards } from '@/features/workspace/components/batch-situa
 import { ProfileBrief } from '@/features/workspace/components/profile-brief';
 import { TrendEvolution } from '@/features/workspace/components/trend-evolution';
 import { useWorkspace } from '@/features/workspace/hooks';
-import type { WorkspaceModuleCode } from '@/features/workspace/types';
+import type { WorkspaceProfile } from '@/lib/contracts';
 
 export const Route = createFileRoute('/_authenticated/')({
   component: WorkspacePage,
@@ -34,6 +34,7 @@ function PageSkeleton(): JSX.Element {
  *  区块级空态互不阻断（specs §4.1.4 规则4）；无轮询（进行中批次经跳转跟进）。 */
 export function WorkspacePage(): JSX.Element {
   const { t } = useTranslation('workspace');
+  const { t: td } = useTranslation('dashboard');
   const query = useWorkspace();
 
   if (query.isError) {
@@ -75,11 +76,25 @@ export function WorkspacePage(): JSX.Element {
 
       <AttentionTable
         rows={data.attention ?? []}
-        formatModule={formatModuleLabel}
-        formatDimension={formatDimensionLabel}
+        formatModule={(m) => td(`module.${m}`)}
+        formatDimension={dimensionLabelOf(data.profile)}
       />
     </div>
   );
+}
+
+/** 维度名映射：attention 行 weak_dims 为 code 集合，从画像速览的维度清单
+ *  （attention 非 null 时 profile 必非 null）取 code→name，停用维度回退 code。 */
+function dimensionLabelOf(profile: WorkspaceProfile | null): (code: string) => string {
+  const names = new Map<string, string>();
+  if (profile !== null) {
+    for (const m of profile.modules) {
+      for (const d of m.dimensions) {
+        names.set(d.dimension_code, d.dimension_name);
+      }
+    }
+  }
+  return (code) => names.get(code) ?? code;
 }
 
 /** 区块级空态：标题保留 + 暂无数据提示（specs §4.1.4 规则4，独立空态不阻断整页）。 */
@@ -91,15 +106,4 @@ function SectionEmpty(props: { title: string }): JSX.Element {
       <p className="text-muted-foreground text-sm">{t('page.sectionEmpty')}</p>
     </div>
   );
-}
-
-/** 模块名：与 dashboard:module 口径一致。 */
-function formatModuleLabel(m: WorkspaceModuleCode): string {
-  const { t } = useTranslation('dashboard');
-  return t(`module.${m}`);
-}
-
-/** 维度名：attention 行 weak_dims 为 code 集合，无集中维度名映射时回退 code 原值。 */
-function formatDimensionLabel(code: string): string {
-  return code;
 }

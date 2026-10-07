@@ -359,25 +359,17 @@ func TestWorkspaceOverview_TrendSeries(t *testing.T) {
 	}
 
 	// AI_MGMT 全窗口无行：scores 全 nil 数组、current/change nil、series 行仍保留。
-	dq2 := &fakeWorkspaceDashboardQueries{periods: periods, dimWindow: rows,
-		dimByPer: map[[2]int64][]domain.DimensionScore{wrkKey(w0): rows}}
-	dq2.dimByPer[wrkKey(w0)] = func() []domain.DimensionScore {
-		out := []domain.DimensionScore{}
-		for _, r := range rows {
-			if r.Module != domain.ModuleAIMgmt {
-				out = append(out, r)
-			}
-		}
-		return out
-	}()
-	// 窗口行剔除 AI_MGMT。
 	filtered := []domain.DimensionScore{}
 	for _, r := range rows {
 		if r.Module != domain.ModuleAIMgmt {
 			filtered = append(filtered, r)
 		}
 	}
-	dq2.dimWindow = filtered
+	dq2 := &fakeWorkspaceDashboardQueries{
+		periods:   periods,
+		dimWindow: filtered,
+		dimByPer:  map[[2]int64][]domain.DimensionScore{wrkKey(w0): filtered},
+	}
 	res, err = newWorkspaceSvc(&fakeWorkspaceQueries{}, dq2, sug, dims, cfg, ua).Overview(context.Background())
 	if err != nil {
 		t.Fatalf("Overview 无 M 行: %v", err)
