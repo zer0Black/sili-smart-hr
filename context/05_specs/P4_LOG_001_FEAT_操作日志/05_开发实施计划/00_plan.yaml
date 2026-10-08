@@ -20,7 +20,7 @@ sub_plans:
   - id: "01"
     name: "写通道骨架"
     file: "01_写通道骨架.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"

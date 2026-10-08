@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "feature_id": "P4_LOG_001_FEAT_操作日志",
+  "subplans": {
+    "01": {
+      "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+      "plan_digest": "95a4a9e8963eaf07572a2a8f0618453eaf4e4d622414a1ce8ccc1280e414a0ed",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "bad2afabb83fef6871ffbcedba5820ccd6a630e803a2e194e2cb78bb1ea75ad4",
+        "../03_api_interface.md": "e48c4ae9f6a1eac6bb4eebad61999683d606f0f3225eed95cab8b77190905646",
+        "../04_model_interface.md": "517613980d9461379f8c1fd91c92de800f7839e3dd53074261ff85a9e5423ce9"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T1",
+          "status": "verified",
+          "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+          "head_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+          "verification": {
+            "path": "execution-evidence/01_T1_f653e78.md",
+            "digest": "0433d1302426ee0add4fb84fe3a54b80f74c147e1e41faeebbf9070e8e9a26e7",
+            "head_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+            "recorded_at": "2026-10-08T07:51:31Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T2",
+          "status": "verified",
+          "base_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+          "head_sha": "edd1d7ad9076dd047f9c257c77b643919e00da13",
+          "verification": {
+            "path": "execution-evidence/01_T2_edd1d7a.md",
+            "digest": "8098a9a7b7d4b541c4bd08e93fd29ca5b1c4e71047a5e6d43a64cfdcfa7aaecd",
+            "head_sha": "edd1d7ad9076dd047f9c257c77b643919e00da13",
+            "recorded_at": "2026-10-08T07:51:31Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T3",
+          "status": "verified",
+          "base_sha": "8567cf8fc43d4f3893a6a9d7800bbbb293675529",
+          "head_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+          "verification": {
+            "path": "execution-evidence/01_T3_c9d9985.md",
+            "digest": "8ef4f416943a5669c5bed5e9bde83b4b2d08c14cea2e393e2540f4160c85fe94",
+            "head_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+            "recorded_at": "2026-10-08T07:51:32Z",
+            "deferred_reason": null
+          }
+        },
+        "T4": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T4",
+          "status": "verified",
+          "base_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+          "head_sha": "a60cae7fc8d1d2d33c0341f763b4e26a6f2c34ae",
+          "verification": {
+            "path": "execution-evidence/01_T4_a60cae7.md",
+            "digest": "7b5b6f865cdccd7accc064b8d14eed2a2a476565f79e6e2c915e733a5cc95b3e",
+            "head_sha": "a60cae7fc8d1d2d33c0341f763b4e26a6f2c34ae",
+            "recorded_at": "2026-10-08T07:51:11Z",
+            "deferred_reason": null
+          }
+        },
+        "T5": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T5",
+          "status": "verified",
+          "base_sha": "32da1b813d7a298acfc7e096e2b4f0b8ffa002a9",
+          "head_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+          "verification": {
+            "path": "execution-evidence/01_T5_d292775.md",
+            "digest": "efc0c7402e1ad1ee80486e8aa0c74bfa4b142a741775a81d6738c2e031dddbda",
+            "head_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+            "recorded_at": "2026-10-08T07:51:32Z",
+            "deferred_reason": null
+          }
+        },
+        "T6": {
+          "key": "P4_LOG_001_FEAT_操作日志/01/T6",
+          "status": "verified",
+          "base_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+          "head_sha": "5a7dc46f55de319905c47545c62b1f89a09bd5c7",
+          "verification": {
+            "path": "execution-evidence/01_T6_5a7dc46.md",
+            "digest": "684f12159600e9b9aaae69b98b07adf05e3b4e3b960579c4b5f674d8b6f506b1",
+            "head_sha": "5a7dc46f55de319905c47545c62b1f89a09bd5c7",
+            "recorded_at": "2026-10-08T07:51:32Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/01_review_round4_pass.md",
+        "digest": "509ad5dc9b7fdaf932777da8f668930b7c92c51c171453beacfdb45952452efe",
+        "head_sha": "6b9376f39059a6b68cffe99400964900bbbbe5fb",
+        "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+        "passed": true,
+        "recorded_at": "2026-10-08T08:06:01Z"
+      },
+      "review_failures": 3,
+      "plan_changes": [
+        {
+          "reason": "用户裁决终审第三轮 plan-mandated 发现：按 03 §1.5 回改失败摘要逻辑（400 保留 body message），同步修正计划 T4 错误前提；代码修复提交 a60cae7",
+          "recorded_at": "2026-10-08T07:49:58Z",
+          "previous": {
+            "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+            "plan_digest": "c87efdc07bddc80a663a9ca2fa124cc79d89ceefceeea2bff2a1fc28cac1b49a",
+            "input_digests": {
+              "../01_功能需求规格说明书.md": "bad2afabb83fef6871ffbcedba5820ccd6a630e803a2e194e2cb78bb1ea75ad4",
+              "../03_api_interface.md": "e48c4ae9f6a1eac6bb4eebad61999683d606f0f3225eed95cab8b77190905646",
+              "../04_model_interface.md": "517613980d9461379f8c1fd91c92de800f7839e3dd53074261ff85a9e5423ce9"
+            },
+            "tasks": {
+              "T1": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T1",
+                "status": "verified",
+                "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+                "head_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+                "verification": {
+                  "path": "execution-evidence/01_T1_f653e78.md",
+                  "digest": "0433d1302426ee0add4fb84fe3a54b80f74c147e1e41faeebbf9070e8e9a26e7",
+                  "head_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+                  "recorded_at": "2026-10-08T04:26:58Z",
+                  "deferred_reason": null
+                }
+              },
+              "T2": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T2",
+                "status": "verified",
+                "base_sha": "f653e7890eccefa2db01b41198ae0b769f801b40",
+                "head_sha": "edd1d7ad9076dd047f9c257c77b643919e00da13",
+                "verification": {
+                  "path": "execution-evidence/01_T2_edd1d7a.md",
+                  "digest": "8098a9a7b7d4b541c4bd08e93fd29ca5b1c4e71047a5e6d43a64cfdcfa7aaecd",
+                  "head_sha": "edd1d7ad9076dd047f9c257c77b643919e00da13",
+                  "recorded_at": "2026-10-08T06:36:18Z",
+                  "deferred_reason": null
+                }
+              },
+              "T3": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T3",
+                "status": "verified",
+                "base_sha": "8567cf8fc43d4f3893a6a9d7800bbbb293675529",
+                "head_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+                "verification": {
+                  "path": "execution-evidence/01_T3_c9d9985.md",
+                  "digest": "8ef4f416943a5669c5bed5e9bde83b4b2d08c14cea2e393e2540f4160c85fe94",
+                  "head_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+                  "recorded_at": "2026-10-08T05:03:14Z",
+                  "deferred_reason": null
+                }
+              },
+              "T4": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T4",
+                "status": "verified",
+                "base_sha": "c9d99856767f13bdf56cef221afbafee3ac46559",
+                "head_sha": "6a0b2caa80d71a1181ab6fea76810ac7579b2822",
+                "verification": {
+                  "path": "execution-evidence/01_T4_6a0b2ca.md",
+                  "digest": "e9d2a74785e33c7f5654d3023a97d5944dde0b3ba545929ddbc3bb068d87814a",
+                  "head_sha": "6a0b2caa80d71a1181ab6fea76810ac7579b2822",
+                  "recorded_at": "2026-10-08T05:49:57Z",
+                  "deferred_reason": null
+                }
+              },
+              "T5": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T5",
+                "status": "verified",
+                "base_sha": "32da1b813d7a298acfc7e096e2b4f0b8ffa002a9",
+                "head_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+                "verification": {
+                  "path": "execution-evidence/01_T5_d292775.md",
+                  "digest": "efc0c7402e1ad1ee80486e8aa0c74bfa4b142a741775a81d6738c2e031dddbda",
+                  "head_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+                  "recorded_at": "2026-10-08T05:25:43Z",
+                  "deferred_reason": null
+                }
+              },
+              "T6": {
+                "key": "P4_LOG_001_FEAT_操作日志/01/T6",
+                "status": "verified",
+                "base_sha": "d29277589191f6c7b2a5a9c44363e36d159c24e2",
+                "head_sha": "5a7dc46f55de319905c47545c62b1f89a09bd5c7",
+                "verification": {
+                  "path": "execution-evidence/01_T6_5a7dc46.md",
+                  "digest": "684f12159600e9b9aaae69b98b07adf05e3b4e3b960579c4b5f674d8b6f506b1",
+                  "head_sha": "5a7dc46f55de319905c47545c62b1f89a09bd5c7",
+                  "recorded_at": "2026-10-08T05:37:10Z",
+                  "deferred_reason": null
+                }
+              }
+            },
+            "review": {
+              "path": "execution-evidence/01_review_round3.md",
+              "digest": "389b0cad2a0ce3c36731e069114e8674e0913ebf229c5997aab5e841fa84d58e",
+              "head_sha": "edd1d7ad9076dd047f9c257c77b643919e00da13",
+              "base_sha": "67eb7bfca54cca6aae7b54229eab4fecd9b946c6",
+              "passed": false,
+              "recorded_at": "2026-10-08T07:41:23Z"
+            },
+            "review_failures": 3
+          }
+        }
+      ]
+    }
+  },
+  "updated_at": "2026-10-08T08:06:01Z"
+}
