@@ -308,3 +308,80 @@ func TestIntegrationSecret_Test_CtxCanceled(t *testing.T) {
 		t.Fatalf("Msg leaked upstream URL, got %q", se.Msg)
 	}
 }
+
+// TestIntegrationSecretUpdateInjectsMasked 核心断言：集成密钥更新注入变更对比，
+// Changes 仅一项 {密钥值 旧掩码 新掩码}，恒掩码、明文与密文均不入日志（specs §7.2、§5.1.4 规则4）。
+func TestIntegrationSecretUpdateInjectsMasked(t *testing.T) {
+	repo := &fakeSecretRepo{
+		getSecret:    &domain.IntegrationSecret{ID: 5, SecretCipher: "old-cipher", SecretMasked: "old****mask", Version: 3},
+		affectedRows: 1,
+	}
+	dec := &fakeSecretDecryptor{pw: "new-secret-12345678"}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSecretSvc(repo, dec, &fakeConvLog{}).Update(ctx, 3, "rsa-cipher", "kid1"); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig {
+		t.Fatalf("module want llm_config（specs §4.1.4 规则1 决策14 归并）, got %s", snap.Module)
+	}
+	if snap.Target != "集成密钥" {
+		t.Fatalf("target want 集成密钥, got %s", snap.Target)
+	}
+	if len(snap.Changes) != 1 {
+		t.Fatalf("changes want exactly 1 item, got %+v", snap.Changes)
+	}
+	c := snap.Changes[0]
+	wantMasked := crypto.Mask("new-secret-12345678")
+	if c.Field != "密钥值" || c.Before != "old****mask" || c.After != wantMasked {
+		t.Fatalf("changes want {密钥值 old****mask %s}, got %+v", wantMasked, c)
+	}
+	// 明文与密文入参均不落任何日志字段。
+	if strings.Contains(snap.Detail, "new-secret-12345678") || strings.Contains(snap.Summary, "new-secret-12345678") ||
+		strings.Contains(snap.Target, "new-secret-12345678") {
+		t.Fatalf("日志字段泄漏密钥明文: %+v", snap)
+	}
+	if strings.Contains(snap.Detail, "rsa-cipher") || strings.Contains(snap.Summary, "rsa-cipher") ||
+		strings.Contains(c.Before, "rsa-cipher") || strings.Contains(c.After, "rsa-cipher") {
+		t.Fatalf("日志字段泄漏密文入参: %+v", snap)
+	}
+}
+
+// TestIntegrationSecretTestInjectsDetail 验证连通验证走 detail 文本形态（03 §4.1 清单 Test 行
+// 「仅注入对象与摘要」），Changes 恒 nil；成功与失败两路径都注入（specs §7.2 验证操作要求注入）。
+func TestIntegrationSecretTestInjectsDetail(t *testing.T) {
+	encKey := crypto.DeriveKey("test-integration-secret")
+	cipher, _ := crypto.Encrypt(encKey, "valid-bearer-secret")
+
+	repo := &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1, SecretCipher: cipher}}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSecretSvc(repo, &fakeSecretDecryptor{}, &fakeConvLog{}).Test(ctx); err != nil {
+		t.Fatalf("test: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig || snap.Target != "集成密钥" {
+		t.Fatalf("unexpected module/target: %s/%s", snap.Module, snap.Target)
+	}
+	if snap.Summary != "集成密钥验证成功" || snap.Detail != "集成密钥验证成功" {
+		t.Fatalf("summary/detail want 集成密钥验证成功, got %s/%s", snap.Summary, snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("test changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestIntegrationSecretTestFailNoInject 验证验证失败路径不注入埋点（specs §5.1.2 步骤3
+// 失败路径中间件以响应 message 兜底），sink 保持空。
+func TestIntegrationSecretTestFailNoInject(t *testing.T) {
+	encKey := crypto.DeriveKey("test-integration-secret")
+	cipher, _ := crypto.Encrypt(encKey, "valid-bearer-secret")
+	repo := &fakeSecretRepo{getSecret: &domain.IntegrationSecret{ID: 1, SecretCipher: cipher}}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSecretSvc(repo, &fakeSecretDecryptor{}, &fakeConvLog{pingErr: errors.New("密钥无效 (HTTP 401)")}).Test(ctx); err == nil {
+		t.Fatal("expected error")
+	}
+	snap := sink.Snapshot()
+	if snap.Summary != "" || snap.Detail != "" || snap.Changes != nil {
+		t.Fatalf("失败路径不应注入埋点, got %+v", snap)
+	}
+}

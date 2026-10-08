@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -501,4 +502,165 @@ func TestLLMConfig_Detail_DecryptFail(t *testing.T) {
 	repo := &fakeLLMRepo{byIDCfg: &domain.LLMConfig{ID: 1, APIKeyCipher: "not-valid-base64-cipher"}}
 	_, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Detail(context.Background(), 1)
 	wantLLMCode(t, err, errcode.SecretDecryptFailed)
+}
+
+// findLLMChange 按字段名查 changes 单项，不存在返回 nil。
+func findLLMChange(changes []domain.ChangeItem, field string) *domain.ChangeItem {
+	for i := range changes {
+		if changes[i].Field == field {
+			return &changes[i]
+		}
+	}
+	return nil
+}
+
+// assertNoLLMSecret 断言日志字段值不含 API Key 明文与密文入参（specs §5.1.4 规则4）。
+// 密钥行以掩码进 changes 是契约预期，只断言值不泄漏明文/密文。
+func assertNoLLMSecret(t *testing.T, snap service.PendingLog, secretFrag string) {
+	t.Helper()
+	for _, c := range snap.Changes {
+		if secretFrag != "" && (strings.Contains(c.Before, secretFrag) || strings.Contains(c.After, secretFrag)) {
+			t.Fatalf("changes 泄漏密钥值: %+v", c)
+		}
+	}
+	if secretFrag != "" && (strings.Contains(snap.Detail, secretFrag) || strings.Contains(snap.Summary, secretFrag) ||
+		strings.Contains(snap.Target, secretFrag)) {
+		t.Fatalf("日志字段泄漏密钥值: %+v", snap)
+	}
+}
+
+// TestLLMConfigCreateInjectsDetail 验证新增大模型走 detail 文本形态（specs §4.1.4 规则3：新增类无变更前后语义），
+// Changes 恒 nil，Detail 含模型名与供应商。
+func TestLLMConfigCreateInjectsDetail(t *testing.T) {
+	repo := &fakeLLMRepo{createExclusiveCount: 0}
+	dec := &fakeLLMDecryptor{pw: "sk-deepseek-12345678"}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newLLMSvc(repo, dec).Create(ctx, "主力模型", "deepseek", "deepseek-chat", "https://api.deepseek.com", "rsa-cipher", "kid1"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig {
+		t.Fatalf("module want llm_config, got %s", snap.Module)
+	}
+	if snap.Target != "大模型「主力模型」" {
+		t.Fatalf("target want 大模型「主力模型」, got %s", snap.Target)
+	}
+	if snap.Summary != "新增大模型配置 主力模型" {
+		t.Fatalf("summary want 新增大模型配置 主力模型, got %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("create changes want nil, got %+v", snap.Changes)
+	}
+	if !strings.Contains(snap.Detail, "主力模型") {
+		t.Fatalf("detail want model name, got %s", snap.Detail)
+	}
+	assertNoLLMSecret(t, snap, "sk-deepseek-12345678")
+}
+
+// TestLLMConfigUpdateInjectsMaskedChanges 核心断言：WithSink ctx 下 Update 改模型 ID，
+// Changes 含 {模型ID old new}；换钥时密钥行以掩码变化呈现，明文与密文均不入日志（specs §7.2、§5.1.4 规则4）。
+func TestLLMConfigUpdateInjectsMaskedChanges(t *testing.T) {
+	repo := &fakeLLMRepo{byIDCfg: &domain.LLMConfig{
+		ID: 1, Name: "旧名", Provider: "openai", ModelID: "gpt-4",
+		APIURL: "https://old.example.com", APIKeyCipher: "orig-cipher", APIKeyMasked: "sk-o****abcd", Version: 3,
+	}}
+	dec := &fakeLLMDecryptor{pw: "sk-newkey-12345678"}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newLLMSvc(repo, dec).Update(ctx, 1, 3, "旧名", "openai", "gpt-4o", "https://old.example.com", "rsa-cipher", "kid", true); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig || snap.Target != "大模型「旧名」" {
+		t.Fatalf("unexpected module/target: %s/%s", snap.Module, snap.Target)
+	}
+	c := findLLMChange(snap.Changes, "模型 ID")
+	if c == nil || c.Before != "gpt-4" || c.After != "gpt-4o" {
+		t.Fatalf("changes want {模型 ID gpt-4 gpt-4o}, got %+v", snap.Changes)
+	}
+	// 名称/供应商/接口地址未变不进 changes。
+	if findLLMChange(snap.Changes, "名称") != nil || findLLMChange(snap.Changes, "供应商") != nil ||
+		findLLMChange(snap.Changes, "接口地址") != nil {
+		t.Fatalf("未变化字段不应进 changes: %+v", snap.Changes)
+	}
+	// 换钥：密钥行掩码变化 old→new，恒掩码。
+	wantNewMasked := crypto.Mask("sk-newkey-12345678")
+	kc := findLLMChange(snap.Changes, "API Key")
+	if kc == nil || kc.Before != "sk-o****abcd" || kc.After != wantNewMasked {
+		t.Fatalf("changes want {API Key 旧掩码 新掩码}, got %+v", snap.Changes)
+	}
+	assertNoLLMSecret(t, snap, "sk-newkey-12345678")
+	assertNoLLMSecret(t, snap, "rsa-cipher")
+}
+
+// TestLLMConfigUpdateKeepKeyOmitsKeyRow 验证未换钥（hasAPIKey=false）时密钥行省略，
+// 变更只含实际变化字段。
+func TestLLMConfigUpdateKeepKeyOmitsKeyRow(t *testing.T) {
+	repo := &fakeLLMRepo{byIDCfg: &domain.LLMConfig{
+		ID: 1, Name: "旧名", Provider: "openai", ModelID: "gpt-4",
+		APIKeyCipher: "orig-cipher", APIKeyMasked: "sk-o****abcd", Version: 2,
+	}}
+	dec := &fakeLLMDecryptor{}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newLLMSvc(repo, dec).Update(ctx, 1, 2, "新名", "openai", "gpt-4", "", "", "kid", false); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if findLLMChange(snap.Changes, "名称") == nil {
+		t.Fatalf("名称变化应进 changes: %+v", snap.Changes)
+	}
+	if findLLMChange(snap.Changes, "API Key") != nil {
+		t.Fatalf("未换钥时密钥行应省略: %+v", snap.Changes)
+	}
+}
+
+// TestLLMConfigDeleteInjectsDetail 验证删除大模型走 detail 文本形态，Changes 恒 nil。
+func TestLLMConfigDeleteInjectsDetail(t *testing.T) {
+	repo := &fakeLLMRepo{
+		byIDCfg: &domain.LLMConfig{ID: 2, Name: "备选", Provider: "openai", ModelID: "gpt-4o", Enabled: false},
+		countN:  2,
+	}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Delete(ctx, 2); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig || snap.Target != "大模型「备选」" {
+		t.Fatalf("unexpected module/target: %s/%s", snap.Module, snap.Target)
+	}
+	if snap.Summary != "删除大模型配置 备选" || snap.Detail != "删除大模型配置 备选" {
+		t.Fatalf("summary/detail want 删除大模型配置 备选, got %s/%s", snap.Summary, snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("delete changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestLLMConfigEnableInjectsChanges 验证排他启用走变更对比形态，
+// changes 恒 [启用状态 false→true]（specs §7.2）。
+func TestLLMConfigEnableInjectsChanges(t *testing.T) {
+	repo := &fakeLLMRepo{byIDCfg: &domain.LLMConfig{ID: 5, Name: "主力", Provider: "deepseek", Enabled: false}}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newLLMSvc(repo, &fakeLLMDecryptor{}).Enable(ctx, 5); err != nil {
+		t.Fatalf("enable: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleLLMConfig {
+		t.Fatalf("module want llm_config, got %s", snap.Module)
+	}
+	if snap.Target != "大模型「主力」" {
+		t.Fatalf("target want 大模型「主力」, got %s", snap.Target)
+	}
+	if snap.Summary != "启用大模型 主力（排他启用）" {
+		t.Fatalf("summary want 启用大模型 主力（排他启用）, got %s", snap.Summary)
+	}
+	if len(snap.Changes) != 1 {
+		t.Fatalf("changes want exactly 1 item, got %+v", snap.Changes)
+	}
+	c := snap.Changes[0]
+	if c.Field != "启用状态" || c.Before != "false" || c.After != "true" {
+		t.Fatalf("changes want {启用状态 false true}, got %+v", c)
+	}
+	if snap.Detail != "" {
+		t.Fatalf("injectOperation 不应写 detail, got %s", snap.Detail)
+	}
 }

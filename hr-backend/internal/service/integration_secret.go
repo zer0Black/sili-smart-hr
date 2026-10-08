@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"unicode/utf8"
 
+	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
 	"sili-smart-hr/backend/internal/pkg/crypto"
 	"sili-smart-hr/backend/internal/pkg/errcode"
@@ -159,6 +160,8 @@ func (s *integrationSecretService) Update(ctx context.Context, version int, secr
 	if err != nil {
 		return nil, fmt.Errorf("get integration secret for update: %w", err)
 	}
+	// 旧掩码快照供埋点 diff（specs §7.2）。
+	oldMasked := secret.SecretMasked
 	// 用客户端回传的 version 作乐观锁凭证，覆盖 repo.Get 读回的当前值；repo 层 SQL 的 version+1 自增，
 	// affected==0 即并发冲突（旧快照被覆盖）返 1309。
 	secret.SecretCipher = cipher
@@ -171,6 +174,10 @@ func (s *integrationSecretService) Update(ctx context.Context, version int, secr
 	if affected == 0 {
 		return nil, NewError(errcode.IntegrationSecretVersionConflict)
 	}
+	// 集成密钥归 llm_config 类（specs §4.1.4 规则1 决策14），密钥行恒掩码（§5.1.4 规则4）。
+	injectOperation(ctx, domain.OpModuleLLMConfig, "集成密钥",
+		"更新集成密钥",
+		[]domain.ChangeItem{fmtChange("密钥值", oldMasked, masked)})
 	return &UpdateSecretResult{ID: secret.ID, Configured: true, Version: version + 1}, nil
 }
 
@@ -198,5 +205,7 @@ func (s *integrationSecretService) Test(ctx context.Context) (*SecretTestResult,
 		}
 		return nil, &Error{Code: errcode.IntegrationSecretTestFailed, Msg: msg}
 	}
+	// 验证无变更语义，仅注入对象与摘要（03 §4.1 清单 Test 行）。
+	injectDetail(ctx, domain.OpModuleLLMConfig, "集成密钥", "集成密钥验证成功", "集成密钥验证成功")
 	return &SecretTestResult{Connected: true}, nil
 }
