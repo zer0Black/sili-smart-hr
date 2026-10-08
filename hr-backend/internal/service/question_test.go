@@ -714,3 +714,109 @@ func wantQCode(t *testing.T, err error, code int) {
 		t.Fatalf("want code %d, got %v", code, err)
 	}
 }
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestQuestionUpdateInjectsDetail 编辑题目走 detail 文本形态：module=question_bank、
+// target 形如「题目 #Qxxx」、Changes 恒 nil。
+func TestQuestionUpdateInjectsDetail(t *testing.T) {
+	after := aiQuestion()
+	after.Version = 3
+	repo := &qFakeRepo{findByID: aiQuestion(), updateRows: 1, afterWrite: after, afterWriteFrom: 2}
+	svc := newQuestionSvc(repo, &qFakeDimRepo{dims: aiMgmtDims()})
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.UpdateQuestion(ctx, validUpdateInput()); err != nil {
+		t.Fatalf("UpdateQuestion: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module want question_bank, got %s", snap.Module)
+	}
+	if snap.Target != "题目 #Q-AG-0001" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "编辑题目" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+	if !strings.Contains(snap.Detail, "新情境") {
+		t.Fatalf("detail = %s, want 含编辑后题目摘要", snap.Detail)
+	}
+}
+
+// TestQuestionToggleInjectsDetail 启用/停用注入：summary 分词、detail 含题目摘要。
+func TestQuestionToggleInjectsDetail(t *testing.T) {
+	cases := []struct {
+		name    string
+		from    string
+		to      string
+		summary string
+	}{
+		{"停用", domain.QuestionStatusActive, domain.QuestionStatusDisabled, "停用题目"},
+		{"启用", domain.QuestionStatusDisabled, domain.QuestionStatusActive, "启用题目"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cur := aiQuestion()
+			cur.Status = tc.from
+			after := aiQuestion()
+			after.Status = tc.to
+			after.Version = 3
+			repo := &qFakeRepo{findByID: cur, updateRows: 1, afterWrite: after, afterWriteFrom: 2}
+			svc := newQuestionSvc(repo, &qFakeDimRepo{})
+			ctx, sink := withOpSink(context.Background())
+
+			if _, err := svc.ToggleQuestionStatus(ctx, 101, tc.to, 2); err != nil {
+				t.Fatalf("ToggleQuestionStatus: %v", err)
+			}
+			snap := sink.Snapshot()
+			if snap.Module != domain.OpModuleQuestionBank {
+				t.Fatalf("module = %s", snap.Module)
+			}
+			if snap.Target != "题目 #Q-AG-0001" || snap.Summary != tc.summary {
+				t.Fatalf("target/summary = %s/%s", snap.Target, snap.Summary)
+			}
+			if snap.Changes != nil || !strings.Contains(snap.Detail, "情境描述") {
+				t.Fatalf("changes/detail = %+v/%s", snap.Changes, snap.Detail)
+			}
+		})
+	}
+}
+
+// TestQuestionDeleteInjectsDetail 删除题目注入：detail 含题目摘要。
+func TestQuestionDeleteInjectsDetail(t *testing.T) {
+	repo := &qFakeRepo{findByID: aiQuestion(), deleteRows: 1}
+	svc := newQuestionSvc(repo, &qFakeDimRepo{})
+	ctx, sink := withOpSink(context.Background())
+
+	if err := svc.DeleteQuestion(ctx, 101, 2); err != nil {
+		t.Fatalf("DeleteQuestion: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module = %s", snap.Module)
+	}
+	if snap.Target != "题目 #Q-AG-0001" || snap.Summary != "删除题目" {
+		t.Fatalf("target/summary = %s/%s", snap.Target, snap.Summary)
+	}
+	if snap.Changes != nil || !strings.Contains(snap.Detail, "情境描述") {
+		t.Fatalf("changes/detail = %+v/%s", snap.Changes, snap.Detail)
+	}
+}
+
+// TestQuestionWriteFailNoInject 校验失败路径不注入（中间件以响应 message 兜底）。
+func TestQuestionWriteFailNoInject(t *testing.T) {
+	repo := &qFakeRepo{findByID: aiQuestion()} // updateRows=0 → 乐观锁冲突
+	svc := newQuestionSvc(repo, &qFakeDimRepo{dims: aiMgmtDims()})
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.UpdateQuestion(ctx, validUpdateInput()); err == nil {
+		t.Fatal("乐观锁冲突 want error")
+	}
+	if snap := sink.Snapshot(); snap.Module != "" || snap.Summary != "" || snap.Detail != "" {
+		t.Fatalf("失败路径不应注入埋点: %+v", snap)
+	}
+}

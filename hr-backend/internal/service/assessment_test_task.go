@@ -364,6 +364,11 @@ func (s *assessmentTestTaskService) Create(ctx context.Context, p CreateTestTask
 	if task == nil {
 		return nil, fmt.Errorf("create test task: task no conflict after %d retries", taskNoRetryLimit)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：对象/类型/任务号。
+	injectDetail(ctx, domain.OpModuleAssessment,
+		fmt.Sprintf("测试任务 %s", task.TaskNo),
+		fmt.Sprintf("发起%s测试", testTypeName(p.TestType)),
+		fmt.Sprintf("对象 %s，类型 %s，任务号 %s", p.StaffName, testTypeName(p.TestType), task.TaskNo))
 	return &CreateTestTaskResult{
 		ID:        task.ID,
 		TaskNo:    task.TaskNo,
@@ -529,6 +534,10 @@ func (s *assessmentTestTaskService) Resend(ctx context.Context, taskID int64) (*
 	}
 	dto := toTestTaskLinkDTO(task, newLink)
 	dto.LinkStatus = domain.LinkStatusValid // 重发响应恒 valid（03 C2）
+	injectDetail(ctx, domain.OpModuleAssessment,
+		fmt.Sprintf("测试任务 %s", task.TaskNo),
+		"重发测试任务",
+		fmt.Sprintf("任务号 %s，新链接生效", task.TaskNo))
 	return dto, nil
 }
 
@@ -546,6 +555,10 @@ func (s *assessmentTestTaskService) Cancel(ctx context.Context, taskID int64) (*
 	if affected == 0 {
 		return nil, NewError(errcode.TestTaskStatusInvalid)
 	}
+	injectDetail(ctx, domain.OpModuleAssessment,
+		fmt.Sprintf("测试任务 %s", task.TaskNo),
+		"取消测试任务",
+		fmt.Sprintf("任务号 %s，状态推进 cancelled", task.TaskNo))
 	return &TestTaskCancelDTO{TaskID: task.ID, Status: domain.TestTaskStatusCanceled}, nil
 }
 
@@ -647,6 +660,14 @@ func marshalStrings(v []string) (string, error) {
 // validTestType test_type 枚举校验（空串非法：03 A1 test_type 必填）。
 func validTestType(v string) bool {
 	return v == domain.TestTypeAIMgmt || v == domain.TestTypeEnneagram
+}
+
+// testTypeName 测试类型中文名（埋点文本用，措辞对齐 i18n assessment.type*）。
+func testTypeName(t string) string {
+	if t == domain.TestTypeEnneagram {
+		return "九型人格"
+	}
+	return "AI 管理能力"
 }
 
 // validTestTaskStatus status 枚举校验，空串视为全部放行（03 A1）。

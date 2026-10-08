@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1015,4 +1016,75 @@ func TestCreateStaffNameTrimmed(t *testing.T) {
 	if len(sub.gotReq.TargetNames) != 1 || sub.gotReq.TargetNames[0] != "张敏" {
 		t.Errorf("TargetNames = %v, want [张敏]（裁剪后去重）", sub.gotReq.TargetNames)
 	}
+}
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestAssessmentBatchCreateInjectsDetail 手动建批走 detail 文本形态：module=assessment、
+// target 含批次号与区间、detail 含对象模式中文名/人数/区间/批次号、Changes 恒 nil。
+func TestAssessmentBatchCreateInjectsDetail(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.Create(ctx, createValidPayload()); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleAssessment {
+		t.Fatalf("module want assessment, got %s", snap.Module)
+	}
+	if snap.Target != "批次 B202609121000001（2026-09-07 ~ 2026-09-11）" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "手动创建评估批次" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+	for _, want := range []string{"指定人员", "2人", "2026-09-07 ~ 2026-09-11", "B202609121000001"} {
+		if !strings.Contains(snap.Detail, want) {
+			t.Fatalf("detail = %q, want 含 %q", snap.Detail, want)
+		}
+	}
+}
+
+// TestAssessmentBatchCreateAllModeAndFailNoInject：all 模式对象名为「全员」；
+// 校验失败路径不注入（中间件以响应 message 兜底，specs §5.1.2 步骤3）。
+func TestAssessmentBatchCreateAllModeAndFailNoInject(t *testing.T) {
+	sub := &fakeManualSubmitter{batch: createOKBatch()}
+	svc := newBatchSvcWithSubmitter(&fakeBatchRepo{}, cfgWeekly(nil), &fakeDimRepo{}, &fakeUserapiClient{}, &fakeBatchSecretRepo{get: &domain.IntegrationSecret{ID: 1}}, sub)
+
+	t.Run("all 模式对象全员", func(t *testing.T) {
+		ctx, sink := withOpSink(context.Background())
+		p := createValidPayload()
+		p.TargetMode = domain.BatchTargetAll
+		p.Staffs = nil
+		batch := createOKBatch()
+		batch.TargetMode = domain.BatchTargetAll
+		batch.TotalCount = 0 // all 模式骨架建批时 TotalCount 未收敛
+		sub.batch = batch
+		if _, err := svc.Create(ctx, p); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		snap := sink.Snapshot()
+		if !strings.Contains(snap.Detail, "全员") {
+			t.Fatalf("detail = %q, want 含 全员", snap.Detail)
+		}
+		if !strings.Contains(snap.Detail, "0人") {
+			t.Fatalf("detail = %q, want 骨架人数 0 人（异步回填前）", snap.Detail)
+		}
+	})
+	t.Run("失败不注入", func(t *testing.T) {
+		ctx, sink := withOpSink(context.Background())
+		p := createValidPayload()
+		p.TargetMode = "foo"
+		if _, err := svc.Create(ctx, p); err == nil {
+			t.Fatal("非法 mode want error")
+		}
+		if snap := sink.Snapshot(); snap.Module != "" || snap.Summary != "" || snap.Detail != "" {
+			t.Fatalf("失败路径不应注入埋点: %+v", snap)
+		}
+	})
 }
