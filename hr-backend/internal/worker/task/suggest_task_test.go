@@ -207,7 +207,7 @@ func TestSuggestMaxRetryConst(t *testing.T) {
 // TestNewMuxSuggestRegistrations 核心锚点：mux 两新类型均注册且路由可达
 //（NewMux 九参化后新增任务类型）。
 func TestNewMuxSuggestRegistrations(t *testing.T) {
-	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	for _, typ := range []string{TypeSuggestTick, TypeSuggestGenerate} {
 		if h, pattern := mux.Handler(asynq.NewTask(typ, []byte(`{}`))); pattern != typ || h == nil {
 			t.Errorf("任务类型 %q 未注册: pattern = %q", typ, pattern)
@@ -224,7 +224,7 @@ func TestNewMuxSuggestGenerateTimeout(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, inner)
+	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, inner, nil)
 	h, pattern := mux.Handler(asynq.NewTask(TypeSuggestGenerate, []byte(`{}`)))
 	if pattern != TypeSuggestGenerate {
 		t.Fatalf("pattern = %q, want %q", pattern, TypeSuggestGenerate)

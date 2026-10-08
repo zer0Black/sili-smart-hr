@@ -161,6 +161,24 @@ func (r *OperationLogRecorder) Record(entry PendingLog) {
 	}
 }
 
+// CleanExpired 删除 created_at 早于 now-180d 的日志（specs §5.5.2）：循环
+// DeleteBefore 至 0 行累计条数（单批 1000 避免长事务锁表），err 透传交
+// Asynq 重试（重复删除幂等，§5.5.4 规则2）。
+func (r *OperationLogRecorder) CleanExpired(ctx context.Context, now time.Time) (int64, error) {
+	before := now.Add(-retentionDays * 24 * time.Hour)
+	var total int64
+	for {
+		n, err := r.repo.DeleteBefore(ctx, before)
+		if err != nil {
+			return total, err
+		}
+		total += n
+		if n == 0 {
+			return total, nil
+		}
+	}
+}
+
 // consume 单 goroutine 消费循环：攒批满 100 条或时间窗到即 flush；
 // 通道关闭且排空后退出（Close 的 flush 语义）。
 func (r *OperationLogRecorder) consume() {

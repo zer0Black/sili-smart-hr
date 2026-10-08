@@ -146,7 +146,10 @@ func InitializeApp(configPath string) (*App, error) {
 	suggestService := NewSuggestServiceAdapter(teamTrainingSuggestionRepository, dashboardQueryRepository, assessmentBatchRepository, dimensionRepository, suggestgenGenerator, asynqSuggestEnqueuer, integrationSecretRepository, v, userapiClient)
 	suggestTickHandler := NewSuggestTickHandlerTyped(suggestService)
 	suggestGenerateHandler := NewSuggestGenerateHandlerTyped(suggestService)
-	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler, suggestTickHandler, suggestGenerateHandler)
+	operationLogRepository := repository.NewOperationLogRepository(db)
+	operationLogRecorder := service.NewOperationLogRecorder(operationLogRepository, accountRepository)
+	operationLogCleanHandler := NewOperationLogCleanHandlerTyped(operationLogRecorder)
+	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler, suggestTickHandler, suggestGenerateHandler, operationLogCleanHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
 	app := &App{
 		Config:      configConfig,

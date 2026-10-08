@@ -477,16 +477,18 @@ func NewTestGradeHandlerTyped(grader *grading.Grader, taskRepo repository.Assess
 	return TestGradeHandler(task.NewTestGradeHandler(grader, taskRepo, resultRepo))
 }
 
-// NewMuxAdapter Wire 装配适配器：接收九个命名类型 handler，转调 task.NewMux
+// NewMuxAdapter Wire 装配适配器：接收十个命名类型 handler，转调 task.NewMux
 // （单一注册入口不变，签名不受 wire 同型参数限制）。
 func NewMuxAdapter(sessionExtract SessionExtractHandler, personEvaluate PersonEvaluateHandler,
 	batchTick BatchTickHandler, batchRun BatchRunHandler, questionGenerate QuestionGenerateHandler,
 	testExpireTick TestExpireTickHandler, testGrade TestGradeHandler,
-	suggestTick SuggestTickHandler, suggestGenerate SuggestGenerateHandler) *asynq.ServeMux {
+	suggestTick SuggestTickHandler, suggestGenerate SuggestGenerateHandler,
+	operationLogClean OperationLogCleanHandler) *asynq.ServeMux {
 	return task.NewMux(asynq.HandlerFunc(sessionExtract), asynq.HandlerFunc(personEvaluate),
 		asynq.HandlerFunc(batchTick), asynq.HandlerFunc(batchRun), asynq.HandlerFunc(questionGenerate),
 		asynq.HandlerFunc(testExpireTick), asynq.HandlerFunc(testGrade),
-		asynq.HandlerFunc(suggestTick), asynq.HandlerFunc(suggestGenerate))
+		asynq.HandlerFunc(suggestTick), asynq.HandlerFunc(suggestGenerate),
+		asynq.HandlerFunc(operationLogClean))
 }
 
 // QuestionGenLLMClient 用命名接口类型区分出题专用 client 与全局 llm.Client，
@@ -643,6 +645,17 @@ func NewSuggestTickHandlerTyped(svc *service.SuggestService) SuggestTickHandler 
 //（命名类型透出；runner 同为 service.SuggestService）。
 func NewSuggestGenerateHandlerTyped(svc *service.SuggestService) SuggestGenerateHandler {
 	return SuggestGenerateHandler(task.NewSuggestGenerateHandler(svc))
+}
+
+// OperationLogCleanHandler 是 operation-log:clean 任务 handler 命名类型
+//（同 SuggestTickHandler 范式，各占 Wire 类型表一格）。
+type OperationLogCleanHandler func(context.Context, *asynq.Task) error
+
+// NewOperationLogCleanHandlerTyped 构造操作日志清理 handler（命名类型透出；
+// runner 为 service.OperationLogRecorder，180 天窗口与分批常量收敛在其文件，
+// specs §5.5.1）。
+func NewOperationLogCleanHandlerTyped(recorder *service.OperationLogRecorder) OperationLogCleanHandler {
+	return OperationLogCleanHandler(task.NewOperationLogCleanHandler(recorder))
 }
 
 // SuggestGenLLMClient 用命名接口类型区分建议生成专用 client 与全局 llm.Client，

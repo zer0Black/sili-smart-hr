@@ -138,6 +138,12 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAsynqSuggestEnqueuer,
 		NewSuggestTickHandlerTyped,
 		NewSuggestGenerateHandlerTyped,
+		// 操作日志清理任务（specs P4_LOG_001 §5.5，03 §4.3）：日志仓储 + Recorder
+		//（异步落库通道复用同一实例）+ operation-log:clean handler 经参数注入
+		// NewMux，每日 03:00 低峰清 180 天前日志。
+		repository.NewOperationLogRepository,
+		service.NewOperationLogRecorder,
+		NewOperationLogCleanHandlerTyped,
 		fallback.NewAlertWriter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,

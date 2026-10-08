@@ -17,11 +17,16 @@ import (
 
 // fakeOpLogRepo 记录 InsertBatch 收到的批次，供 Recorder 测试断言。
 // blockInsert 非 nil 时落库阻塞直至该通道关闭（Close 超时分支用）。
+// deleteResults 驱动 CleanExpired 循环：逐次返回序列值，耗尽后返回 0；
+// deleteBefores 记录每次收到的清理边界。
 type fakeOpLogRepo struct {
-	mu          sync.Mutex
-	lastBatch   []domain.OperationLog
-	insertErr   error
-	blockInsert chan struct{}
+	mu            sync.Mutex
+	lastBatch     []domain.OperationLog
+	insertErr     error
+	blockInsert   chan struct{}
+	deleteResults []int64
+	deleteIdx     int
+	deleteBefores []time.Time
 }
 
 func (f *fakeOpLogRepo) InsertBatch(_ context.Context, logs []domain.OperationLog) error {
@@ -47,7 +52,15 @@ func (f *fakeOpLogRepo) ListByFilter(_ context.Context, _ repository.OperationLo
 	return nil, nil
 }
 
-func (f *fakeOpLogRepo) DeleteBefore(_ context.Context, _ time.Time) (int64, error) {
+func (f *fakeOpLogRepo) DeleteBefore(_ context.Context, before time.Time) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteBefores = append(f.deleteBefores, before)
+	if f.deleteIdx < len(f.deleteResults) {
+		n := f.deleteResults[f.deleteIdx]
+		f.deleteIdx++
+		return n, nil
+	}
 	return 0, nil
 }
 
@@ -57,6 +70,60 @@ func (f *fakeOpLogRepo) batch() []domain.OperationLog {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]domain.OperationLog(nil), f.lastBatch...)
+}
+
+// beforesSnapshot 返回 DeleteBefore 收到的边界序列（CleanExpired 断言用）。
+func (f *fakeOpLogRepo) beforesSnapshot() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]time.Time(nil), f.deleteBefores...)
+}
+
+// TestCleanExpired 核心断言：DeleteBefore 前两次各删 1000、第三次 0 行时
+// CleanExpired 返回 2000、被调 3 次，且每次边界都等于 now-180d
+//（specs §5.5.2 步骤1/步骤2，保留窗口 180 天 §5.5.1）。
+func TestCleanExpired(t *testing.T) {
+	repo := &fakeOpLogRepo{deleteResults: []int64{1000, 1000}}
+	accounts := &fakeOpAccounts{accounts: map[int64]*domain.Account{}}
+	r := service.NewOperationLogRecorder(repo, accounts)
+
+	now := time.Now()
+	n, err := r.CleanExpired(context.Background(), now)
+	if err != nil {
+		t.Fatalf("CleanExpired err=%v", err)
+	}
+	if n != 2000 {
+		t.Errorf("CleanExpired 返回 %d, want 2000", n)
+	}
+	befores := repo.beforesSnapshot()
+	if len(befores) != 3 {
+		t.Fatalf("DeleteBefore 调用 %d 次, want 3（循环删至 0 行）", len(befores))
+	}
+	want := now.Add(-180 * 24 * time.Hour)
+	for i, got := range befores {
+		if !got.Equal(want) {
+			t.Errorf("DeleteBefore[%d] 边界=%v, want %v", i, got, want)
+		}
+	}
+}
+
+// TestCleanExpiredEmpty 补充边界：首轮流即 0 行（无过期数据）时返回 0，
+// DeleteBefore 恰被调 1 次。
+func TestCleanExpiredEmpty(t *testing.T) {
+	repo := &fakeOpLogRepo{}
+	accounts := &fakeOpAccounts{accounts: map[int64]*domain.Account{}}
+	r := service.NewOperationLogRecorder(repo, accounts)
+
+	n, err := r.CleanExpired(context.Background(), time.Now())
+	if err != nil {
+		t.Fatalf("CleanExpired err=%v", err)
+	}
+	if n != 0 {
+		t.Errorf("无过期数据返回 %d, want 0", n)
+	}
+	if calls := len(repo.beforesSnapshot()); calls != 1 {
+		t.Errorf("DeleteBefore 调用 %d 次, want 1", calls)
+	}
 }
 
 // fakeOpAccounts 驱动 FindByIDUnscoped 三态：命中（含软删行）/记录不存在/其他错误。
