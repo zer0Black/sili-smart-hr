@@ -156,6 +156,14 @@ func (s *assessmentConfigService) Get(ctx context.Context) (*AssessmentConfigDTO
 	return dto, nil
 }
 
+// targetModeName 评估对象模式的中文显示名（埋点变更对比用）。
+func targetModeName(mode string) string {
+	if mode == targetModeSpecified {
+		return "指定人员"
+	}
+	return "全员"
+}
+
 // Save 字段校验 → 组装入参 → 单事务更新（repo 收口）→ 据affected映射。
 // target_mode=specified 时把入参 members 转为 domain.AssessmentConfigMember 透传给 repo；
 // target_mode=all 时强制传 nil members（BR2 all 清空），即便调用方误传也兜底清空。
@@ -224,6 +232,20 @@ func (s *assessmentConfigService) Save(ctx context.Context, period, triggerTime,
 	if affected == 0 {
 		return nil, NewError(errcode.ConfigVersionConflict)
 	}
+
+	// 评估周期保存注入变更对比（specs §7.2 系统参数埋点行），cur 即写前旧值。
+	var changes []domain.ChangeItem
+	if cur.Period != period {
+		changes = append(changes, fmtChange("评估周期", cur.Period, period))
+	}
+	if cur.TriggerTime != triggerTime {
+		changes = append(changes, fmtChange("触发时间", cur.TriggerTime, triggerTime))
+	}
+	if cur.TargetMode != targetMode {
+		changes = append(changes, fmtChange("评估对象", targetModeName(cur.TargetMode), targetModeName(targetMode)))
+	}
+	injectOperation(ctx, domain.OpModuleSystemParams, "评估周期配置",
+		"保存评估周期配置", changes)
 
 	return &SaveAssessmentResult{
 		ID:      cur.ID,

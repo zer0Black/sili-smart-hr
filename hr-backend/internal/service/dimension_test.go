@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,9 @@ type dimFakeRepo struct {
 	findByIDDim   *domain.Dimension
 	findByIDErr   error
 	findByIDCalls int
+	// FindByID 返回值队列：非空时按序消费（模拟写前旧值/写后回读两次返回不同行），
+	// 空则回落 findByIDDim/findByIDErr。
+	findByIDQueue []findByCodeResult
 
 	// ListAll 返回值
 	listAllDim []domain.Dimension
@@ -97,6 +101,11 @@ func (r *dimFakeRepo) ListNamesByIDsUnscoped(_ context.Context, ids []int64) (ma
 
 func (r *dimFakeRepo) FindByID(_ context.Context, _ int64) (*domain.Dimension, error) {
 	r.findByIDCalls++
+	if len(r.findByIDQueue) > 0 {
+		res := r.findByIDQueue[0]
+		r.findByIDQueue = r.findByIDQueue[1:]
+		return res.dim, res.err
+	}
 	return r.findByIDDim, r.findByIDErr
 }
 
@@ -132,6 +141,10 @@ func (r *dimFakeRepo) GetActivitySetting(_ context.Context) (*domain.DimensionSe
 	// 此时若 afterUpdateSetting 非空优先返回它。
 	if r.updateActivityCall && r.afterUpdateSetting != nil {
 		return r.afterUpdateSetting, nil
+	}
+	// 写前取旧值：未显式配置旧值时兜底零值行，保持既有用例不因埋点补读而 panic。
+	if r.setting == nil && r.settingErr == nil {
+		return &domain.DimensionSetting{}, nil
 	}
 	return r.setting, r.settingErr
 }
@@ -788,6 +801,219 @@ func TestSaveActivityRule_Success(t *testing.T) {
 	}
 	if repo.updateActivityActive != 15 || repo.updateActivityLow != 8 {
 		t.Fatalf("update args wrong: active=%d low=%d", repo.updateActivityActive, repo.updateActivityLow)
+	}
+}
+
+// === 操作日志埋点（specs P4_LOG_001 §7.2 + 03 §4.1 埋点清单） ===
+
+// dimWithSink 构造带埋点 sink 的 ctx 并返回 sink 供 Snapshot 断言。
+func dimWithSink(ctx context.Context) (context.Context, *service.OpSink) {
+	sink := &service.OpSink{}
+	return service.WithSink(ctx, sink), sink
+}
+
+// dimFindChange 按字段名查 changes 单项，不存在返回 nil。
+func dimFindChange(changes []domain.ChangeItem, field string) *domain.ChangeItem {
+	for i := range changes {
+		if changes[i].Field == field {
+			return &changes[i]
+		}
+	}
+	return nil
+}
+
+// TestDimensionCreateInjectsDetail 新增维度走 detail 文本形态（specs §4.1.4 规则3：新增类无变更前后语义），
+// Changes 恒 nil，Detail 含维度名与权重、纳入总览信息。
+func TestDimensionCreateInjectsDetail(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByCodeResults: []findByCodeResult{{err: gorm.ErrRecordNotFound}},
+	}
+	ctx, sink := dimWithSink(context.Background())
+	in := service.CreateDimensionInput{
+		Name: "需求澄清能力", ModuleCode: domain.ModuleAIUsage, GroupCode: strPtr(domain.GroupBase),
+		DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a",
+	}
+	if _, err := newDimSvc(repo).CreateDimension(ctx, in); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleDimension {
+		t.Fatalf("module want dimension, got %s", snap.Module)
+	}
+	if snap.Target != "维度「需求澄清能力」" {
+		t.Fatalf("target want 维度「需求澄清能力」, got %s", snap.Target)
+	}
+	if snap.Summary != "新增维度 需求澄清能力" {
+		t.Fatalf("summary want 新增维度 需求澄清能力, got %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("create changes want nil, got %+v", snap.Changes)
+	}
+	if !strings.Contains(snap.Detail, "需求澄清能力") || !strings.Contains(snap.Detail, "聚合权重 5") || !strings.Contains(snap.Detail, "纳入总览") {
+		t.Fatalf("detail want name+weight+include text, got %s", snap.Detail)
+	}
+}
+
+// TestDimensionUpdateInjectsChanges 编辑维度注入变更对比：聚合权重 30→50 进 changes，
+// 未变化字段不进（specs §7.2 维度增删改注入变更对比）。
+func TestDimensionUpdateInjectsChanges(t *testing.T) {
+	// 队列：写前旧值 weight=30，写后回读新值 weight=50（version 自增到 4）。
+	repo := &dimFakeRepo{
+		findByIDQueue: []findByCodeResult{
+			{dim: &domain.Dimension{ID: 1, Code: "AI_X", Name: "任务适配判断力", ModuleCode: domain.ModuleAIUsage,
+				DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a", Weight: 30, IncludeOverview: true, Enabled: true, Version: 3}},
+			{dim: &domain.Dimension{ID: 1, Code: "AI_X", Name: "任务适配判断力", ModuleCode: domain.ModuleAIUsage,
+				DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a", Weight: 50, IncludeOverview: true, Enabled: true, Version: 4}},
+		},
+		updateRows: 1,
+	}
+	ctx, sink := dimWithSink(context.Background())
+	in := service.UpdateDimensionInput{ID: 1, Name: "任务适配判断力", Prompt: "p", Anchor: "a",
+		Weight: intPtr(50), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 3}
+	if _, err := newDimSvc(repo).UpdateDimension(ctx, in); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleDimension {
+		t.Fatalf("module want dimension, got %s", snap.Module)
+	}
+	if snap.Target != "维度「任务适配判断力」" {
+		t.Fatalf("target want 维度「任务适配判断力」, got %s", snap.Target)
+	}
+	c := dimFindChange(snap.Changes, "聚合权重")
+	if c == nil || c.Before != "30" || c.After != "50" {
+		t.Fatalf("changes want {聚合权重 30 50}, got %+v", snap.Changes)
+	}
+	if dimFindChange(snap.Changes, "名称") != nil {
+		t.Fatalf("名称未变化不应进 changes: %+v", snap.Changes)
+	}
+	if dimFindChange(snap.Changes, "启用状态") != nil {
+		t.Fatalf("启用状态未变化不应进 changes: %+v", snap.Changes)
+	}
+}
+
+// TestDimensionUpdateInjectsMultiChanges 多字段变化各进一项 changes（名称/纳入总览/启用状态）。
+func TestDimensionUpdateInjectsMultiChanges(t *testing.T) {
+	// 队列：写前旧值（旧名/include/enable），写后回读新值（新名/排除/停用）。
+	repo := &dimFakeRepo{
+		findByIDQueue: []findByCodeResult{
+			{dim: &domain.Dimension{ID: 1, Name: "旧名", ModuleCode: domain.ModuleAIUsage,
+				DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a", Weight: 5, IncludeOverview: true, Enabled: true, Version: 1}},
+			{dim: &domain.Dimension{ID: 1, Name: "新名", ModuleCode: domain.ModuleAIUsage,
+				DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a", Weight: 5, IncludeOverview: false, Enabled: false, Version: 2}},
+		},
+		updateRows: 1,
+	}
+	ctx, sink := dimWithSink(context.Background())
+	in := service.UpdateDimensionInput{ID: 1, Name: "新名", Prompt: "p", Anchor: "a",
+		Weight: intPtr(5), IncludeOverview: boolPtr(false), Enabled: boolPtr(false), Version: 1}
+	if _, err := newDimSvc(repo).UpdateDimension(ctx, in); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if c := dimFindChange(snap.Changes, "名称"); c == nil || c.Before != "旧名" || c.After != "新名" {
+		t.Fatalf("changes want {名称 旧名 新名}, got %+v", snap.Changes)
+	}
+	if c := dimFindChange(snap.Changes, "纳入总览"); c == nil || c.Before != "是" || c.After != "否" {
+		t.Fatalf("changes want {纳入总览 是 否}, got %+v", snap.Changes)
+	}
+	if c := dimFindChange(snap.Changes, "启用状态"); c == nil || c.Before != "已启用" || c.After != "已停用" {
+		t.Fatalf("changes want {启用状态 已启用 已停用}, got %+v", snap.Changes)
+	}
+}
+
+// TestDimensionUpdateNoChangeNilChanges 无字段变化时 changes 为 nil（空对比不落 JSON）。
+func TestDimensionUpdateNoChangeNilChanges(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, Name: "同名", ModuleCode: domain.ModuleAIUsage,
+			DataSource: domain.SourceConversation, Prompt: "p", Anchor: "a", Weight: 5, IncludeOverview: true, Enabled: true, Version: 1},
+		updateRows: 1,
+	}
+	ctx, sink := dimWithSink(context.Background())
+	in := service.UpdateDimensionInput{ID: 1, Name: "同名", Prompt: "p", Anchor: "a",
+		Weight: intPtr(5), IncludeOverview: boolPtr(true), Enabled: boolPtr(true), Version: 1}
+	if _, err := newDimSvc(repo).UpdateDimension(ctx, in); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if snap := sink.Snapshot(); snap.Changes != nil {
+		t.Fatalf("no-change update should inject nil changes, got %+v", snap.Changes)
+	}
+}
+
+// TestDimensionDeleteInjectsDetail 删除维度走 detail 文本形态，Changes 恒 nil。
+func TestDimensionDeleteInjectsDetail(t *testing.T) {
+	repo := &dimFakeRepo{
+		findByIDDim: &domain.Dimension{ID: 1, Name: "停用维度", Enabled: false, Version: 1},
+		deleteRows:  1,
+	}
+	ctx, sink := dimWithSink(context.Background())
+	if err := newDimSvc(repo).DeleteDimension(ctx, service.DeleteDimensionInput{ID: 1, Version: 1}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleDimension {
+		t.Fatalf("module want dimension, got %s", snap.Module)
+	}
+	if snap.Target != "维度「停用维度」" {
+		t.Fatalf("target want 维度「停用维度」, got %s", snap.Target)
+	}
+	if snap.Summary != "删除维度 停用维度" {
+		t.Fatalf("summary want 删除维度 停用维度, got %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("delete changes want nil, got %+v", snap.Changes)
+	}
+	if !strings.Contains(snap.Detail, "停用维度") {
+		t.Fatalf("detail want name text, got %s", snap.Detail)
+	}
+}
+
+// TestSaveActivityRuleInjectsChanges 活跃度规则保存注入变更对比：活跃下限与低频下限 old→new。
+func TestSaveActivityRuleInjectsChanges(t *testing.T) {
+	t1 := time.Date(2026, 8, 11, 12, 10, 0, 0, time.UTC)
+	repo := &dimFakeRepo{
+		// 写前旧值：active=10 low=5；写后回读新值。
+		setting:             &domain.DimensionSetting{ActiveThreshold: 10, LowFrequencyThreshold: 5, UpdatedAt: t1},
+		afterUpdateSetting:  &domain.DimensionSetting{ActiveThreshold: 15, LowFrequencyThreshold: 8, UpdatedAt: t1},
+	}
+	ctx, sink := dimWithSink(context.Background())
+	if _, err := newDimSvc(repo).SaveActivityRule(ctx, service.ActivityRuleInput{
+		ActiveThreshold: 15, LowFrequencyThreshold: 8,
+	}); err != nil {
+		t.Fatalf("save rule: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleDimension {
+		t.Fatalf("module want dimension, got %s", snap.Module)
+	}
+	if snap.Target != "活跃度规则" {
+		t.Fatalf("target want 活跃度规则, got %s", snap.Target)
+	}
+	c := dimFindChange(snap.Changes, "活跃下限")
+	if c == nil || c.Before != "10" || c.After != "15" {
+		t.Fatalf("changes want {活跃下限 10 15}, got %+v", snap.Changes)
+	}
+	c = dimFindChange(snap.Changes, "低频下限")
+	if c == nil || c.Before != "5" || c.After != "8" {
+		t.Fatalf("changes want {低频下限 5 8}, got %+v", snap.Changes)
+	}
+}
+
+// TestSaveActivityRuleNoChangeNilChanges 阈值平调保存时 changes 为 nil。
+func TestSaveActivityRuleNoChangeNilChanges(t *testing.T) {
+	t1 := time.Date(2026, 8, 11, 12, 10, 0, 0, time.UTC)
+	repo := &dimFakeRepo{
+		setting:            &domain.DimensionSetting{ActiveThreshold: 10, LowFrequencyThreshold: 5, UpdatedAt: t1},
+		afterUpdateSetting: &domain.DimensionSetting{ActiveThreshold: 10, LowFrequencyThreshold: 5, UpdatedAt: t1},
+	}
+	ctx, sink := dimWithSink(context.Background())
+	if _, err := newDimSvc(repo).SaveActivityRule(ctx, service.ActivityRuleInput{
+		ActiveThreshold: 10, LowFrequencyThreshold: 5,
+	}); err != nil {
+		t.Fatalf("save rule: %v", err)
+	}
+	if snap := sink.Snapshot(); snap.Changes != nil {
+		t.Fatalf("no-change save should inject nil changes, got %+v", snap.Changes)
 	}
 }
 
