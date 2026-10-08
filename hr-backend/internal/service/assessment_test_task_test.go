@@ -161,8 +161,8 @@ func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) (int64
 func (f *fakeTSTRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return f.activeAI, f.activeEnne, f.countErr
 }
-func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) ([]string, error) {
+	return nil, nil
 }
 
 // CompleteTask 模拟真实事务语义（specs §5.2.2 步骤1）：三步推进 + enqueue 同事务，

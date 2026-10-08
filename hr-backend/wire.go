@@ -11,7 +11,6 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
-	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
@@ -144,7 +143,7 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewOperationLogRepository,
 		service.NewOperationLogRecorder,
 		NewOperationLogCleanHandlerTyped,
-		fallback.NewAlertWriter,
+		NewAlertWriterAdapter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
 		NewBatchTickHandlerTyped,

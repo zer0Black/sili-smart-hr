@@ -462,9 +462,11 @@ type TestExpireTickHandler func(context.Context, *asynq.Task) error
 
 // NewTestExpireTickHandlerTyped 构造 assessment:test-expire-tick handler（命名
 // 类型透出；runner 直接注入 repository.AssessmentTestTaskRepository，语义为调用
-// 仓储 ExpirePending，specs §5.3.2）。
-func NewTestExpireTickHandlerTyped(runner repository.AssessmentTestTaskRepository) TestExpireTickHandler {
-	return TestExpireTickHandler(task.NewTestExpireTickHandler(runner))
+// 仓储 ExpirePending，specs §5.3.2；recorder 供逾期取消节点逐任务记行，
+// specs P4_LOG_001 §5.2）。
+func NewTestExpireTickHandlerTyped(runner repository.AssessmentTestTaskRepository,
+	recorder *service.OperationLogRecorder) TestExpireTickHandler {
+	return TestExpireTickHandler(task.NewTestExpireTickHandler(runner, recorderToFallback{recorder}))
 }
 
 // TestGradeHandler 是 assessment:test-grade 任务 handler 命名类型
@@ -691,7 +693,8 @@ func NewSuggestGenProvider(llmClient SuggestGenLLMClient, provider llm.EnabledMo
 }
 
 // NewSuggestServiceAdapter 是 Wire 装配适配器：转调 service.NewSuggestService
-// 九参形态（gen 经 service.ProvideSuggestGenerator 适配窄接口）。
+// 十参形态（gen 经 service.ProvideSuggestGenerator 适配窄接口；recorder 供
+// 建议生成终态节点投递，specs P4_LOG_001 §5.2）。
 func NewSuggestServiceAdapter(
 	suggestions repository.TeamTrainingSuggestionRepository,
 	queries repository.DashboardQueryRepository,
@@ -702,10 +705,11 @@ func NewSuggestServiceAdapter(
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	staffs *userapi.Client,
+	recorder *service.OperationLogRecorder,
 ) *service.SuggestService {
 	return service.NewSuggestService(suggestions, queries, batches, dims,
 		service.ProvideSuggestGenerator(gen), enq,
-		secretRepo, encKey, service.ProvideUserapiClient(staffs))
+		secretRepo, encKey, service.ProvideUserapiClient(staffs), recorder)
 }
 
 // AsynqSuggestEnqueuer 把 AsynqClient 适配为 service.SuggestEnqueuer 窄接口
@@ -770,10 +774,11 @@ func (e *AsynqGenerationEnqueuer) EnqueueGenerate(ctx context.Context, generatio
 // 编译期断言：适配器满足 service.GenerationEnqueuer 窄接口。
 var _ service.GenerationEnqueuer = (*AsynqGenerationEnqueuer)(nil)
 
-// NewOrchestratorProvider 装配批次编排器（十参，specs §5.2.2）：配置读取复用
+// NewOrchestratorProvider 装配批次编排器（specs §5.2.2）：配置读取复用
 // AssessmentConfigRepository，密钥走 service.ResolveIntegrationSecret 收敛点
 //（NewExtractorProvider 同款闭包），双任务投递由 *pipeline.AsynqEnqueuer 一物
-// 满足 BatchEnqueuer 与 SessionEnqueuer 两窄接口。
+// 满足 BatchEnqueuer 与 SessionEnqueuer 两窄接口。recorder 供批次级节点投递
+//（specs P4_LOG_001 §5.2）。
 func NewOrchestratorProvider(
 	batchRepo repository.AssessmentBatchRepository,
 	featureRepo repository.SessionFeatureRepository,
@@ -785,12 +790,42 @@ func NewOrchestratorProvider(
 	ev *evaluator.Evaluator,
 	alertWriter *fallback.AlertWriter,
 	enqueuer *pipeline.AsynqEnqueuer,
+	recorder *service.OperationLogRecorder,
 ) *pipeline.Orchestrator {
 	secrets := pipeline.SecretResolver(func(ctx context.Context) (string, error) {
 		return service.ResolveIntegrationSecret(ctx, secretRepo, encKey)
 	})
 	return pipeline.NewOrchestrator(batchRepo, featureRepo, configRepo,
-		cl, staffs, secrets, ev, alertWriter, enqueuer, enqueuer)
+		cl, staffs, secrets, ev, alertWriter, enqueuer, enqueuer, recorderToFallback{recorder})
+}
+
+// NewAlertWriterAdapter Wire 装配适配器：fallback.NewAlertWriter 扩参后的
+// app 包收敛点（recorder 供告警节点投递，specs P4_LOG_001 §5.2）。adapter
+// 把 *service.OperationLogRecorder 适配为 fallback.PendingLogRecorder 同构
+// 窄面（两接口方法签名因 PendingLog 类型不同名而互不满足，此处翻译）。
+type recorderToFallback struct {
+	r *service.OperationLogRecorder
+}
+
+func (a recorderToFallback) Record(entry fallback.PendingLog) {
+	a.r.Record(service.PendingLog{
+		AccountID:          entry.AccountID,
+		FallbackName:       entry.FallbackName,
+		FallbackUsername:   entry.FallbackUsername,
+		Module:             entry.Module,
+		Target:             entry.Target,
+		Summary:            entry.Summary,
+		Result:             entry.Result,
+		Detail:             entry.Detail,
+		RequestPath:        entry.RequestPath,
+		Changes:            entry.Changes,
+	})
+}
+
+// NewAlertWriterAdapter 主体（recorder 适配见 recorderToFallback）。
+func NewAlertWriterAdapter(repo repository.AssessmentAlertRepository,
+	recorder *service.OperationLogRecorder) *fallback.AlertWriter {
+	return fallback.NewAlertWriter(repo, recorderToFallback{recorder})
 }
 
 // NewEvaluatorProvider 装配 evaluator（九参，03 §2.1 组合形）：act 传

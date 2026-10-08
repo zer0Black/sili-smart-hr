@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -253,9 +254,30 @@ func (f *fakeAlertRepo) UpsertByBatch(ctx context.Context, alert *domain.Assessm
 	return nil
 }
 
-// alertWriter 构造接 fake 仓储的真实 AlertWriter。
+// alertWriter 构造接 fake 仓储的真实 AlertWriter（节点投递面传 nil）。
 func alertWriter(repo *fakeAlertRepo) *fallback.AlertWriter {
-	return fallback.NewAlertWriter(repo)
+	return fallback.NewAlertWriter(repo, nil)
+}
+
+// nodeRecorder 节点投递 fake（fallback.PendingLogRecorder 窄面）：收集 entries。
+type nodeRecorder struct {
+	mu      sync.Mutex
+	entries []fallback.PendingLog
+}
+
+func (f *nodeRecorder) Record(entry fallback.PendingLog) {
+	if f == nil {
+		return // nil recorder 守卫：与生产 opLogger nil 跳过同语义
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.entries = append(f.entries, entry)
+}
+
+func (f *nodeRecorder) snapshot() []fallback.PendingLog {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]fallback.PendingLog{}, f.entries...)
 }
 
 // fakeStaffFetcher 人员拉取 fake：pages 顺序按调用次序返回，耗尽返回满页终止信号。
@@ -420,7 +442,7 @@ func staffs(names ...string) []userapi.Staff {
 func newOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer) *pipeline.Orchestrator {
 	return pipeline.NewOrchestrator(repo, nil, nil, nil, fetcher,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		nil, alertWriter(alertRepo), enq, nil)
+		nil, alertWriter(alertRepo), enq, nil, nil)
 }
 
 func manualReq(names []string) pipeline.CreateBatchRequest {
@@ -498,7 +520,7 @@ func TestCreateBatchAllSecretFail(t *testing.T) {
 	repo := &fakeBatchRepo{}
 	o := pipeline.NewOrchestrator(repo, nil, nil, nil, nil,
 		func(ctx context.Context) (string, error) { return "", errFake },
-		nil, nil, &fakeBatchEnqueuer{}, nil)
+		nil, nil, &fakeBatchEnqueuer{}, nil, nil)
 
 	req := manualReq(nil)
 	req.TargetMode = domain.BatchTargetAll
@@ -685,7 +707,7 @@ func (f *fakeSessionEnqueuer) EnqueueSessionExtract(ctx context.Context, batchID
 func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, sessionEnq *fakeSessionEnqueuer) *pipeline.Orchestrator {
 	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 	return o
@@ -695,7 +717,7 @@ func newRunBatchOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fak
 func waitOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, sessionEnq *fakeSessionEnqueuer, timeout, interval time.Duration) *pipeline.Orchestrator {
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq)
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(timeout, interval)
 	return o
@@ -930,7 +952,7 @@ func TestRunBatchAllSkeletonExpand(t *testing.T) {
 	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher,
 		&fakeStaffFetcher{pages: [][]userapi.Staff{staffs("甲", "乙")}},
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, nil, nil, sessionEnq)
+		&fakePersonEvaluator{}, nil, nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 
@@ -1059,9 +1081,14 @@ func TestPersonTerminal(t *testing.T) {
 // evalOrch 组装含评估器与特征仓储的 RunBatch 全链编排器（退避置 1ms 免测试等待）。
 // 等待屏障参数同时注入短值：featureRepo 恒返 0 计数时按超时放行，防测试被 30 分钟默认值拖住。
 func evalOrch(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, pe *fakePersonEvaluator) *pipeline.Orchestrator {
+	return evalOrchWithRecorder(repo, alertRepo, fetcher, featureRepo, pe, nil)
+}
+
+// evalOrchWithRecorder 同 evalOrch，另注入节点投递 fake（specs P4_LOG_001 §5.2）。
+func evalOrchWithRecorder(repo *fakeBatchRepo, alertRepo *fakeAlertRepo, fetcher *fakeSessionFetcher, featureRepo *fakeFeatureRepo, pe *fakePersonEvaluator, rec *nodeRecorder) *pipeline.Orchestrator {
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		pe, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
+		pe, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{}, rec)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 	return o
@@ -1289,7 +1316,7 @@ func TestRunBatchWaitExtractReady(t *testing.T) {
 	sessionEnq := &fakeSessionEnqueuer{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		pe, nil, nil, sessionEnq)
+		pe, nil, nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(5*time.Second, time.Millisecond)
 
@@ -1329,7 +1356,7 @@ func TestRunBatchWaitExtractTimeout(t *testing.T) {
 	pe := &fakePersonEvaluator{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		pe, nil, nil, &fakeSessionEnqueuer{})
+		pe, nil, nil, &fakeSessionEnqueuer{}, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(50*time.Millisecond, 5*time.Millisecond)
 
@@ -1387,7 +1414,7 @@ func TestRunBatchWaitSkipsFailedEnqueue(t *testing.T) {
 	pe := &fakePersonEvaluator{}
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		pe, nil, nil, sessionEnq)
+		pe, nil, nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(5*time.Second, time.Millisecond)
 
@@ -1425,7 +1452,7 @@ func TestRunBatchReplayFullRerun(t *testing.T) {
 	pe := &fakePersonEvaluator{}
 	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, fetcher, nil,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		pe, alertWriter(&fakeAlertRepo{}), nil, sessionEnq)
+		pe, alertWriter(&fakeAlertRepo{}), nil, sessionEnq, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 
@@ -1465,7 +1492,7 @@ func TestRunBatchSkeletonExpandStaffFetchFail(t *testing.T) {
 	o := pipeline.NewOrchestrator(repo, featureRepo, nil, nil,
 		&fakeStaffFetcher{err: errFake},
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{})
+		&fakePersonEvaluator{}, alertWriter(alertRepo), nil, &fakeSessionEnqueuer{}, nil)
 
 	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
 		t.Fatalf("展开失败整批落终态应返回 nil: %v", err)
@@ -1493,7 +1520,7 @@ func TestRunBatchSkeletonExpandEmptyNames(t *testing.T) {
 	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, nil,
 		&fakeStaffFetcher{pages: nil}, // 无页：首次调用即返回空页（total=0 短页终止）
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, alertWriter(&fakeAlertRepo{}), nil, &fakeSessionEnqueuer{})
+		&fakePersonEvaluator{}, alertWriter(&fakeAlertRepo{}), nil, &fakeSessionEnqueuer{}, nil)
 
 	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
 		t.Fatalf("空名单整批落终态应返回 nil: %v", err)
@@ -1518,7 +1545,7 @@ func TestRunBatchSkeletonExpandWriteFail(t *testing.T) {
 	o := pipeline.NewOrchestrator(repo, &fakeFeatureRepo{}, nil, nil,
 		&fakeStaffFetcher{pages: [][]userapi.Staff{staffs("甲")}},
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{})
+		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{}, nil)
 
 	if err := o.RunBatch(context.Background(), batch.ID); err == nil {
 		t.Fatal("展开落库失败应上抛交任务级重试")
@@ -1643,7 +1670,7 @@ func TestSkeletonExpandCrossPageDup(t *testing.T) {
 		&fakeSessionFetcher{pages: [][]conversationlog.SessionSummary{nil}},
 		fetcher,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{})
+		&fakePersonEvaluator{}, nil, nil, &fakeSessionEnqueuer{}, nil)
 	o.SetRetryBaseForTest(time.Millisecond)
 	o.SetExtractWaitForTest(10*time.Millisecond, time.Millisecond)
 
@@ -1657,3 +1684,86 @@ func TestSkeletonExpandCrossPageDup(t *testing.T) {
 		t.Errorf("展开人数 = %d, want 190（200 原始行 - 10 跨页重复）", batch.TotalCount)
 	}
 }
+
+// ---- worker 批次级节点记录（specs P4_LOG_001 §5.2） ----
+
+// TestOrchestratorFinalizeWritesNodeLog 核心锚点：RunBatch 全 fake 链路跑通且
+// FinalizeBatch 落库成功后，entries 含 Module=="system_job"、FallbackName=="系统"、
+// Summary 含「区间执行完成」；partial_failed 属失败类节点 result=fail（03 §4.2）。
+func TestOrchestratorFinalizeWritesNodeLog(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	// 张敏正常、李芳 Reused、王强重试耗尽：1/3 失败 → partial_failed（fail 节点）。
+	fetcher := &fakeSessionFetcher{pages: sessionsOf(map[string]int{"张敏": 2, "李芳": 1, "王强": 1})}
+	pe := &fakePersonEvaluator{perName: map[string][]evalAttempt{
+		"李芳": {{res: &evaluator.EvaluateResult{Reused: true}}},
+		"王强": {{err: errFake}, {err: errFake}, {err: errFake}, {err: errFake}},
+	}}
+	featureRepo := &fakeFeatureRepo{failed: 1}
+	rec := &nodeRecorder{}
+	o := evalOrchWithRecorder(repo, &fakeAlertRepo{}, fetcher, featureRepo, pe, rec)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if batch.Status != domain.BatchStatusPartialFailed {
+		t.Fatalf("前置：Status = %q, want partial_failed", batch.Status)
+	}
+	entries := rec.snapshot()
+	var node *fallback.PendingLog
+	for i := range entries {
+		if entries[i].Summary != "" && contains(entries[i].Summary, "区间执行完成") {
+			node = &entries[i]
+		}
+	}
+	if node == nil {
+		t.Fatalf("entries 缺「区间执行完成」节点: %+v", entries)
+	}
+	if node.Module != "system_job" || node.FallbackName != "系统" {
+		t.Errorf("节点头字段 = (%q, %q), want (system_job, 系统)", node.Module, node.FallbackName)
+	}
+	if node.Result != "fail" {
+		t.Errorf("partial_failed 节点 Result = %q, want fail", node.Result)
+	}
+	if !contains(node.Summary, "成功 2 人，失败 1 人") {
+		t.Errorf("Summary = %q, want 含「成功 2 人，失败 1 人」", node.Summary)
+	}
+	if !contains(node.Detail, "终态 partial_failed") || !contains(node.Detail, "会话级失败比例 25.00%") {
+		t.Errorf("Detail = %q, want 含终态与会话级失败比例", node.Detail)
+	}
+	if !contains(node.Target, batch.BatchNo) {
+		t.Errorf("Target = %q, want 含批次号 %s", node.Target, batch.BatchNo)
+	}
+	if node.RequestPath != "engine:batch-run" {
+		t.Errorf("RequestPath = %q, want engine:batch-run", node.RequestPath)
+	}
+}
+
+// TestOrchestratorFinalizeSuccessNode success 终态节点 result=success。
+func TestOrchestratorFinalizeSuccessNode(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	batch := runBatchFixture(repo)
+	fetcher := &fakeSessionFetcher{pages: sessionsOf(map[string]int{"张敏": 1, "李芳": 1, "王强": 1})}
+	rec := &nodeRecorder{}
+	o := evalOrchWithRecorder(repo, &fakeAlertRepo{}, fetcher, &fakeFeatureRepo{}, &fakePersonEvaluator{}, rec)
+
+	if err := o.RunBatch(context.Background(), batch.ID); err != nil {
+		t.Fatalf("RunBatch: %v", err)
+	}
+	if batch.Status != domain.BatchStatusSuccess {
+		t.Fatalf("前置：Status = %q, want success", batch.Status)
+	}
+	for _, e := range rec.snapshot() {
+		if !contains(e.Summary, "区间执行完成") {
+			continue
+		}
+		if e.Result != "success" {
+			t.Errorf("success 节点 Result = %q, want success", e.Result)
+		}
+		return
+	}
+	t.Fatal("entries 缺「区间执行完成」节点")
+}
+
+// contains 子串判定（测试辅助）。
+func contains(s, sub string) bool { return strings.Contains(s, sub) }

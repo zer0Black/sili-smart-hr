@@ -118,8 +118,8 @@ func (f *fakeAnswerTaskRepo) MarkSessionStarted(_ context.Context, _ int64) (int
 func (f *fakeAnswerTaskRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return 0, 0, nil
 }
-func (f *fakeAnswerTaskRepo) ExpirePending(_ context.Context, _ time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeAnswerTaskRepo) ExpirePending(_ context.Context, _ time.Time) ([]string, error) {
+	return nil, nil
 }
 func (f *fakeAnswerTaskRepo) CompleteTask(_ context.Context, _ int64, _ func(*gorm.DB) error, _ time.Time) error {
 	return nil

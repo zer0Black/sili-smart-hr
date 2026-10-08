@@ -11,7 +11,6 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
-	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/model"
@@ -81,11 +80,13 @@ func InitializeApp(configPath string) (*App, error) {
 	scorerScorer := scorer.New(dimensionScoreRepository, aggregateScoreRepository)
 	evaluator := NewEvaluatorProvider(evaluatorLLMClient, enabledModelProvider, sessionFeatureRepository, dimensionSpecReaderAdapter, activityThresholdReader, dimensionScoreRepository, systemParamReader, activity, scorerScorer)
 	assessmentAlertRepository := repository.NewAssessmentAlertRepository(db)
-	alertWriter := fallback.NewAlertWriter(assessmentAlertRepository)
+	operationLogRepository := repository.NewOperationLogRepository(db)
+	operationLogRecorder := service.NewOperationLogRecorder(operationLogRepository, accountRepository)
+	alertWriter := NewAlertWriterAdapter(assessmentAlertRepository, operationLogRecorder)
 	redisConnOpt := NewAsynqConnOpt(configConfig)
 	asynqClient := asynq.NewClient(redisConnOpt)
 	asynqEnqueuer := pipeline.NewAsynqEnqueuer(asynqClient)
-	orchestrator := NewOrchestratorProvider(assessmentBatchRepository, sessionFeatureRepository, assessmentConfigRepository, conversationlogClient, userapiClient, integrationSecretRepository, v, evaluator, alertWriter, asynqEnqueuer)
+	orchestrator := NewOrchestratorProvider(assessmentBatchRepository, sessionFeatureRepository, assessmentConfigRepository, conversationlogClient, userapiClient, integrationSecretRepository, v, evaluator, alertWriter, asynqEnqueuer, operationLogRecorder)
 	assessmentBatchService := NewAssessmentBatchServiceAdapter(assessmentBatchRepository, assessmentConfigRepository, dimensionRepository, userapiClient, integrationSecretRepository, v, nowFunc, orchestrator)
 	assessmentBatchHandler := handler.NewAssessmentBatchHandler(assessmentBatchService)
 	assessmentTestTaskRepository := repository.NewAssessmentTestTaskRepository(db)
@@ -122,8 +123,6 @@ func InitializeApp(configPath string) (*App, error) {
 	workspaceQueryRepository := repository.NewWorkspaceQueryRepository(db)
 	workspaceService := NewWorkspaceServiceAdapter(workspaceQueryRepository, dashboardQueryRepository, teamTrainingSuggestionRepository, dimensionRepository, assessmentConfigRepository, userapiClient, integrationSecretRepository, v, nowFunc)
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
-	operationLogRepository := repository.NewOperationLogRepository(db)
-	operationLogRecorder := service.NewOperationLogRecorder(operationLogRepository, accountRepository)
 	engine := router.NewRouter(configConfig, manager, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, assessmentConfigHandler, assessmentBatchHandler, assessmentTestTaskHandler, answerHandler, llmConfigHandler, integrationSecretHandler, questionHandler, questionBatchHandler, questionGenerationHandler, scaleHandler, profileHandler, dashboardHandler, workspaceHandler, operationLogRecorder, client)
 	httpAddr := NewHTTPAddr(configConfig)
 	int2 := NewAsynqConcurrency(configConfig)
@@ -138,14 +137,14 @@ func InitializeApp(configPath string) (*App, error) {
 	questionDimensionSpecReader := NewQuestionDimensionSpecReader(dimensionRepository)
 	generator := NewQuestionGenProvider(questionGenLLMClient, questionGenerationRepository, questionDimensionSpecReader)
 	questionGenerateHandler := NewQuestionGenerateHandlerTyped(generator)
-	testExpireTickHandler := NewTestExpireTickHandlerTyped(assessmentTestTaskRepository)
+	testExpireTickHandler := NewTestExpireTickHandlerTyped(assessmentTestTaskRepository, operationLogRecorder)
 	gradingLLMClient := NewGradingLLMClient(enabledModelProvider)
 	grader := NewGradingProvider(gradingLLMClient, enabledModelProvider, assessmentTestTaskRepository, questionRepository, assessmentTestAnswerRepository, assessmentTestResultRepository, dimensionRepository, dimensionScoreRepository, scorerScorer, assessmentConfigRepository, systemParamReader)
 	testGradeHandler := NewTestGradeHandlerTyped(grader, assessmentTestTaskRepository, assessmentTestResultRepository)
 	suggestGenLLMClient := NewSuggestGenLLMClient(enabledModelProvider)
 	suggestgenGenerator := NewSuggestGenProvider(suggestGenLLMClient, enabledModelProvider, systemParamReader)
 	asynqSuggestEnqueuer := NewAsynqSuggestEnqueuer(asynqClient)
-	suggestService := NewSuggestServiceAdapter(teamTrainingSuggestionRepository, dashboardQueryRepository, assessmentBatchRepository, dimensionRepository, suggestgenGenerator, asynqSuggestEnqueuer, integrationSecretRepository, v, userapiClient)
+	suggestService := NewSuggestServiceAdapter(teamTrainingSuggestionRepository, dashboardQueryRepository, assessmentBatchRepository, dimensionRepository, suggestgenGenerator, asynqSuggestEnqueuer, integrationSecretRepository, v, userapiClient, operationLogRecorder)
 	suggestTickHandler := NewSuggestTickHandlerTyped(suggestService)
 	suggestGenerateHandler := NewSuggestGenerateHandlerTyped(suggestService)
 	operationLogCleanHandler := NewOperationLogCleanHandlerTyped(operationLogRecorder)

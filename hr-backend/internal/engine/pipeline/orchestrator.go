@@ -39,7 +39,35 @@ const (
 const (
 	// batchNoSeqMax 批次号 3 位序号上限（04 §3.1：B+yyyyMMddHHmm+3位序号）。
 	batchNoSeqMax = 999
+
+	// nodeLayoutDate 节点 target 的区间日期格式（specs P4_LOG_001 §5.2.2
+	// 「批次号 + 区间」，与 assessment 埋点同款 YYYY-MM-DD）。
+	nodeLayoutDate = "2006-01-02"
 )
+
+// recordNode 批次级节点投递（specs P4_LOG_001 §5.2：module 恒 system_job、
+// 操作人恒「系统」；opLogger nil 时跳过，Record 异步旁路失败不阻断主任务）。
+func (o *Orchestrator) recordNode(requestPath, target, summary, detail, result string) {
+	if o.opLogger == nil {
+		return
+	}
+	o.opLogger.Record(fallback.PendingLog{
+		FallbackName: domain.OpOperatorSystem,
+		Module:       domain.OpModuleSystemJob,
+		Target:       target,
+		Summary:      summary,
+		Detail:       detail,
+		Result:       result,
+		RequestPath:  requestPath,
+	})
+}
+
+// nodeTarget 节点操作对象：批次号 + 含止日区间（specs P4_LOG_001 §5.2.2）。
+func nodeTarget(batch *domain.AssessmentBatch) string {
+	return fmt.Sprintf("批次 %s（%s ~ %s）", batch.BatchNo,
+		batch.PeriodStartAt.Local().Format(nodeLayoutDate),
+		batch.PeriodEndAt.Local().Format(nodeLayoutDate))
+}
 
 // ErrStaffFetchFailed 全员名单拉取失败哨兵（service 层据此映射 1305，errors.Is 判定）。
 var ErrStaffFetchFailed = errors.New("pipeline: 全员名单拉取失败")
@@ -81,6 +109,7 @@ type PersonEvaluator interface {
 // cl/featureRepo/configRepo/evaluator/sessionEnq 承载 RunBatch 与 TickTrigger 的
 // 依赖面。retryBase 退避基准可经测试覆盖（默认 PersonEvalRetryBase），生产不动。
 // extractWaitTimeout/extractPollInterval 抽取落库等待参数同范式（默认上方常量）。
+// opLogger 批次级节点投递面（specs P4_LOG_001 §5.2），nil 安全。
 type Orchestrator struct {
 	repo        repository.AssessmentBatchRepository
 	featureRepo repository.SessionFeatureRepository
@@ -93,12 +122,13 @@ type Orchestrator struct {
 	batchEnq    BatchEnqueuer
 	sessionEnq  SessionEnqueuer
 	retryBase   time.Duration
+	opLogger    fallback.PendingLogRecorder
 
 	extractWaitTimeout  time.Duration
 	extractPollInterval time.Duration
 }
 
-// NewOrchestrator 组装批次编排器。
+// NewOrchestrator 组装批次编排器。opLogger 为批次级节点投递面，nil 时跳过。
 func NewOrchestrator(
 	repo repository.AssessmentBatchRepository,
 	featureRepo repository.SessionFeatureRepository,
@@ -110,6 +140,7 @@ func NewOrchestrator(
 	alerts *fallback.AlertWriter,
 	batchEnq BatchEnqueuer,
 	sessionEnq SessionEnqueuer,
+	opLogger fallback.PendingLogRecorder,
 ) *Orchestrator {
 	return &Orchestrator{
 		repo:        repo,
@@ -123,6 +154,7 @@ func NewOrchestrator(
 		batchEnq:    batchEnq,
 		sessionEnq:  sessionEnq,
 		retryBase:   PersonEvalRetryBase,
+		opLogger:    opLogger,
 
 		extractWaitTimeout:  ExtractWaitTimeout,
 		extractPollInterval: ExtractPollInterval,
@@ -307,7 +339,21 @@ func (o *Orchestrator) TickTrigger(ctx context.Context, now time.Time) error {
 		return fmt.Errorf("pipeline: batch-run 投递失败（已回滚建批）: %w", err)
 	}
 	slog.Info("batch tick triggered", "batch_no", batch.BatchNo, "period", cfg.Period)
+	// 建批完成节点（specs P4_LOG_001 §5.2：仅 TickTrigger 建批路径记，
+	// SubmitManualBatch 的人工操作由 assessment 埋点承载，避免双行）。
+	o.recordNode("engine:batch-tick", nodeTarget(batch), "周期批次创建完成",
+		fmt.Sprintf("对象 %s，触发点 %s", targetModeName(cfg.TargetMode),
+			batch.TriggeredAt.Local().Format("2006-01-02 15:04")),
+		domain.OpResultSuccess)
 	return nil
+}
+
+// targetModeName 评估对象模式中文名（节点 detail 用，措辞同 service 埋点）。
+func targetModeName(mode string) string {
+	if mode == domain.BatchTargetAll {
+		return "全员"
+	}
+	return "指定人员"
 }
 
 // RunBatch 批次编排全流程（03 §4.4）：骨架展开 → 分组 → 回填会话数 → 投递抽取
@@ -582,6 +628,16 @@ func (o *Orchestrator) finalizeBatch(ctx context.Context, batchID int64, period 
 	if err := o.repo.FinalizeBatch(ctx, batchID, status, sessionFailRatio); err != nil {
 		return fmt.Errorf("pipeline: 批次终态落库: %w", err)
 	}
+	// 区间执行终态节点（specs P4_LOG_001 §5.2：落库成功后记；failed 与
+	// partial_failed 属失败类节点记 fail，03 §4.2 降级口径）。
+	result := domain.OpResultSuccess
+	if status != domain.BatchStatusSuccess {
+		result = domain.OpResultFail
+	}
+	o.recordNode("engine:batch-run", nodeTarget(batch),
+		fmt.Sprintf("区间执行完成：成功 %d 人，失败 %d 人", batch.TotalCount-batch.FailedCount, batch.FailedCount),
+		fmt.Sprintf("终态 %s，会话级失败比例 %.2f%%", status, sessionFailRatio),
+		result)
 	if !fallback.BelowAlertThreshold(batch.FailedCount, batch.TotalCount) && o.alerts != nil {
 		_ = o.alerts.WriteAlert(ctx, batch) // 写入失败仅记日志不重试
 	}

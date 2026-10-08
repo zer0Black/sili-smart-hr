@@ -47,7 +47,8 @@ type SuggestGenerator interface {
 // 供 wire 在 app 包注入（ProvideUserapiClient 同款形态）。
 func ProvideSuggestGenerator(g *suggestgen.Generator) SuggestGenerator { return g }
 
-// SuggestService 团队培训建议生成编排服务（specs §5.1）。
+// SuggestService 团队培训建议生成编排服务（specs §5.1）。opLogger 建议生成
+// 终态节点投递面（specs P4_LOG_001 §5.2），nil 安全。
 type SuggestService struct {
 	suggestions repository.TeamTrainingSuggestionRepository
 	queries     repository.DashboardQueryRepository
@@ -58,10 +59,12 @@ type SuggestService struct {
 	secretRepo  repository.IntegrationSecretRepository
 	encKey      []byte
 	staffs      userapiClient
+	opLogger    PendingLogRecorder
 }
 
 // NewSuggestService 构造建议生成 service：gen 为生成引擎（生产经
-// ProvideSuggestGenerator 适配，测试可注入 fake）。
+// ProvideSuggestGenerator 适配，测试可注入 fake）；opLogger 为终态节点投递面，
+// nil 时跳过。
 func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 	queries repository.DashboardQueryRepository,
 	batches repository.AssessmentBatchRepository,
@@ -71,6 +74,7 @@ func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 	secretRepo repository.IntegrationSecretRepository,
 	encKey []byte,
 	staffs userapiClient,
+	opLogger PendingLogRecorder,
 ) *SuggestService {
 	return &SuggestService{
 		suggestions: suggestions,
@@ -82,6 +86,7 @@ func NewSuggestService(suggestions repository.TeamTrainingSuggestionRepository,
 		secretRepo:  secretRepo,
 		encKey:      encKey,
 		staffs:      staffs,
+		opLogger:    opLogger,
 	}
 }
 
@@ -217,7 +222,27 @@ func (s *SuggestService) Generate(ctx context.Context, batchID int64) error {
 		return fmt.Errorf("mark suggestion generated: %w", err)
 	}
 	slog.Info("team suggestion generated", "batch_no", batch.BatchNo, "model_name", modelName)
+	// 建议生成完成节点（specs P4_LOG_001 §5.2：成功返回前记）。
+	s.recordNode(batch, "培训建议生成完成", domain.OpResultSuccess)
 	return nil
+}
+
+// recordNode 建议生成终态节点投递（specs P4_LOG_001 §5.2：module 恒 system_job、
+// 操作人恒「系统」；opLogger nil 时跳过，Record 异步旁路失败不阻断）。
+func (s *SuggestService) recordNode(batch *domain.AssessmentBatch, summary, result string) {
+	if s.opLogger == nil {
+		return
+	}
+	s.opLogger.Record(PendingLog{
+		FallbackName: domain.OpOperatorSystem,
+		Module:       domain.OpModuleSystemJob,
+		Target: fmt.Sprintf("批次 %s（%s ~ %s）", batch.BatchNo,
+			batch.PeriodStartAt.Local().Format(layoutDate),
+			batch.PeriodEndAt.Local().Format(layoutDate)),
+		Summary:     summary,
+		Result:      result,
+		RequestPath: "dashboard:suggest-generate",
+	})
 }
 
 // MarkFailedIfExhausted 重试耗尽落库钩子（specs §5.1.4 规则3、03 §4.2 末段）：
@@ -241,6 +266,8 @@ func (s *SuggestService) MarkFailedIfExhausted(ctx context.Context, batchID int6
 		return fmt.Errorf("mark suggestion failed: %w", err)
 	}
 	slog.Warn("suggest retries exhausted, mark failed", "batch_no", batch.BatchNo)
+	// 建议生成失败节点（specs P4_LOG_001 §5.2：重试耗尽落 failed 时记）。
+	s.recordNode(batch, fmt.Sprintf("建议生成失败：%s", truncateSuggestReason(reason)), domain.OpResultFail)
 	return nil
 }
 
