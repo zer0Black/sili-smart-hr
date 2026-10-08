@@ -9,6 +9,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,9 +175,16 @@ func (f *fakeSuggestGenerator) Generate(_ context.Context, m suggestgen.Material
 	return f.out, f.model, f.err
 }
 
-// newSuggestSvc 通用构造器：gen 非 nil 时直接注入 fake。
+// newSuggestSvc 通用构造器：gen 非 nil 时直接注入 fake（节点投递面传 nil）。
 func newSuggestSvc(sug *fakeSuggestSuggestions, q *fakeSuggestQueries, b *fakeBatchRepo,
 	gen *fakeSuggestGenerator, enq *fakeSuggestEnqueuer, dims *fakeDashboardDimRepo, ua *fakeUserapiClient) *service.SuggestService {
+	return newSuggestSvcWithRecorder(sug, q, b, gen, enq, dims, ua, nil)
+}
+
+// newSuggestSvcWithRecorder 同上，另注入节点投递 fake（specs P4_LOG_001 §5.2）。
+func newSuggestSvcWithRecorder(sug *fakeSuggestSuggestions, q *fakeSuggestQueries, b *fakeBatchRepo,
+	gen *fakeSuggestGenerator, enq *fakeSuggestEnqueuer, dims *fakeDashboardDimRepo, ua *fakeUserapiClient,
+	rec service.PendingLogRecorder) *service.SuggestService {
 	encKey := crypto.DeriveKey("test-suggest")
 	cipher, err := crypto.Encrypt(encKey, "suggest-secret")
 	if err != nil {
@@ -187,7 +195,7 @@ func newSuggestSvc(sug *fakeSuggestSuggestions, q *fakeSuggestQueries, b *fakeBa
 	if gen != nil {
 		generator = gen
 	}
-	return service.NewSuggestService(sug, q, b, dims, generator, enq, secretRepo, encKey, ua)
+	return service.NewSuggestService(sug, q, b, dims, generator, enq, secretRepo, encKey, ua, rec)
 }
 
 // sugWeek 建议链路测试周期（与 dashWeek 同构，独立命名防串扰）。
@@ -749,5 +757,83 @@ func TestMarkFailedIfExhausted(t *testing.T) {
 	}
 	if sug.failed != nil {
 		t.Fatalf("批次无行应幂等跳过, got %+v", sug.failed)
+	}
+}
+
+// ===== worker 建议生成终态节点（specs P4_LOG_001 §5.2） =====
+
+// fakeSuggestRecorder 节点投递 fake：收集 entries。
+type fakeSuggestRecorder struct {
+	entries []service.PendingLog
+}
+
+func (f *fakeSuggestRecorder) Record(entry service.PendingLog) {
+	f.entries = append(f.entries, entry)
+}
+
+// TestSuggestGenerateWritesNodeLog 核心锚点：Generate 成功路径 entries 最后一条
+// Summary=="培训建议生成完成"，module system_job、操作人「系统」、result success。
+func TestSuggestGenerateWritesNodeLog(t *testing.T) {
+	sug, q, b := suggestGenEnv(sugWeek(0))
+	gen := &fakeSuggestGenerator{out: suggestgen.Output{Summary: "ok"}, model: "m-1"}
+	rec := &fakeSuggestRecorder{}
+	svc := newSuggestSvcWithRecorder(sug, q, b, gen, &fakeSuggestEnqueuer{}, suggestTestDims(),
+		&fakeUserapiClient{staffs: dashStaffNames(1), total: 1}, rec)
+
+	if err := svc.Generate(context.Background(), 7); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(rec.entries) == 0 {
+		t.Fatal("成功路径应记节点")
+	}
+	last := rec.entries[len(rec.entries)-1]
+	if last.Summary != "培训建议生成完成" {
+		t.Fatalf("末条 Summary = %q, want 培训建议生成完成", last.Summary)
+	}
+	if last.Module != "system_job" || last.FallbackName != "系统" || last.Result != "success" {
+		t.Fatalf("节点头字段异常: %+v", last)
+	}
+	if !strings.Contains(last.Target, "B-7") {
+		t.Fatalf("Target = %q, want 含批次号 B-7", last.Target)
+	}
+	if last.RequestPath != "dashboard:suggest-generate" {
+		t.Fatalf("RequestPath = %q, want dashboard:suggest-generate", last.RequestPath)
+	}
+}
+
+// TestSuggestMarkFailedWritesNodeLog MarkFailedIfExhausted 落 failed 时记失败节点
+//（summary 带原因、result=fail）；终态行幂等跳过不记。
+func TestSuggestMarkFailedWritesNodeLog(t *testing.T) {
+	w0 := sugWeek(0)
+	sug, q, b := suggestGenEnv(w0)
+	rec := &fakeSuggestRecorder{}
+	svc := newSuggestSvcWithRecorder(sug, q, b, nil, &fakeSuggestEnqueuer{}, suggestTestDims(),
+		&fakeUserapiClient{}, rec)
+
+	if err := svc.MarkFailedIfExhausted(context.Background(), 7, "LLM 超时"); err != nil {
+		t.Fatalf("MarkFailedIfExhausted: %v", err)
+	}
+	if len(rec.entries) != 1 {
+		t.Fatalf("节点条数 = %d, want 1", len(rec.entries))
+	}
+	e := rec.entries[0]
+	if e.Summary != "建议生成失败：LLM 超时" {
+		t.Fatalf("Summary = %q, want 建议生成失败：LLM 超时", e.Summary)
+	}
+	if e.Result != "fail" || e.Module != "system_job" || e.FallbackName != "系统" {
+		t.Fatalf("节点头字段异常: %+v", e)
+	}
+
+	// 终态行：幂等跳过不重复记节点。
+	sug.failed = nil
+	done := &domain.TeamTrainingSuggestion{ID: 7, Status: domain.SuggestionStatusGenerated,
+		PeriodStartAt: w0.StartAt, PeriodEndAt: w0.EndAt}
+	sug.byPer[[2]int64{w0.StartAt.Unix(), w0.EndAt.Unix()}] = done
+	rec.entries = nil
+	if err := svc.MarkFailedIfExhausted(context.Background(), 7, "LLM 超时"); err != nil {
+		t.Fatalf("终态行 want nil, got %v", err)
+	}
+	if len(rec.entries) != 0 {
+		t.Fatalf("终态行幂等不应记节点, got %d 条", len(rec.entries))
 	}
 }

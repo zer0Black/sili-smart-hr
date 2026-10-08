@@ -3,6 +3,7 @@ package fallback_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -135,9 +136,18 @@ func (f *fakeAlertRepo) UpsertByBatch(ctx context.Context, alert *domain.Assessm
 	return f.err
 }
 
+// alertRecorder 节点投递 fake（fallback.PendingLogRecorder 窄面）。
+type alertRecorder struct {
+	entries []fallback.PendingLog
+}
+
+func (f *alertRecorder) Record(entry fallback.PendingLog) {
+	f.entries = append(f.entries, entry)
+}
+
 func TestWriteAlertPersisted(t *testing.T) {
 	repo := &fakeAlertRepo{}
-	w := fallback.NewAlertWriter(repo)
+	w := fallback.NewAlertWriter(repo, nil)
 
 	batch := &domain.AssessmentBatch{
 		ID:          123,
@@ -174,10 +184,60 @@ func TestWriteAlertPersisted(t *testing.T) {
 
 func TestWriteAlertRepoErrorSwallowed(t *testing.T) {
 	repo := &fakeAlertRepo{err: errors.New("db down")}
-	w := fallback.NewAlertWriter(repo)
+	w := fallback.NewAlertWriter(repo, nil)
 
 	batch := &domain.AssessmentBatch{BatchNo: "B1", FailedCount: 5, TotalCount: 10}
 	if err := w.WriteAlert(context.Background(), batch); err != nil {
 		t.Fatalf("写入失败应仅记日志返回 nil，得到 %v", err)
+	}
+}
+
+// TestAlertWriterWritesNodeLog 核心锚点（specs P4_LOG_001 §5.2 告警写入节点，
+// 失败类）：Upsert 成功后 entries 含 Result=="fail"、Summary 含「超阈值」，
+// module system_job、操作人「系统」。
+func TestAlertWriterWritesNodeLog(t *testing.T) {
+	repo := &fakeAlertRepo{}
+	rec := &alertRecorder{}
+	w := fallback.NewAlertWriter(repo, rec)
+
+	batch := &domain.AssessmentBatch{ID: 9, BatchNo: "B202610080800001", FailedCount: 3, TotalCount: 10,
+		PeriodStartAt: time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC),
+		PeriodEndAt:   time.Date(2026, 10, 7, 0, 0, 0, 0, time.UTC)}
+	if err := w.WriteAlert(context.Background(), batch); err != nil {
+		t.Fatalf("WriteAlert: %v", err)
+	}
+	if len(rec.entries) != 1 {
+		t.Fatalf("节点条数 = %d, want 1", len(rec.entries))
+	}
+	e := rec.entries[0]
+	if e.Result != "fail" {
+		t.Errorf("Result = %q, want fail", e.Result)
+	}
+	if !strings.Contains(e.Summary, "超阈值") {
+		t.Errorf("Summary = %q, want 含「超阈值」", e.Summary)
+	}
+	if !strings.Contains(e.Summary, "30.00%") {
+		t.Errorf("Summary = %q, want 含占比 30.00%%", e.Summary)
+	}
+	if e.Module != "system_job" || e.FallbackName != "系统" {
+		t.Errorf("头字段异常: %+v", e)
+	}
+	if !strings.Contains(e.Target, "B202610080800001") || !strings.Contains(e.Target, "~") {
+		t.Errorf("Target = %q, want 含批次号与区间", e.Target)
+	}
+}
+
+// TestAlertWriterUpsertFailNoNode Upsert 失败（告警本体未落库）不记节点。
+func TestAlertWriterUpsertFailNoNode(t *testing.T) {
+	repo := &fakeAlertRepo{err: errors.New("db down")}
+	rec := &alertRecorder{}
+	w := fallback.NewAlertWriter(repo, rec)
+
+	batch := &domain.AssessmentBatch{BatchNo: "B1", FailedCount: 5, TotalCount: 10}
+	if err := w.WriteAlert(context.Background(), batch); err != nil {
+		t.Fatalf("WriteAlert: %v", err)
+	}
+	if len(rec.entries) != 0 {
+		t.Fatalf("Upsert 失败不应记节点, got %d 条", len(rec.entries))
 	}
 }

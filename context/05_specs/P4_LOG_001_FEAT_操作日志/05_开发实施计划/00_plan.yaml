@@ -20,7 +20,7 @@ sub_plans:
   - id: "01"
     name: "写通道骨架"
     file: "01_写通道骨架.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
@@ -29,7 +29,7 @@ sub_plans:
   - id: "02"
     name: "埋点与节点"
     file: "02_埋点与节点.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
@@ -37,7 +37,7 @@ sub_plans:
   - id: "03"
     name: "查询导出接口"
     file: "03_查询导出接口.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
@@ -46,7 +46,7 @@ sub_plans:
   - id: "04"
     name: "操作日志页"
     file: "04_操作日志页.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"

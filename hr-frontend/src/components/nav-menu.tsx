@@ -68,7 +68,7 @@ export function NavMenu() {
         { label: t('nav.systemParam'), to: '/system/params' },
         { label: t('nav.configLlm'), to: '/system/llm' },
         { label: t('nav.dimension'), to: '/system/dimension' },
-        { label: t('nav.operationLog'), feature: 'F12' },
+        { label: t('nav.operationLog'), to: '/system/operation-log' },
       ],
     },
   ];

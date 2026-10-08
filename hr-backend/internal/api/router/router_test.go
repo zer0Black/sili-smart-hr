@@ -63,6 +63,12 @@ func (f *fakeAccountSvc) ResetPassword(ctx context.Context, id int64, passwordCi
 	return nil
 }
 
+// noopRecorder 是 router 集成测试用的 service.PendingLogRecorder 桩：
+// 只吞记录不断言（记录行为由 middleware 包 operation_log_test 覆盖）。
+type noopRecorder struct{}
+
+func (noopRecorder) Record(service.PendingLog) {}
+
 // newAuthRouter 构造一个与生产 NewRouter 同构的 engine，公开区含公钥接口（60/min IP）
 // 与登录接口（IP 30/min + username 20/min 两层）的限流，rdb 由 miniredis 提供。
 // setupHandler/systemHandler/dimensionHandler 由调用方传入：auth 相关测试传 nil（不触达对应路由），
@@ -84,7 +90,7 @@ func newAuthRouter(t *testing.T, svc service.AccountService, setupHandler *handl
 	jwtMgr := jwt.NewManager("router-test-secret", time.Hour)
 	cfg := &config.Config{}
 
-	engine := router.NewRouter(cfg, jwtMgr, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, rdb)
+	engine := router.NewRouter(cfg, jwtMgr, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, noopRecorder{}, rdb)
 	return engine, svc.(*fakeAccountSvc), rdb
 }
 

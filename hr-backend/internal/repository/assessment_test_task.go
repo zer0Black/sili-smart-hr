@@ -68,8 +68,9 @@ type AssessmentTestTaskRepository interface {
 	//（status=completed 且 grading_status ∈ {waiting, grading}），排除 canceled（03 A2 口径）。
 	CountActiveByType(ctx context.Context) (aiMgmt, enneagram int64, err error)
 	// ExpirePending 扫描 pending 且当前 valid 链接 expires_at < now 的任务批量推进
-	// expired + 链接 invalid，条件更新守卫幂等，返回推进条数（specs §5.3.2/§5.3.4）。
-	ExpirePending(ctx context.Context, now time.Time) (int64, error)
+	// expired + 链接 invalid，条件更新守卫幂等，返回推进任务的 TaskNo 清单
+	//（specs §5.3.2/§5.3.4；条数语义由 len 承载，供逾期取消节点逐任务记行）。
+	ExpirePending(ctx context.Context, now time.Time) ([]string, error)
 	// CompleteTask 提交事务三步 + enqueue 同事务，报错整体回滚（specs §5.2.2
 	// 步骤1）。completed 幂等返 nil，其余 affected=0 返 ErrTaskNotSubmittable；
 	// pending 直达 completed 为 03 §1.6 声明的防御性放行。
@@ -326,8 +327,9 @@ func (r *assessmentTestTaskRepository) CountActiveByType(ctx context.Context) (i
 
 // ExpirePending 扫描 pending 且当前 valid 链接到期的任务，逐任务条件更新守卫推进
 // （affected=0 即并发已推进/状态已变，幂等跳过）；tick 只扫 pending，in_progress
-// 天然豁免（specs §5.3.4 规则1/3）。候选集经子查询圈定走 idx_status_expires 前缀。
-func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now time.Time) (int64, error) {
+// 天然豁免（specs §5.3.4 规则1/3）。候选集经子查询圈定走 idx_status_expires 前缀，
+// 取 id 后按行读 TaskNo，事务内推进成功才计入返回清单（specs §5.2.2 任务号口径）。
+func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now time.Time) ([]string, error) {
 	sub := r.db.Model(&domain.AssessmentTestLink{}).
 		Select("task_id").
 		Where("status = ? AND expires_at < ?", domain.LinkStatusValid, now)
@@ -335,10 +337,19 @@ func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now ti
 	if err := r.db.WithContext(ctx).Model(&domain.AssessmentTestTask{}).
 		Where("status = ? AND id IN (?)", domain.TestTaskStatusPending, sub).
 		Pluck("id", &candidates).Error; err != nil {
-		return 0, err
+		return nil, err
 	}
-	var advanced int64
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	var advanced []string
 	for _, id := range candidates {
+		var taskNo string
+		if err := r.db.WithContext(ctx).Model(&domain.AssessmentTestTask{}).
+			Where("id = ?", id).
+			Pluck("task_no", &taskNo).Error; err != nil {
+			return advanced, err
+		}
 		err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			res := tx.Model(&domain.AssessmentTestTask{}).
 				Where("id = ? AND status = ?", id, domain.TestTaskStatusPending).
@@ -354,7 +365,7 @@ func (r *assessmentTestTaskRepository) ExpirePending(ctx context.Context, now ti
 				Update("status", domain.LinkStatusInvalid).Error; err != nil {
 				return err
 			}
-			advanced++
+			advanced = append(advanced, taskNo)
 			return nil
 		})
 		if err != nil {

@@ -21,6 +21,7 @@ import { Route as AuthenticatedProfileIndexRouteImport } from './routes/_authent
 import { Route as AuthenticatedProfileStaffNameRouteImport } from './routes/_authenticated/profile/$staffName'
 import { Route as AuthenticatedQuestionBankIndexRouteImport } from './routes/_authenticated/question-bank/index'
 import { Route as AuthenticatedQuestionBankGenerateRouteImport } from './routes/_authenticated/question-bank/generate'
+import { Route as AuthenticatedSystemOperationLogRouteImport } from './routes/_authenticated/system/operation-log'
 import { Route as AuthenticatedSystemParamsRouteImport } from './routes/_authenticated/system/params'
 import { Route as AuthenticatedSystemStatusRouteImport } from './routes/_authenticated/system/status'
 import { Route as AuthenticatedSystemDimensionIndexRouteImport } from './routes/_authenticated/system/dimension/index'
@@ -93,6 +94,12 @@ const AuthenticatedQuestionBankGenerateRoute =
     path: '/question-bank/generate',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedSystemOperationLogRoute =
+  AuthenticatedSystemOperationLogRouteImport.update({
+    id: '/system/operation-log',
+    path: '/system/operation-log',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSystemParamsRoute =
   AuthenticatedSystemParamsRouteImport.update({
     id: '/system/params',
@@ -132,6 +139,7 @@ export interface FileRoutesByFullPath {
   '/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
+  '/system/operation-log': typeof AuthenticatedSystemOperationLogRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment/': typeof AuthenticatedAssessmentIndexRoute
@@ -150,6 +158,7 @@ export interface FileRoutesByTo {
   '/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
+  '/system/operation-log': typeof AuthenticatedSystemOperationLogRoute
   '/system/params': typeof AuthenticatedSystemParamsRoute
   '/system/status': typeof AuthenticatedSystemStatusRoute
   '/assessment': typeof AuthenticatedAssessmentIndexRoute
@@ -170,6 +179,7 @@ export interface FileRoutesById {
   '/_authenticated/dashboard/trend': typeof AuthenticatedDashboardTrendRoute
   '/_authenticated/profile/$staffName': typeof AuthenticatedProfileStaffNameRoute
   '/_authenticated/question-bank/generate': typeof AuthenticatedQuestionBankGenerateRoute
+  '/_authenticated/system/operation-log': typeof AuthenticatedSystemOperationLogRoute
   '/_authenticated/system/params': typeof AuthenticatedSystemParamsRoute
   '/_authenticated/system/status': typeof AuthenticatedSystemStatusRoute
   '/_authenticated/assessment/': typeof AuthenticatedAssessmentIndexRoute
@@ -190,6 +200,7 @@ export interface FileRouteTypes {
     | '/dashboard/trend'
     | '/profile/$staffName'
     | '/question-bank/generate'
+    | '/system/operation-log'
     | '/system/params'
     | '/system/status'
     | '/assessment/'
@@ -208,6 +219,7 @@ export interface FileRouteTypes {
     | '/dashboard/trend'
     | '/profile/$staffName'
     | '/question-bank/generate'
+    | '/system/operation-log'
     | '/system/params'
     | '/system/status'
     | '/assessment'
@@ -227,6 +239,7 @@ export interface FileRouteTypes {
     | '/_authenticated/dashboard/trend'
     | '/_authenticated/profile/$staffName'
     | '/_authenticated/question-bank/generate'
+    | '/_authenticated/system/operation-log'
     | '/_authenticated/system/params'
     | '/_authenticated/system/status'
     | '/_authenticated/assessment/'
@@ -331,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedQuestionBankGenerateRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/system/operation-log': {
+      id: '/_authenticated/system/operation-log'
+      path: '/system/operation-log'
+      fullPath: '/system/operation-log'
+      preLoaderRoute: typeof AuthenticatedSystemOperationLogRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/system/params': {
       id: '/_authenticated/system/params'
       path: '/system/params'
@@ -374,6 +394,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedDashboardTrendRoute: typeof AuthenticatedDashboardTrendRoute
   AuthenticatedProfileStaffNameRoute: typeof AuthenticatedProfileStaffNameRoute
   AuthenticatedQuestionBankGenerateRoute: typeof AuthenticatedQuestionBankGenerateRoute
+  AuthenticatedSystemOperationLogRoute: typeof AuthenticatedSystemOperationLogRoute
   AuthenticatedSystemParamsRoute: typeof AuthenticatedSystemParamsRoute
   AuthenticatedSystemStatusRoute: typeof AuthenticatedSystemStatusRoute
   AuthenticatedAssessmentIndexRoute: typeof AuthenticatedAssessmentIndexRoute
@@ -391,6 +412,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedProfileStaffNameRoute: AuthenticatedProfileStaffNameRoute,
   AuthenticatedQuestionBankGenerateRoute:
     AuthenticatedQuestionBankGenerateRoute,
+  AuthenticatedSystemOperationLogRoute: AuthenticatedSystemOperationLogRoute,
   AuthenticatedSystemParamsRoute: AuthenticatedSystemParamsRoute,
   AuthenticatedSystemStatusRoute: AuthenticatedSystemStatusRoute,
   AuthenticatedAssessmentIndexRoute: AuthenticatedAssessmentIndexRoute,

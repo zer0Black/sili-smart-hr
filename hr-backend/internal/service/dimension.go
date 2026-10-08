@@ -399,6 +399,47 @@ func validateDimensionMutableFields(name, anchor, prompt, description, dataSourc
 	return nil
 }
 
+// includeName 纳入总览布尔值的中文名（埋点变更对比用）。
+func includeName(v bool) string {
+	if v {
+		return "是"
+	}
+	return "否"
+}
+
+// dimensionTarget 维度埋点操作对象。
+func dimensionTarget(name string) string {
+	return fmt.Sprintf("维度「%s」", name)
+}
+
+// dimensionChanges 编辑维度变更对比（写前 diff，specs §7.2）：名称/锚点/提示词/聚合权重/
+// 纳入总览/启用状态有变化才进，描述并入。
+func dimensionChanges(old, new *domain.Dimension) []domain.ChangeItem {
+	var changes []domain.ChangeItem
+	if old.Name != new.Name {
+		changes = append(changes, fmtChange("名称", old.Name, new.Name))
+	}
+	if old.Anchor != new.Anchor {
+		changes = append(changes, fmtChange("行为锚点", old.Anchor, new.Anchor))
+	}
+	if old.Prompt != new.Prompt {
+		changes = append(changes, fmtChange("提示词", old.Prompt, new.Prompt))
+	}
+	if old.Weight != new.Weight {
+		changes = append(changes, fmtChange("聚合权重", old.Weight, new.Weight))
+	}
+	if old.IncludeOverview != new.IncludeOverview {
+		changes = append(changes, fmtChange("纳入总览", includeName(old.IncludeOverview), includeName(new.IncludeOverview)))
+	}
+	if old.Enabled != new.Enabled {
+		changes = append(changes, fmtChange("启用状态", enabledName(old.Enabled), enabledName(new.Enabled)))
+	}
+	if old.Description != new.Description {
+		changes = append(changes, fmtChange("描述", old.Description, new.Description))
+	}
+	return changes
+}
+
 // CreateDimension 新增：校验 → 联动派生 → 编码生成（含冲突去重）→ 入库（specs §4.2 + 规则1~9）。
 func (s *dimensionService) CreateDimension(ctx context.Context, in CreateDimensionInput) (*DimensionMutationResult, error) {
 	if err := validateDimensionMutableFields(in.Name, in.Anchor, in.Prompt, in.Description, in.DataSource); err != nil {
@@ -495,6 +536,10 @@ func (s *dimensionService) CreateDimension(ctx context.Context, in CreateDimensi
 		}
 		return nil, fmt.Errorf("create dimension: %w", err)
 	}
+	// 新增类无变更前后语义，走 detail 文本形态（specs §4.1.4 规则3）。
+	injectDetail(ctx, domain.OpModuleDimension, dimensionTarget(d.Name),
+		fmt.Sprintf("新增维度 %s", d.Name),
+		fmt.Sprintf("新增维度 %s，聚合权重 %d，纳入总览 %s", d.Name, d.Weight, includeName(d.IncludeOverview)))
 	return &DimensionMutationResult{
 		ID:              d.ID,
 		Code:            d.Code,
@@ -561,6 +606,10 @@ func (s *dimensionService) UpdateDimension(ctx context.Context, in UpdateDimensi
 		}
 		return nil, fmt.Errorf("reload dimension: %w", err)
 	}
+	// cur 即写前旧值快照，updated 为写后新值，diff 出变更对比（specs §7.2）。
+	injectOperation(ctx, domain.OpModuleDimension, dimensionTarget(updated.Name),
+		fmt.Sprintf("编辑维度 %s", updated.Name),
+		dimensionChanges(cur, updated))
 	return &DimensionMutationResult{
 		ID:              updated.ID,
 		Code:            updated.Code,
@@ -595,6 +644,10 @@ func (s *dimensionService) DeleteDimension(ctx context.Context, in DeleteDimensi
 	if rows == 0 {
 		return NewError(errcode.DimensionVersionConflict)
 	}
+	// 删除类无变更前后语义，走 detail 文本形态（specs §4.1.4 规则3）。
+	injectDetail(ctx, domain.OpModuleDimension, dimensionTarget(cur.Name),
+		fmt.Sprintf("删除维度 %s", cur.Name),
+		fmt.Sprintf("删除维度 %s", cur.Name))
 	return nil
 }
 
@@ -626,6 +679,11 @@ func (s *dimensionService) SaveActivityRule(ctx context.Context, in ActivityRule
 	if in.LowFrequencyThreshold >= in.ActiveThreshold {
 		return nil, NewError(errcode.ActivityThresholdInvalid)
 	}
+	// 写前取旧值供埋点 diff（specs §7.2），读失败与 GetActivityRule 同口径 wrap 上报。
+	old, err := s.repo.GetActivitySetting(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get activity setting: %w", err)
+	}
 	if err := s.repo.UpdateActivitySetting(ctx, in.ActiveThreshold, in.LowFrequencyThreshold); err != nil {
 		return nil, fmt.Errorf("update activity setting: %w", err)
 	}
@@ -634,6 +692,17 @@ func (s *dimensionService) SaveActivityRule(ctx context.Context, in ActivityRule
 	if err != nil {
 		return nil, fmt.Errorf("reload activity setting: %w", err)
 	}
+	// 活跃度阈值保存注入变更对比（specs §7.2），无变化不进单项。
+	var changes []domain.ChangeItem
+	if old.ActiveThreshold != setting.ActiveThreshold {
+		changes = append(changes, fmtChange("活跃下限", old.ActiveThreshold, setting.ActiveThreshold))
+	}
+	if old.LowFrequencyThreshold != setting.LowFrequencyThreshold {
+		changes = append(changes, fmtChange("低频下限", old.LowFrequencyThreshold, setting.LowFrequencyThreshold))
+	}
+	injectOperation(ctx, domain.OpModuleDimension, "活跃度规则",
+		fmt.Sprintf("保存活跃度规则（活跃下限 %d，低频下限 %d）", setting.ActiveThreshold, setting.LowFrequencyThreshold),
+		changes)
 	return &ActivityRuleDTO{
 		ActiveThreshold:       setting.ActiveThreshold,
 		LowFrequencyThreshold: setting.LowFrequencyThreshold,

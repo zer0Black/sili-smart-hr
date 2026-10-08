@@ -112,6 +112,11 @@ func (s *questionGenerationService) CreateGeneration(ctx context.Context, dimens
 		}
 		return nil, NewError(errcode.Internal)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：维度数与计划题数。
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("AI 出题会话 #%d", row.ID),
+		"发起 AI 出题",
+		fmt.Sprintf("维度 %d 个，计划 %d 题", len(deduped), count))
 	return &CreateGenerationDTO{
 		GenerationID: int64ToString(row.ID),
 		Status:       domain.QuestionGenStatusQueued,
@@ -201,11 +206,16 @@ func (s *questionGenerationService) GetProgress(ctx context.Context, id int64) (
 // CancelGeneration 协作式取消（03 §3.14 尾部）：存在性收敛 1703，取消语义
 // （QUEUED/RUNNING 置 CANCELED、终态幂等成功）由 repo.RequestCancel 承载。
 func (s *questionGenerationService) CancelGeneration(ctx context.Context, id int64) error {
-	if _, err := resolveGeneration(ctx, s.repo, id); err != nil {
+	g, err := resolveGeneration(ctx, s.repo, id)
+	if err != nil {
 		return err
 	}
 	if err := s.repo.RequestCancel(ctx, id); err != nil {
 		return fmt.Errorf("request cancel question generation: %w", err)
 	}
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("AI 出题会话 #%d", g.ID),
+		"取消 AI 出题",
+		fmt.Sprintf("会话 #%d", g.ID))
 	return nil
 }

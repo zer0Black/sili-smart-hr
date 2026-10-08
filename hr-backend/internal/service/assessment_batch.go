@@ -180,6 +180,7 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		return nil, NewError(errcode.BatchPeriodInvalid)
 	}
 	var names []string
+	targetCount := 0
 	if p.TargetMode == domain.BatchTargetSpecified {
 		if len(p.Staffs) == 0 {
 			return nil, NewError(errcode.BatchTargetInvalid)
@@ -195,6 +196,7 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		}
 		// staff_name 去重键与 uk_batch_person 同键收敛（同名同人）。
 		names = pipeline.DedupeNames(trimmed)
+		targetCount = len(names)
 	}
 	batch, err := s.submitter.SubmitManualBatch(ctx, pipeline.CreateBatchRequest{
 		TriggerType: domain.BatchTriggerManual,
@@ -211,6 +213,17 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		}
 		return nil, NewError(errcode.Internal)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：对象模式/人数/区间/批次号。
+	// all 模式 TotalCount 由编排器异步回填，人数用请求侧计数（0 表示骨架未收敛）。
+	if batch.TotalCount > 0 {
+		targetCount = batch.TotalCount
+	}
+	injectDetail(ctx, domain.OpModuleAssessment,
+		fmt.Sprintf("批次 %s（%s ~ %s）", batch.BatchNo, start.Format(layoutDate), end.Format(layoutDate)),
+		"手动创建评估批次",
+		fmt.Sprintf("对象 %s %d人，区间 %s ~ %s，批次号 %s",
+			batchTargetModeName(batch.TargetMode), targetCount,
+			start.Format(layoutDate), end.Format(layoutDate), batch.BatchNo))
 	return &CreateBatchResult{
 		ID:         batch.ID,
 		BatchNo:    batch.BatchNo,
@@ -478,6 +491,14 @@ func validBatchTriggerType(v string) bool {
 		return true
 	}
 	return false
+}
+
+// batchTargetModeName 对象模式中文名（埋点文本用，措辞对齐 i18n assessment.targetAll）。
+func batchTargetModeName(mode string) string {
+	if mode == domain.BatchTargetAll {
+		return "全员"
+	}
+	return "指定人员"
 }
 
 func validBatchStatus(v string) bool {

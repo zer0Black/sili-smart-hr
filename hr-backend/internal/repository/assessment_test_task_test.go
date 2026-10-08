@@ -597,6 +597,49 @@ func TestCountActiveByType(t *testing.T) {
 
 // --- ExpirePending ---
 
+// TestExpirePendingReturnsTaskNos 推进任务的 TaskNo 清单（specs P4_LOG_001 §5.2.2
+// 逾期取消节点任务号口径）：落 2 行到期 pending，首次返回清单恰含两行 TaskNo，
+// 二次调用返回空清单（幂等，条数语义由 len 承载）。
+func TestExpirePendingReturnsTaskNos(t *testing.T) {
+	db, repo := newTestTaskRepo(t)
+	ctx := context.Background()
+	q := seedQ(t, db, "Q-AG-0001")
+	now := tUTC(2026, 10, 6, 0, 0)
+
+	mustCreate(t, repo, "T202610080001", []domain.Question{q})
+	mustCreate(t, repo, "T202610080002", []domain.Question{q})
+	// 未到期对照行：不入清单。
+	_, freshLink := mustCreate(t, repo, "T202610080003", []domain.Question{q})
+	db.Model(&domain.AssessmentTestLink{}).Where("id = ?", freshLink.ID).
+		Update("expires_at", now.Add(time.Hour))
+
+	got, err := repo.ExpirePending(ctx, now)
+	if err != nil {
+		t.Fatalf("first ExpirePending: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("first run advanced %d, want 2 (%v)", len(got), got)
+	}
+	set := map[string]bool{}
+	for _, no := range got {
+		set[no] = true
+	}
+	if !set["T202610080001"] || !set["T202610080002"] {
+		t.Fatalf("returned task_nos = %v, want 含 T202610080001 与 T202610080002", got)
+	}
+	if set["T202610080003"] {
+		t.Fatalf("未到期任务不应进清单: %v", got)
+	}
+
+	second, err := repo.ExpirePending(ctx, now)
+	if err != nil {
+		t.Fatalf("second ExpirePending: %v", err)
+	}
+	if len(second) != 0 {
+		t.Fatalf("second run advanced %d, want 0 (idempotent)", len(second))
+	}
+}
+
 // TestExpirePendingIdempotent 到期 pending 任务推进 expired + 链接 invalid，
 // 重复执行第二次 0 条；in_progress 到期不命中（BR5/BR6 §5.3.4 规则1/3）。
 func TestExpirePendingIdempotent(t *testing.T) {
@@ -607,8 +650,6 @@ func TestExpirePendingIdempotent(t *testing.T) {
 
 	// 到期 pending 任务：expires_at 早于 now。
 	expTask, expLink := mustCreate(t, repo, "T202609280001", []domain.Question{q})
-	_ = expTask
-	_ = expLink
 	// mustCreate 落的 expires_at=2026-10-05，已早于 now，无需改。
 
 	// 未到期 pending 任务：不命中。
@@ -625,8 +666,8 @@ func TestExpirePendingIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first ExpirePending: %v", err)
 	}
-	if n1 != 1 {
-		t.Fatalf("first run advanced %d, want 1", n1)
+	if len(n1) != 1 || n1[0] != "T202609280001" {
+		t.Fatalf("first run advanced %v, want [T202609280001]", n1)
 	}
 	got := loadTask(t, db, expTask.ID)
 	if got.Status != domain.TestTaskStatusExpired {
@@ -647,8 +688,8 @@ func TestExpirePendingIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second ExpirePending: %v", err)
 	}
-	if n2 != 0 {
-		t.Fatalf("second run advanced %d, want 0 (idempotent)", n2)
+	if len(n2) != 0 {
+		t.Fatalf("second run advanced %d, want 0 (idempotent)", len(n2))
 	}
 }
 
@@ -667,8 +708,8 @@ func TestExpirePendingBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExpirePending boundary: %v", err)
 	}
-	if n != 0 {
-		t.Fatalf("boundary run advanced %d, want 0", n)
+	if len(n) != 0 {
+		t.Fatalf("boundary run advanced %d, want 0", len(n))
 	}
 	if got := loadTask(t, db, task.ID); got.Status != domain.TestTaskStatusPending {
 		t.Fatalf("boundary task mutated: %s", got.Status)

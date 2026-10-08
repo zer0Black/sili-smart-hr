@@ -11,7 +11,6 @@ import (
 	"sili-smart-hr/backend/internal/api/handler"
 	"sili-smart-hr/backend/internal/api/router"
 	"sili-smart-hr/backend/internal/config"
-	"sili-smart-hr/backend/internal/engine/fallback"
 	"sili-smart-hr/backend/internal/engine/pipeline"
 	"sili-smart-hr/backend/internal/engine/scorer"
 	"sili-smart-hr/backend/internal/integration/conversationlog"
@@ -138,7 +137,17 @@ func InitializeApp(configPath string) (*App, error) {
 		NewAsynqSuggestEnqueuer,
 		NewSuggestTickHandlerTyped,
 		NewSuggestGenerateHandlerTyped,
-		fallback.NewAlertWriter,
+		// 操作日志清理任务（specs P4_LOG_001 §5.5，03 §4.3）：日志仓储 + Recorder
+		//（异步落库通道复用同一实例）+ operation-log:clean handler 经参数注入
+		// NewMux，每日 03:00 低峰清 180 天前日志。
+		repository.NewOperationLogRepository,
+		service.NewOperationLogRecorder,
+		NewOperationLogCleanHandlerTyped,
+		// 操作日志查询导出域（specs P4_LOG_001 §5.3/§5.4，03 §3 A1/A2）：
+		// service 复用同一日志仓储 + handler（两 GET 接口挂 auth 组）。
+		service.NewOperationLogService,
+		handler.NewOperationLogHandler,
+		NewAlertWriterAdapter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,
 		NewBatchTickHandlerTyped,
@@ -193,6 +202,8 @@ func InitializeApp(configPath string) (*App, error) {
 		wire.Bind(new(service.TestGradeEnqueuer), new(*AsynqTestGradeEnqueuer)),
 		// 建议生成任务投递：*AsynqSuggestEnqueuer 绑定 service.SuggestEnqueuer 窄接口。
 		wire.Bind(new(service.SuggestEnqueuer), new(*AsynqSuggestEnqueuer)),
+		// 操作日志记录通道：具体 recorder 绑定窄投递接口，供 router 中间件消费。
+		wire.Bind(new(service.PendingLogRecorder), new(*service.OperationLogRecorder)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

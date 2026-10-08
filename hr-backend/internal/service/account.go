@@ -165,6 +165,31 @@ func toDTO(acc *domain.Account) AccountDTO {
 	return AccountDTO{ID: acc.ID, Username: acc.Username, Name: acc.Name, Enabled: acc.Enabled}
 }
 
+// enabledName 启停布尔值的中文名（埋点文本与变更对比共用）。
+func enabledName(v bool) string {
+	if v {
+		return "已启用"
+	}
+	return "已停用"
+}
+
+// accountTarget 账号台账埋点操作对象。
+func accountTarget(username string) string {
+	return fmt.Sprintf("账号「%s」", username)
+}
+
+// accountChanges 编辑账号变更对比（写前 diff）：姓名与启停有变化才进，密码永不进（§5.1.4 规则4）。
+func accountChanges(oldName string, oldEnabled bool, newName string, newEnabled bool) []domain.ChangeItem {
+	var changes []domain.ChangeItem
+	if oldName != newName {
+		changes = append(changes, fmtChange("姓名", oldName, newName))
+	}
+	if oldEnabled != newEnabled {
+		changes = append(changes, fmtChange("启用状态", enabledName(oldEnabled), enabledName(newEnabled)))
+	}
+	return changes
+}
+
 // CreateAccount 新增账号：格式 / 强度校验 → bcrypt → 临界区内查重 + 写入。
 // 临界区把 FindByUsername 与 Create 串行化，消除并发同 username 双双通过查重的 TOCTOU。
 func (s *accountService) CreateAccount(ctx context.Context, username, name, passwordCipher, keyID string, enabled bool) (*AccountDTO, error) {
@@ -201,6 +226,10 @@ func (s *accountService) CreateAccount(ctx context.Context, username, name, pass
 	if err := s.repo.Create(ctx, acc); err != nil {
 		return nil, fmt.Errorf("create account: %w", err)
 	}
+	// 新增类无变更前后语义，走 detail 文本形态（specs §4.1.4 规则3）。
+	injectDetail(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+		fmt.Sprintf("新增账号 %s", acc.Name),
+		fmt.Sprintf("新增账号 %s，启用状态 %s", acc.Name, enabledName(acc.Enabled)))
 	dto := toDTO(acc)
 	return &dto, nil
 }
@@ -214,6 +243,8 @@ func (s *accountService) UpdateAccount(ctx context.Context, id int64, name, pass
 		}
 		return nil, fmt.Errorf("find account by id: %w", err)
 	}
+	// acc 即旧值快照，改写前留存供埋点 diff。
+	oldName, oldEnabled := acc.Name, acc.Enabled
 	if utf8.RuneCountInString(name) > 20 {
 		return nil, NewError(errcode.BadRequest)
 	}
@@ -246,13 +277,18 @@ func (s *accountService) UpdateAccount(ctx context.Context, id int64, name, pass
 	if err := s.repo.Update(ctx, acc); err != nil {
 		return nil, fmt.Errorf("update account: %w", err)
 	}
+	// acc 在改写前即为旧值快照，此处 enabled 已是新值；密码字段永不进对比（specs §7.2、§5.1.4 规则4）。
+	injectOperation(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+		fmt.Sprintf("编辑账号 %s", acc.Name),
+		accountChanges(oldName, oldEnabled, acc.Name, acc.Enabled))
 	dto := toDTO(acc)
 	return &dto, nil
 }
 
 // DeleteAccount 软删除账号。启用账号仅在启用总数 > 1 时可删，由 DeleteIfNotLastEnabled 原子判定。
 func (s *accountService) DeleteAccount(ctx context.Context, id int64) error {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
+	acc, err := s.repo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return NewError(errcode.AccountNotFound)
 		}
@@ -265,6 +301,10 @@ func (s *accountService) DeleteAccount(ctx context.Context, id int64) error {
 	if rows == 0 {
 		return NewError(errcode.LastEnabledAccount)
 	}
+	// 删除类无变更前后语义，走 detail 文本形态（specs §4.1.4 规则3）。
+	injectDetail(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+		fmt.Sprintf("删除账号 %s", acc.Name),
+		fmt.Sprintf("删除账号 %s", acc.Name))
 	return nil
 }
 
@@ -285,9 +325,20 @@ func (s *accountService) ToggleEnabled(ctx context.Context, id int64, enabled bo
 		if rows == 0 {
 			return NewError(errcode.LastEnabledAccount)
 		}
+		// 停用方向：acc.Enabled 为旧值（原子方法已写库），new 为 false。
+		injectOperation(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+			fmt.Sprintf("停用账号 %s", acc.Name),
+			[]domain.ChangeItem{fmtChange("启用状态", enabledName(acc.Enabled), enabledName(false))})
 		return nil
 	}
-	return s.repo.UpdateEnabled(ctx, id, enabled)
+	if err := s.repo.UpdateEnabled(ctx, id, enabled); err != nil {
+		return err
+	}
+	// 启用方向与平调：旧值 acc.Enabled，新值 enabled。
+	injectOperation(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+		fmt.Sprintf("启用账号 %s", acc.Name),
+		[]domain.ChangeItem{fmtChange("启用状态", enabledName(acc.Enabled), enabledName(enabled))})
+	return nil
 }
 
 // ResetPassword 重置密码，只改 PasswordHash，不触碰 Enabled。
@@ -311,7 +362,14 @@ func (s *accountService) ResetPassword(ctx context.Context, id int64, passwordCi
 		return fmt.Errorf("bcrypt hash: %w", herr)
 	}
 	acc.PasswordHash = string(h)
-	return s.repo.Update(ctx, acc)
+	if err := s.repo.Update(ctx, acc); err != nil {
+		return err
+	}
+	// 密码值永不落日志任何字段，detail 只记动作（specs §5.1.4 规则4）。
+	injectDetail(ctx, domain.OpModuleAccount, accountTarget(acc.Username),
+		fmt.Sprintf("重置账号 %s 密码", acc.Name),
+		fmt.Sprintf("重置账号 %s 密码", acc.Name))
+	return nil
 }
 
 func (s *accountService) ListAccounts(ctx context.Context, keyword string, page, pageSize int) ([]AccountListItemDTO, int64, error) {

@@ -83,6 +83,33 @@ var validProviders = map[string]bool{
 	"anthropic": true,
 }
 
+// llmTarget 大模型埋点操作对象。
+func llmTarget(name string) string {
+	return fmt.Sprintf("大模型「%s」", name)
+}
+
+// llmChanges 编辑大模型变更对比（写前 diff，specs §7.2）：密钥行按是否换钥给掩码变化或省略（§5.1.4 规则4）。
+func llmChanges(old, cur *domain.LLMConfig, keyChanged bool) []domain.ChangeItem {
+	var changes []domain.ChangeItem
+	if old.Name != cur.Name {
+		changes = append(changes, fmtChange("名称", old.Name, cur.Name))
+	}
+	if old.Provider != cur.Provider {
+		changes = append(changes, fmtChange("供应商", old.Provider, cur.Provider))
+	}
+	if old.ModelID != cur.ModelID {
+		changes = append(changes, fmtChange("模型 ID", old.ModelID, cur.ModelID))
+	}
+	if old.APIURL != cur.APIURL {
+		changes = append(changes, fmtChange("接口地址", old.APIURL, cur.APIURL))
+	}
+	if keyChanged {
+		// 掩码直取行内快照字段，明文与密文均不入（§5.1.4 规则4）。
+		changes = append(changes, fmtChange("API Key", old.APIKeyMasked, cur.APIKeyMasked))
+	}
+	return changes
+}
+
 type llmConfigService struct {
 	repo   repository.LLMConfigRepository
 	dec    PasswordDecryptor
@@ -170,6 +197,10 @@ func (s *llmConfigService) Create(ctx context.Context, name, provider, modelID, 
 	if err := s.repo.CreateExclusiveFirst(ctx, cfg); err != nil {
 		return nil, fmt.Errorf("create llm config: %w", err)
 	}
+	// 新增类走 detail 文本形态（specs §4.1.4 规则3），密钥不落日志。
+	injectDetail(ctx, domain.OpModuleLLMConfig, llmTarget(cfg.Name),
+		fmt.Sprintf("新增大模型配置 %s", cfg.Name),
+		fmt.Sprintf("新增大模型配置 %s，供应商 %s，模型 ID %s；API Key 不落日志", cfg.Name, cfg.Provider, cfg.ModelID))
 	return &CreateLLMResult{ID: cfg.ID, Version: cfg.Version}, nil
 }
 
@@ -187,12 +218,15 @@ func (s *llmConfigService) Update(ctx context.Context, id int64, version int, na
 		}
 		return nil, fmt.Errorf("find llm config by id: %w", err)
 	}
+	// 写前旧值快照，供埋点 diff（specs §7.2）。
+	old := *cfg
 
 	cfg.Name = name
 	cfg.Provider = provider
 	cfg.ModelID = modelID
 	cfg.APIURL = apiURL
 
+	keyChanged := false
 	if hasAPIKey {
 		if apiKeyCipher == "" {
 			return nil, NewErrorWithMsg(errcode.BadRequest, "api_key is required")
@@ -210,6 +244,7 @@ func (s *llmConfigService) Update(ctx context.Context, id int64, version int, na
 		}
 		cfg.APIKeyCipher = cipher
 		cfg.APIKeyMasked = crypto.Mask(plaintext)
+		keyChanged = true
 	}
 
 	// 用客户端回传的 version 作乐观锁凭证，覆盖 FindByID 读回的当前值。
@@ -222,6 +257,10 @@ func (s *llmConfigService) Update(ctx context.Context, id int64, version int, na
 	if affected == 0 {
 		return nil, NewError(errcode.LLMConfigVersionConflict)
 	}
+	// 编辑走变更对比形态（specs §7.2），密钥行按是否换钥给掩码变化或省略。
+	injectOperation(ctx, domain.OpModuleLLMConfig, llmTarget(cfg.Name),
+		fmt.Sprintf("编辑大模型配置 %s", cfg.Name),
+		llmChanges(&old, cfg, keyChanged))
 	return &CreateLLMResult{ID: cfg.ID, Version: version + 1}, nil
 }
 
@@ -270,13 +309,17 @@ func (s *llmConfigService) Delete(ctx context.Context, id int64) (*DeleteLLMResu
 			return nil, fmt.Errorf("delete llm config: %w", err)
 		}
 	}
-
+	// 删除类走 detail 文本形态（specs §4.1.4 规则3）。
+	injectDetail(ctx, domain.OpModuleLLMConfig, llmTarget(cfg.Name),
+		fmt.Sprintf("删除大模型配置 %s", cfg.Name),
+		fmt.Sprintf("删除大模型配置 %s", cfg.Name))
 	return result, nil
 }
 
 // Enable 排他启用目标模型（specs §4.2.4 规则1）。返 {id, enabled:true}（03 §B5）。
 func (s *llmConfigService) Enable(ctx context.Context, id int64) (*LLMEnableResult, error) {
-	if _, err := s.repo.FindByID(ctx, id); err != nil {
+	cfg, err := s.repo.FindByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, NewError(errcode.LLMConfigNotFound)
 		}
@@ -288,6 +331,10 @@ func (s *llmConfigService) Enable(ctx context.Context, id int64) (*LLMEnableResu
 		}
 		return nil, fmt.Errorf("enable exclusive llm config: %w", err)
 	}
+	// 启停类走变更对比形态（specs §7.2）：启用前恒 false（排他启用语义，同刻仅一启用态）。
+	injectOperation(ctx, domain.OpModuleLLMConfig, llmTarget(cfg.Name),
+		fmt.Sprintf("启用大模型 %s（排他启用）", cfg.Name),
+		[]domain.ChangeItem{fmtChange("启用状态", false, true)})
 	return &LLMEnableResult{ID: id, Enabled: true}, nil
 }
 

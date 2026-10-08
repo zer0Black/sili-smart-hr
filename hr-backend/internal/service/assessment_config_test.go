@@ -373,6 +373,70 @@ func TestAssessmentConfig_Save_SpecifiedEmptyStaffID(t *testing.T) {
 	wantCode(t, err, errcode.BadRequest)
 }
 
+// TestAssessmentConfigSaveInjectsChanges 保存评估周期配置注入变更对比（specs §7.2 系统参数埋点行）：
+// 周期 weekly→monthly 进 changes 且 Module==system_params，评估对象用中文名（all/specified）。
+func TestAssessmentConfigSaveInjectsChanges(t *testing.T) {
+	repo := &fakeAssessmentConfigRepo{
+		cfg: &domain.AssessmentConfig{
+			ID: 500, Period: "weekly", TriggerTime: "23:00", TargetMode: "specified", Version: 7,
+		},
+		updateAffected: 1,
+	}
+	sink := &service.OpSink{}
+	ctx := service.WithSink(context.Background(), sink)
+	members := []service.StaffDTO{{StaffID: "usr_a", StaffName: "甲"}}
+	if _, err := newAssessmentSvc(repo, &fakeUserapiClient{}).Save(
+		ctx, "monthly", "03:00", "all", members, 7,
+	); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleSystemParams {
+		t.Fatalf("Module want system_params, got %s", snap.Module)
+	}
+	if snap.Target != "评估周期配置" {
+		t.Fatalf("Target want 评估周期配置, got %s", snap.Target)
+	}
+	var period *domain.ChangeItem
+	for i := range snap.Changes {
+		if snap.Changes[i].Field == "评估周期" {
+			period = &snap.Changes[i]
+		}
+	}
+	if period == nil || period.Before != "weekly" || period.After != "monthly" {
+		t.Fatalf("changes want {评估周期 weekly monthly}, got %+v", snap.Changes)
+	}
+	var target *domain.ChangeItem
+	for i := range snap.Changes {
+		if snap.Changes[i].Field == "评估对象" {
+			target = &snap.Changes[i]
+		}
+	}
+	if target == nil || target.Before != "指定人员" || target.After != "全员" {
+		t.Fatalf("changes want {评估对象 指定人员 全员}, got %+v", snap.Changes)
+	}
+}
+
+// TestAssessmentConfigSaveNoChangeNilChanges 三字段均未变化时 changes 为 nil。
+func TestAssessmentConfigSaveNoChangeNilChanges(t *testing.T) {
+	repo := &fakeAssessmentConfigRepo{
+		cfg: &domain.AssessmentConfig{
+			ID: 500, Period: "weekly", TriggerTime: "23:00", TargetMode: "all", Version: 7,
+		},
+		updateAffected: 1,
+	}
+	sink := &service.OpSink{}
+	ctx := service.WithSink(context.Background(), sink)
+	if _, err := newAssessmentSvc(repo, &fakeUserapiClient{}).Save(
+		ctx, "weekly", "23:00", "all", nil, 7,
+	); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if snap := sink.Snapshot(); snap.Changes != nil {
+		t.Fatalf("no-change save should inject nil changes, got %+v", snap.Changes)
+	}
+}
+
 // TestAssessmentConfig_ListStaffs_Success 验证 ListStaffs 解密密钥后透传 secret 调 userapi，成功转 DTO。
 func TestAssessmentConfig_ListStaffs_Success(t *testing.T) {
 	encKey := crypto.DeriveKey("test-assessment-config")

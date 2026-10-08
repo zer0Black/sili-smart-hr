@@ -8,6 +8,7 @@ import (
 	"sili-smart-hr/backend/internal/api/middleware"
 	"sili-smart-hr/backend/internal/config"
 	"sili-smart-hr/backend/internal/pkg/jwt"
+	"sili-smart-hr/backend/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -19,6 +20,9 @@ import (
 // 系统初始化 status 60/min（IP）、initialize 10/min（IP）；系统状态 status 60/min（IP）、
 // health-check account 10/min（触发外部探测收紧）。超限返回 429。受保护接口归入 /api 鉴权组。
 // setup 两接口与 system status 属公开路由，不挂 JWT（specs §1.3 / BR11、BR23）。
+// 操作日志记录：auth 组 JWT 后挂 OperationLog 对全部 POST 生效（GET 方法过滤跳过）、
+// 登录接口限流后单独挂 OperationLogLogin（429 属限流拒绝非登录尝试，不记录）、
+// setup 与 answer 公开路由不记录（03 §1.3）。
 func NewRouter(
 	cfg *config.Config,
 	jwtMgr *jwt.Manager,
@@ -40,6 +44,8 @@ func NewRouter(
 	profileHandler *handler.ProfileHandler,
 	dashboardHandler *handler.DashboardHandler,
 	workspaceHandler *handler.WorkspaceHandler,
+	operationLogHandler *handler.OperationLogHandler,
+	recorder service.PendingLogRecorder,
 	rdb *redis.Client,
 ) *gin.Engine {
 	r := gin.New()
@@ -58,8 +64,10 @@ func NewRouter(
 	r.POST(
 		"/api/login",
 		// IP 维度在前（不读 body），username 维度在后（peek body 并 rewind）。
+		// 记录中间件在限流后：被限流的 429 属限流拒绝非登录尝试，不记日志（03 §1.3）。
 		middleware.RateLimit(rdb, "sili-smart-hr:rl:login-ip:", middleware.ClientIPKey, 30, time.Minute),
 		middleware.RateLimit(rdb, "sili-smart-hr:rl:login-user:", middleware.JSONFieldKey("username"), 20, time.Minute),
+		middleware.OperationLogLogin(recorder),
 		accountHandler.Login,
 	)
 	// 系统初始化：status 60/min IP（specs §1.4 / BR10）、initialize 10/min IP（一次性提交，更严格）。
@@ -97,7 +105,8 @@ func NewRouter(
 		answerHandler.Submit,
 	)
 
-	auth := r.Group("/api", middleware.JWT(jwtMgr))
+	// 记录中间件挂 JWT 之后，对组内全部 POST 生效（GET 由方法过滤跳过，03 §1.3 / BR1）。
+	auth := r.Group("/api", middleware.JWT(jwtMgr), middleware.OperationLog(recorder))
 	auth.GET("/me", accountHandler.Me)
 	// 账号台账：POST 以路径后缀区分动作。
 	auth.GET("/accounts", accountHandler.List)
@@ -186,6 +195,11 @@ func NewRouter(
 	// 工作台域：单接口 JWT 鉴权挂 auth 组，GET 只读聚合实时计算不落库（specs
 	// P2_WRK_001 §2.2/§5.1 / BR1、BR2）。无单独限流（沿用受保护组既有策略）。
 	auth.GET("/workspace", workspaceHandler.Overview)
+	// 操作日志域：两接口 JWT 鉴权挂 auth 组，全 GET 只读不记日志（specs
+	// P4_LOG_001 §2.2/§5.3/§5.4 + 03 §4.5 / BR1、BR3）。/operation-logs 根
+	// 路由与 export 静态子路径不冲突（Gin 静态优先，profiles 先例）。
+	auth.GET("/operation-logs", operationLogHandler.List)
+	auth.GET("/operation-logs/export", operationLogHandler.Export)
 
 	return r
 }

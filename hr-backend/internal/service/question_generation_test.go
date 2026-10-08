@@ -5,6 +5,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
@@ -417,5 +418,59 @@ func TestCancelGenerationRepoError(t *testing.T) {
 	svc := newQGenSvc(repo, &qFakeDimRepo{}, &fakeGenEnqueuer{}, okProvider())
 	if err := svc.CancelGeneration(context.Background(), 3001); !errors.Is(err, repository.ErrAlreadyTerminal) {
 		t.Fatalf("want ErrAlreadyTerminal 透传, got %v", err)
+	}
+}
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestGenerationCreateInjectsDetail 发起 AI 出题注入：target 含会话号、detail 含维度数与计划题数。
+func TestGenerationCreateInjectsDetail(t *testing.T) {
+	repo := &qGenFakeRepo{}
+	svc := newQGenSvc(repo, &qFakeDimRepo{dims: aiMgmtDims()}, &fakeGenEnqueuer{}, okProvider())
+	ctx, sink := withOpSink(context.Background())
+	ids, count := validGenInput()
+
+	if _, err := svc.CreateGeneration(ctx, ids, count); err != nil {
+		t.Fatalf("CreateGeneration: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module want question_bank, got %s", snap.Module)
+	}
+	if snap.Target != "AI 出题会话 #3001" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "发起 AI 出题" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "维度 2 个") || !strings.Contains(snap.Detail, "计划 12 题") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestGenerationCancelInjectsDetail 取消 AI 出题注入：detail 含会话号。
+func TestGenerationCancelInjectsDetail(t *testing.T) {
+	repo := &qGenFakeRepo{findByID: runningGeneration()}
+	svc := newQGenSvc(repo, &qFakeDimRepo{}, &fakeGenEnqueuer{}, okProvider())
+	ctx, sink := withOpSink(context.Background())
+
+	if err := svc.CancelGeneration(ctx, 3001); err != nil {
+		t.Fatalf("CancelGeneration: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module = %s", snap.Module)
+	}
+	if snap.Target != "AI 出题会话 #3001" || snap.Summary != "取消 AI 出题" {
+		t.Fatalf("target/summary = %s/%s", snap.Target, snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "#3001") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
 	}
 }

@@ -1,7 +1,8 @@
 // Package main 是后端单进程启动入口（见 architecture.md 4.2）。
 //
-// 单进程内嵌：加载配置 → wire 注入 → 起 Gin HTTP + Asynq server + scheduler，
-// 捕获信号优雅关闭（先停 HTTP，再停 asynq server/scheduler）。
+// 单进程内嵌：加载配置 → wire 注入 → 起 Gin HTTP + Asynq server + scheduler +
+// 操作日志记录通道，捕获信号优雅关闭（先停 HTTP，再停 asynq server/scheduler，
+// 日志通道排空后关库）。
 package main
 
 import (
@@ -58,6 +59,9 @@ func main() {
 	// 记录进程启动时间，供系统状态摘要（GET /api/system/status）消费。
 	model.StartedAt = time.Now()
 
+	// 操作日志异步落库通道起后台消费 goroutine（HTTP server 起前，03 §4.1）。
+	a.Recorder.Start()
+
 	// 启动 Asynq worker server（消费任务）。
 	go func() {
 		slog.Info("asynq server starting", "concurrency", a.Config.Asynq.Concurrency)
@@ -109,6 +113,11 @@ func main() {
 	a.AsynqServer.Shutdown()
 	a.Scheduler.Shutdown()
 	_ = a.AsynqClient.Close()
+	// 日志通道排空后再关库（03 §4.1 步骤4：flush 剩余记录需 DB 仍可用；
+	// 超时由 shutdownCtx 承载，剩余记录交进程退出丢弃）。
+	if err := a.Recorder.Close(shutdownCtx); err != nil {
+		slog.Error("operation log recorder flush timeout", "err", err)
+	}
 	if sqlDB, err := a.DB.DB(); err == nil {
 		_ = sqlDB.Close()
 	}

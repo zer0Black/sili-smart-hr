@@ -1429,5 +1429,68 @@
       "low_freq": "低频",
       "unused": "未使用"
     }
+  },
+  "operationLog": {
+    "page": {
+      "title": "操作日志",
+      "subtitle": "全平台操作日志统一审计查询"
+    },
+    "validation": {
+      "range": "结束日期不能早于开始日期"
+    },
+    "list": {
+      "title": "操作日志",
+      "operatorLabel": "操作人",
+      "operatorPlaceholder": "按操作人搜索",
+      "filterModule": "操作类型",
+      "filterModuleAll": "全部类型",
+      "filterResult": "操作结果",
+      "filterResultAll": "全部",
+      "startDate": "开始日期",
+      "endDate": "结束日期",
+      "query": "查询",
+      "reset": "重置",
+      "export": "导出日志",
+      "exporting": "导出中…",
+      "exportFailed": "导出失败，请稍后重试",
+      "colTime": "操作时间",
+      "colOperator": "操作人",
+      "colModule": "操作类型",
+      "colTarget": "操作对象",
+      "colSummary": "详情摘要",
+      "colResult": "操作结果",
+      "colActions": "操作",
+      "actionDetail": "详情",
+      "resultSuccess": "成功",
+      "resultFail": "失败",
+      "loadError": "数据加载失败，请重试",
+      "retry": "重试",
+      "empty": "暂无日志记录",
+      "emptyFiltered": "未找到匹配日志，请尝试调整筛选条件",
+      "total": "共 {{total}} 条",
+      "prevPage": "上一页",
+      "nextPage": "下一页",
+      "pageSize": "{{n}} 条/页",
+      "pageSizeLabel": "每页条数"
+    },
+    "module": {
+      "login": "登录",
+      "account": "用户管理",
+      "dimension": "维度与权重",
+      "system_params": "系统参数",
+      "llm_config": "大模型配置",
+      "question_bank": "题库管理",
+      "assessment": "评估运营",
+      "system_job": "系统任务"
+    },
+    "detail": {
+      "title": "操作详情",
+      "basicInfo": "基本信息",
+      "colField": "字段",
+      "colBefore": "变更前",
+      "colAfter": "变更后",
+      "textDetail": "文本详情",
+      "close": "关闭"
+    }
   }
 }

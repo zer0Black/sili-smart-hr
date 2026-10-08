@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"sili-smart-hr/backend/internal/domain"
 	"sili-smart-hr/backend/internal/pkg/errcode"
 	"sili-smart-hr/backend/internal/questionbank/scaledata"
 	"sili-smart-hr/backend/internal/repository"
@@ -87,6 +88,11 @@ func (s *scaleService) ImportScale(ctx context.Context, scaleKey string) (*Impor
 		}
 		return nil, fmt.Errorf("import scale %s: %w", scaleKey, err)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：量表名/批次号/题数。
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("量表 %s", tpl.Name),
+		"引入量表建批",
+		fmt.Sprintf("批次号 %s，题目 %d 题", batch.BatchNo, batch.QuestionCount))
 	return &ImportScaleResult{
 		BatchID:       int64ToString(batch.ID),
 		BatchNo:       batch.BatchNo,

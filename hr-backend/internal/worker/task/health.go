@@ -24,7 +24,7 @@ const (
 // NewMux 构造 worker 任务路由：健康任务原地注册，其余任务 handler 经参数注入
 // （保持单一注册入口），均以 context.WithTimeout 挂任务级超时（asynq v0.26.0
 // ServeMux 无 options 注册 API），预算声明见各自任务文件的 timeout 常量。
-func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerate, testExpireTick, testGrade, suggestTick, suggestGenerate asynq.HandlerFunc) *asynq.ServeMux {
+func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerate, testExpireTick, testGrade, suggestTick, suggestGenerate, operationLogClean asynq.HandlerFunc) *asynq.ServeMux {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc(TypeHealthCheck, HandleHealthCheck)
 	mux.Handle(TypeSessionExtract, withTimeout(sessionExtract, sessionExtractTimeout))
@@ -36,6 +36,7 @@ func NewMux(sessionExtract, personEvaluate, batchTick, batchRun, questionGenerat
 	mux.Handle(TypeTestGrade, withTimeout(testGrade, testGradeTimeout))
 	mux.Handle(TypeSuggestTick, withTimeout(suggestTick, suggestTickTimeout))
 	mux.Handle(TypeSuggestGenerate, withTimeout(suggestGenerate, suggestGenerateTimeout))
+	mux.Handle(TypeOperationLogClean, withTimeout(operationLogClean, operationLogCleanTimeout))
 	return mux
 }
 

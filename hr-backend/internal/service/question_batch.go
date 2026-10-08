@@ -221,6 +221,11 @@ func (s *questionBatchService) ConfirmBatch(ctx context.Context, batchID int64, 
 		}
 		return nil, fmt.Errorf("confirm batch: %w", err)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：驳回与入库计数。
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题库批次 %s", b.BatchNo),
+		"批次审核确认入库",
+		fmt.Sprintf("驳回 %d 题，入库 %d 题", rejectedCount, admitted))
 	return &ConfirmResult{
 		BatchID:       int64ToString(batchID),
 		BatchStatus:   domain.QuestionBatchStatusClosed,
@@ -232,7 +237,8 @@ func (s *questionBatchService) ConfirmBatch(ctx context.Context, batchID int64, 
 // VoidBatch 作废编排（03 §3.10）：批次语义分流收在 repo 事务，service 只收敛
 // 存在性与哨兵映射。
 func (s *questionBatchService) VoidBatch(ctx context.Context, batchID int64) error {
-	if _, err := s.resolveBatch(ctx, batchID); err != nil {
+	b, err := s.resolveBatch(ctx, batchID)
+	if err != nil {
 		return err
 	}
 	if err := s.repo.VoidBatch(ctx, batchID); err != nil {
@@ -241,6 +247,10 @@ func (s *questionBatchService) VoidBatch(ctx context.Context, batchID int64) err
 		}
 		return fmt.Errorf("void batch: %w", err)
 	}
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题库批次 %s", b.BatchNo),
+		"批次作废",
+		fmt.Sprintf("批次号 %s", b.BatchNo))
 	return nil
 }
 
@@ -284,6 +294,10 @@ func (s *questionBatchService) ResubmitQuestion(ctx context.Context, in Resubmit
 	if err != nil {
 		return nil, err
 	}
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题目 #%s", q.QuestionNo),
+		"重新提交题目",
+		fmt.Sprintf("题目 #%s 修正后重新送审，情境：%s", q.QuestionNo, summarize(in.Scenario)))
 	return &ResubmitResult{
 		ID:      int64ToString(q.ID),
 		Status:  q.Status,

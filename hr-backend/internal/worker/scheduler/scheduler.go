@@ -14,6 +14,10 @@ import (
 // cron 常量，单点收敛避免同值散布）。
 const healthCheckCron = "*/1 * * * *"
 
+// operationLogCleanCron 操作日志清理触发周期（specs §5.5.1、03 §4.3）：每日
+// 低峰 03:00 一次，与分钟级 tick 异频独立注册。
+const operationLogCleanCron = "0 3 * * *"
+
 // NewScheduler 构造 Asynq scheduler 并注册 no-op 健康任务、批次 tick 任务、
 // 主动测试逾期 tick 任务与建议生成 tick 任务（同频独立注册，specs §5.3.1、
 // 03 §4.1）。tick 每分钟触发后经 TickTrigger 读配置判定（specs §5.1.2 步骤1），
@@ -27,5 +31,6 @@ func NewScheduler(opt asynq.RedisConnOpt) *asynq.Scheduler {
 	s.Register(healthCheckCron, asynq.NewTask(task.TypeBatchTick, nil))
 	s.Register(healthCheckCron, asynq.NewTask(task.TypeTestExpireTick, nil))
 	s.Register(healthCheckCron, asynq.NewTask(task.TypeSuggestTick, nil))
+	s.Register(operationLogCleanCron, asynq.NewTask(task.TypeOperationLogClean, nil))
 	return s
 }

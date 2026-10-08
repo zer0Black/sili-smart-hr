@@ -200,7 +200,7 @@ func TestTestGradeTimeoutConst(t *testing.T) {
 // TestNewMuxRegistersTestGrade 核心锚点：mux 已注册 TypeTestGrade 且路由可达
 // （NewMux 七参化新增任务类型）。
 func TestNewMuxRegistersTestGrade(t *testing.T) {
-	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	mux := NewMux(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if h, pattern := mux.Handler(asynq.NewTask(TypeTestGrade, []byte(`{}`))); pattern != TypeTestGrade || h == nil {
 		t.Errorf("assessment:test-grade 路由未注册: pattern = %q", pattern)
 	}
@@ -215,7 +215,7 @@ func TestNewMuxTestGradeTimeout(t *testing.T) {
 		gotDeadline, hasDeadline = ctx.Deadline()
 		return nil
 	})
-	mux := NewMux(nil, nil, nil, nil, nil, nil, inner, nil, nil)
+	mux := NewMux(nil, nil, nil, nil, nil, nil, inner, nil, nil, nil)
 	h, pattern := mux.Handler(asynq.NewTask(TypeTestGrade, []byte(`{}`)))
 	if pattern != TypeTestGrade {
 		t.Fatalf("pattern = %q, want %q", pattern, TypeTestGrade)

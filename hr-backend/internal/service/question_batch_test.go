@@ -609,3 +609,91 @@ func TestResubmitRepoError(t *testing.T) {
 		t.Fatal("want error, got nil")
 	}
 }
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestQuestionBatchConfirmInjectsDetail 确认入库注入：target 含批次号、detail 含驳回/入库计数。
+func TestQuestionBatchConfirmInjectsDetail(t *testing.T) {
+	repo := &qBatchFakeRepo{
+		batchByID:        map[int64]*domain.QuestionBatch{901: pendingBatch(901, 3)},
+		questions:        []domain.Question{batchQuestion(101, 901, "Q-AG-0001"), batchQuestion(102, 901, "Q-AG-0002"), batchQuestion(103, 901, "Q-AG-0003")},
+		confirmAdmitted:  2,
+		confirmRejectedN: 1,
+	}
+	svc := newQBatchSvc(repo, &qFakeRepo{}, &qFakeDimRepo{})
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.ConfirmBatch(ctx, 901, []service.RejectItem{{QuestionID: 102, Reason: "场景迁移性差"}}); err != nil {
+		t.Fatalf("ConfirmBatch: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module want question_bank, got %s", snap.Module)
+	}
+	if snap.Target != "题库批次 #G0925" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "批次审核确认入库" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "驳回 1 题") || !strings.Contains(snap.Detail, "入库 2 题") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestQuestionBatchVoidInjectsDetail 作废批次注入：detail 含批次号。
+func TestQuestionBatchVoidInjectsDetail(t *testing.T) {
+	repo := &qBatchFakeRepo{batchByID: map[int64]*domain.QuestionBatch{901: pendingBatch(901, 2)}}
+	svc := newQBatchSvc(repo, &qFakeRepo{}, &qFakeDimRepo{})
+	ctx, sink := withOpSink(context.Background())
+
+	if err := svc.VoidBatch(ctx, 901); err != nil {
+		t.Fatalf("VoidBatch: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module = %s", snap.Module)
+	}
+	if snap.Target != "题库批次 #G0925" || snap.Summary != "批次作废" {
+		t.Fatalf("target/summary = %s/%s", snap.Target, snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "#G0925") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestQuestionResubmitInjectsDetail 重新提交注入：target 形如「题目 #Qxxx」、detail 含修正后摘要。
+func TestQuestionResubmitInjectsDetail(t *testing.T) {
+	after := rejectedAIQuestion()
+	after.Status = domain.QuestionStatusPending
+	after.Version = 3
+	after.Scenario = "修正后的情境"
+	qRepo := &qFakeRepo{findByID: rejectedAIQuestion(), afterWrite: after, afterWriteFrom: 2}
+	batch := &domain.QuestionBatch{ID: 801, BatchNo: "#R0925", Source: domain.QuestionSourceAI,
+		BatchType: domain.QuestionBatchTypeResubmit, Status: domain.QuestionBatchStatusPending, QuestionCount: 1}
+	svc := newQBatchSvc(&qBatchFakeRepo{resubmitBatch: batch}, qRepo, &qFakeDimRepo{dims: aiMgmtDims()})
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.ResubmitQuestion(ctx, validResubmitInput()); err != nil {
+		t.Fatalf("ResubmitQuestion: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module = %s", snap.Module)
+	}
+	if snap.Target != "题目 #Q-AG-0001" || snap.Summary != "重新提交题目" {
+		t.Fatalf("target/summary = %s/%s", snap.Target, snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "修正后的情境") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+}

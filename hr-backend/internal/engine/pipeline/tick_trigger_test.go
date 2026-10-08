@@ -6,6 +6,7 @@ package pipeline_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,9 +58,14 @@ func tickFixture(repo *fakeBatchRepo, cfgRepo *fakeConfigRepo, fetcher pipeline.
 
 // tickFixtureWithAlerts 同 tickFixture，另注入可断言的告警仓储。
 func tickFixtureWithAlerts(repo *fakeBatchRepo, cfgRepo *fakeConfigRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer, alertRepo *fakeAlertRepo) *pipeline.Orchestrator {
+	return tickFixtureWithAlertsAndRecorder(repo, cfgRepo, fetcher, enq, alertRepo, nil)
+}
+
+// tickFixtureWithAlertsAndRecorder 同上，另注入节点投递 fake（specs P4_LOG_001 §5.2）。
+func tickFixtureWithAlertsAndRecorder(repo *fakeBatchRepo, cfgRepo *fakeConfigRepo, fetcher pipeline.StaffFetcher, enq *fakeBatchEnqueuer, alertRepo *fakeAlertRepo, rec *nodeRecorder) *pipeline.Orchestrator {
 	return pipeline.NewOrchestrator(repo, nil, cfgRepo, nil, fetcher,
 		func(ctx context.Context) (string, error) { return "secret", nil },
-		nil, alertWriter(alertRepo), enq, nil)
+		nil, alertWriter(alertRepo), enq, nil, rec)
 }
 
 func weeklyCfg() *domain.AssessmentConfig {
@@ -224,7 +230,7 @@ func TestTickTriggerStaffFetchFail(t *testing.T) {
 	cfgRepo := &fakeConfigRepo{cfg: cfg}
 	o := pipeline.NewOrchestrator(repo, nil, cfgRepo, nil, nil,
 		func(ctx context.Context) (string, error) { return "", errFake },
-		nil, nil, &fakeBatchEnqueuer{}, nil)
+		nil, nil, &fakeBatchEnqueuer{}, nil, nil)
 
 	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
 		t.Fatal("密钥解析失败应上抛")
@@ -402,5 +408,78 @@ func TestTickTriggerMonthEndGraceWindow(t *testing.T) {
 	if !b.PeriodStartAt.Equal(wantStart) || !b.PeriodEndAt.Equal(wantEnd) {
 		t.Errorf("跨月窗口 = [%v, %v], want [%v, %v]（锚定 8 月）",
 			b.PeriodStartAt, b.PeriodEndAt, wantStart, wantEnd)
+	}
+}
+
+// ---- 建批完成节点（specs P4_LOG_001 §5.2） ----
+
+// TestTickTriggerWritesNodeLog 核心锚点：TickTrigger 建批且入队成功后记
+// 「周期批次创建完成」节点；SubmitManualBatch 人工路径不记（避免双行，
+// 由 assessment 埋点承载）。
+func TestTickTriggerWritesNodeLog(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{}
+	rec := &nodeRecorder{}
+	o := tickFixtureWithAlertsAndRecorder(repo, cfgRepo, nil, enq, &fakeAlertRepo{}, rec)
+
+	if err := o.TickTrigger(context.Background(), tickNow()); err != nil {
+		t.Fatalf("TickTrigger: %v", err)
+	}
+	if len(repo.created) != 1 {
+		t.Fatalf("前置：应落 1 条批次，实际 %d", len(repo.created))
+	}
+	entries := rec.snapshot()
+	if len(entries) != 1 {
+		t.Fatalf("节点条数 = %d, want 1", len(entries))
+	}
+	e := entries[0]
+	if e.Module != "system_job" || e.FallbackName != "系统" || e.Result != "success" {
+		t.Errorf("节点头字段异常: %+v", e)
+	}
+	if e.Summary != "周期批次创建完成" {
+		t.Errorf("Summary = %q, want 周期批次创建完成", e.Summary)
+	}
+	if !strings.Contains(e.Target, repo.created[0].BatchNo) {
+		t.Errorf("Target = %q, want 含批次号 %s", e.Target, repo.created[0].BatchNo)
+	}
+	if !strings.Contains(e.Detail, "指定人员") {
+		t.Errorf("Detail = %q, want 含对象模式中文名", e.Detail)
+	}
+	if e.RequestPath != "engine:batch-tick" {
+		t.Errorf("RequestPath = %q, want engine:batch-tick", e.RequestPath)
+	}
+}
+
+// TestTickTriggerEnqueueFailNoNode 入队失败回滚路径不记建批节点（批次未成立）。
+func TestTickTriggerEnqueueFailNoNode(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	cfgRepo := &fakeConfigRepo{cfg: weeklyCfg(), members: membersOf("张敏")}
+	enq := &fakeBatchEnqueuer{err: errFake}
+	rec := &nodeRecorder{}
+	o := tickFixtureWithAlertsAndRecorder(repo, cfgRepo, nil, enq, &fakeAlertRepo{}, rec)
+
+	if err := o.TickTrigger(context.Background(), tickNow()); err == nil {
+		t.Fatal("入队失败应上抛")
+	}
+	if len(rec.snapshot()) != 0 {
+		t.Fatalf("回滚路径不应记建批节点, got %d 条", len(rec.snapshot()))
+	}
+}
+
+// TestSubmitManualBatchNoNode 人工建批路径不记节点（assessment 埋点承载，避免双行）。
+func TestSubmitManualBatchNoNode(t *testing.T) {
+	repo := &fakeBatchRepo{}
+	enq := &fakeBatchEnqueuer{}
+	rec := &nodeRecorder{}
+	o := pipeline.NewOrchestrator(repo, nil, nil, nil, nil,
+		func(ctx context.Context) (string, error) { return "secret", nil },
+		nil, nil, enq, nil, rec)
+
+	if _, err := o.SubmitManualBatch(context.Background(), manualReq([]string{"张三"})); err != nil {
+		t.Fatalf("SubmitManualBatch: %v", err)
+	}
+	if len(rec.snapshot()) != 0 {
+		t.Fatalf("人工建批不应记节点, got %d 条", len(rec.snapshot()))
 	}
 }

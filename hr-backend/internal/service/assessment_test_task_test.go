@@ -161,8 +161,8 @@ func (f *fakeTSTRepo) MarkSessionStarted(_ context.Context, taskID int64) (int64
 func (f *fakeTSTRepo) CountActiveByType(_ context.Context) (int64, int64, error) {
 	return f.activeAI, f.activeEnne, f.countErr
 }
-func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) (int64, error) {
-	return 0, nil
+func (f *fakeTSTRepo) ExpirePending(_ context.Context, _ time.Time) ([]string, error) {
+	return nil, nil
 }
 
 // CompleteTask 模拟真实事务语义（specs §5.2.2 步骤1）：三步推进 + enqueue 同事务，
@@ -1340,6 +1340,126 @@ func TestServiceStartSessionIdempotent(t *testing.T) {
 		var serr *service.Error
 		if err == nil || errors.As(err, &serr) {
 			t.Errorf("err = %v, want 非 service.Error 的包装错误", err)
+		}
+	})
+}
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestTestTaskCreateInjectsDetail 发起测试走 detail 文本形态：target 含任务号、
+// summary 按类型分词、detail 含对象名与类型中文名、Changes 恒 nil。
+func TestTestTaskCreateInjectsDetail(t *testing.T) {
+	t.Run("AI 管理能力", func(t *testing.T) {
+		_, _, _, _, _, svc := aiMgmtHappyEnv(t)
+		ctx, sink := withOpSink(context.Background())
+		if _, err := svc.Create(ctx, service.CreateTestTaskPayload{
+			TestType: domain.TestTypeAIMgmt, StaffID: "u1", StaffName: "张敏",
+			DimensionIDs: []string{"101", "102"},
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		snap := sink.Snapshot()
+		if snap.Module != domain.OpModuleAssessment {
+			t.Fatalf("module want assessment, got %s", snap.Module)
+		}
+		if snap.Target != "测试任务 T202609280001" {
+			t.Fatalf("target = %s", snap.Target)
+		}
+		if snap.Summary != "发起AI 管理能力测试" {
+			t.Fatalf("summary = %s", snap.Summary)
+		}
+		if !strings.Contains(snap.Detail, "对象 张敏") || !strings.Contains(snap.Detail, "AI 管理能力") || !strings.Contains(snap.Detail, "T202609280001") {
+			t.Fatalf("detail = %s", snap.Detail)
+		}
+		if snap.Changes != nil {
+			t.Fatalf("changes want nil, got %+v", snap.Changes)
+		}
+	})
+	t.Run("九型人格", func(t *testing.T) {
+		taskRepo := &fakeTSTRepo{nextNo: "E202609280001"}
+		qRepo := &fakeTSTQuestionRepo{byScale: scaleQuestions()}
+		bRepo := &fakeTSTBatchRepo{imported: []domain.QuestionBatch{{ScaleKey: domain.ScaleKeyRisoHudson}}}
+		svc := newTSTSvc(t, taskRepo, qRepo, bRepo, &fakeDimRepo{dims: aiMgmtEnabledDims()},
+			&fakeUserapiClient{staffs: []userapi.Staff{{StaffID: "u1", StaffName: "张敏"}}}, tstFixedNow)
+		ctx, sink := withOpSink(context.Background())
+
+		if _, err := svc.Create(ctx, service.CreateTestTaskPayload{
+			TestType: domain.TestTypeEnneagram, StaffID: "u1", StaffName: "张敏",
+		}); err != nil {
+			t.Fatalf("Create: %v", err)
+		}
+		snap := sink.Snapshot()
+		if snap.Summary != "发起九型人格测试" {
+			t.Fatalf("summary = %s", snap.Summary)
+		}
+		if !strings.Contains(snap.Detail, "九型人格") || !strings.Contains(snap.Detail, "E202609280001") {
+			t.Fatalf("detail = %s", snap.Detail)
+		}
+	})
+}
+
+// TestTestTaskResendInjectsDetail 重发注入：target 含任务号、detail 含任务号与新链接语义。
+func TestTestTaskResendInjectsDetail(t *testing.T) {
+	task, _ := tstExpiredTask()
+	taskRepo := &fakeTSTRepo{byID: task, nextNo: "T202609280001"}
+	svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.Resend(ctx, 7); err != nil {
+		t.Fatalf("Resend: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleAssessment {
+		t.Fatalf("module want assessment, got %s", snap.Module)
+	}
+	if snap.Target != "测试任务 T202609280001" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "重发测试任务" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "T202609280001") || !strings.Contains(snap.Detail, "新链接生效") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestTestTaskCancelInjectsDetail 取消注入：detail 含任务号与 cancelled 推进语义；
+// 状态拒绝路径不注入。
+func TestTestTaskCancelInjectsDetail(t *testing.T) {
+	t.Run("成功", func(t *testing.T) {
+		task := &domain.AssessmentTestTask{ID: 7, TaskNo: "T202609280001", Status: domain.TestTaskStatusPending}
+		taskRepo := &fakeTSTRepo{byID: task, cancelAffected: 1}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+		ctx, sink := withOpSink(context.Background())
+
+		if _, err := svc.Cancel(ctx, 7); err != nil {
+			t.Fatalf("Cancel: %v", err)
+		}
+		snap := sink.Snapshot()
+		if snap.Summary != "取消测试任务" {
+			t.Fatalf("summary = %s", snap.Summary)
+		}
+		if !strings.Contains(snap.Target, "T202609280001") {
+			t.Fatalf("target = %s", snap.Target)
+		}
+		if !strings.Contains(snap.Detail, "T202609280001") || !strings.Contains(snap.Detail, "cancelled") {
+			t.Fatalf("detail = %s", snap.Detail)
+		}
+	})
+	t.Run("拒绝不注入", func(t *testing.T) {
+		task := &domain.AssessmentTestTask{ID: 7, TaskNo: "T202609280001", Status: domain.TestTaskStatusCompleted}
+		taskRepo := &fakeTSTRepo{byID: task, cancelAffected: 0}
+		svc := newTSTSvc(t, taskRepo, &fakeTSTQuestionRepo{}, &fakeTSTBatchRepo{}, &fakeDimRepo{}, &fakeUserapiClient{}, tstFixedNow)
+		ctx, sink := withOpSink(context.Background())
+
+		if _, err := svc.Cancel(ctx, 7); err == nil {
+			t.Fatal("completed 取消 want error")
+		}
+		if snap := sink.Snapshot(); snap.Summary != "" || snap.Detail != "" {
+			t.Fatalf("失败路径不应注入: %+v", snap)
 		}
 	})
 }

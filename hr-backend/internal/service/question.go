@@ -380,6 +380,11 @@ func (s *questionService) UpdateQuestion(ctx context.Context, in UpdateQuestionI
 	if rows == 0 {
 		return nil, s.conflictOrMissing(ctx, in.ID)
 	}
+	// 文本详情形态埋点（specs §4.1.4 规则3）：题号与编辑后摘要。
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题目 #%s", cur.QuestionNo),
+		"编辑题目",
+		fmt.Sprintf("编辑题目 #%s，情境：%s", cur.QuestionNo, summarize(in.Scenario)))
 	// 编辑响应无 status 字段（03 §3.3），传空串触发 omitempty。
 	return s.mutationResult(ctx, in.ID, "")
 }
@@ -409,7 +414,19 @@ func (s *questionService) ToggleQuestionStatus(ctx context.Context, id int64, ta
 	if rows == 0 {
 		return nil, s.conflictOrMissing(ctx, id)
 	}
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题目 #%s", cur.QuestionNo),
+		toggleSummary(targetStatus),
+		fmt.Sprintf("题目 #%s，情境：%s", cur.QuestionNo, summarize(cur.Scenario)))
 	return s.mutationResult(ctx, id, targetStatus)
+}
+
+// toggleSummary 启停方向摘要词（埋点 summary 用）。
+func toggleSummary(targetStatus string) string {
+	if targetStatus == domain.QuestionStatusActive {
+		return "启用题目"
+	}
+	return "停用题目"
 }
 
 // DeleteQuestion 删除（03 §3.6）：PENDING 在批次中管理返 1708，被引用题返
@@ -432,5 +449,9 @@ func (s *questionService) DeleteQuestion(ctx context.Context, id int64, version 
 	if rows == 0 {
 		return s.conflictOrMissing(ctx, id)
 	}
+	injectDetail(ctx, domain.OpModuleQuestionBank,
+		fmt.Sprintf("题目 #%s", cur.QuestionNo),
+		"删除题目",
+		fmt.Sprintf("删除题目 #%s，情境：%s", cur.QuestionNo, summarize(cur.Scenario)))
 	return nil
 }

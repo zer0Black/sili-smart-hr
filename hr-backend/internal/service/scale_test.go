@@ -4,6 +4,7 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -185,5 +186,36 @@ func TestImportRepoError(t *testing.T) {
 	svc := newScaleSvc(&scaleFakeRepo{importErr: gorm.ErrInvalidDB})
 	if _, err := svc.ImportScale(context.Background(), "ESSENCE"); err == nil {
 		t.Fatal("want error, got nil")
+	}
+}
+
+// === 操作日志埋点（specs P4_LOG_001 §4.1.4 规则3 + 03 §1.11） ===
+
+// TestImportScaleInjectsDetail 引入量表建批注入：target 含量表中文名、detail 含批次号与题数。
+func TestImportScaleInjectsDetail(t *testing.T) {
+	repo := &scaleFakeRepo{importRes: &domain.QuestionBatch{
+		ID: 901, BatchNo: "#S0925", QuestionCount: 9,
+	}}
+	svc := newScaleSvc(repo)
+	ctx, sink := withOpSink(context.Background())
+
+	if _, err := svc.ImportScale(ctx, "RISO_HUDSON"); err != nil {
+		t.Fatalf("ImportScale: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != domain.OpModuleQuestionBank {
+		t.Fatalf("module want question_bank, got %s", snap.Module)
+	}
+	if snap.Target != "量表 Riso-Hudson 标准量表" {
+		t.Fatalf("target = %s", snap.Target)
+	}
+	if snap.Summary != "引入量表建批" {
+		t.Fatalf("summary = %s", snap.Summary)
+	}
+	if !strings.Contains(snap.Detail, "#S0925") || !strings.Contains(snap.Detail, "9 题") {
+		t.Fatalf("detail = %s", snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("changes want nil, got %+v", snap.Changes)
 	}
 }
