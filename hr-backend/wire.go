@@ -199,6 +199,8 @@ func InitializeApp(configPath string) (*App, error) {
 		wire.Bind(new(service.TestGradeEnqueuer), new(*AsynqTestGradeEnqueuer)),
 		// 建议生成任务投递：*AsynqSuggestEnqueuer 绑定 service.SuggestEnqueuer 窄接口。
 		wire.Bind(new(service.SuggestEnqueuer), new(*AsynqSuggestEnqueuer)),
+		// 操作日志记录通道：具体 recorder 绑定窄投递接口，供 router 中间件消费。
+		wire.Bind(new(service.PendingLogRecorder), new(*service.OperationLogRecorder)),
 		wire.Struct(new(App), "*"),
 	)
 	return nil, nil

@@ -122,7 +122,9 @@ func InitializeApp(configPath string) (*App, error) {
 	workspaceQueryRepository := repository.NewWorkspaceQueryRepository(db)
 	workspaceService := NewWorkspaceServiceAdapter(workspaceQueryRepository, dashboardQueryRepository, teamTrainingSuggestionRepository, dimensionRepository, assessmentConfigRepository, userapiClient, integrationSecretRepository, v, nowFunc)
 	workspaceHandler := handler.NewWorkspaceHandler(workspaceService)
-	engine := router.NewRouter(configConfig, manager, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, assessmentConfigHandler, assessmentBatchHandler, assessmentTestTaskHandler, answerHandler, llmConfigHandler, integrationSecretHandler, questionHandler, questionBatchHandler, questionGenerationHandler, scaleHandler, profileHandler, dashboardHandler, workspaceHandler, client)
+	operationLogRepository := repository.NewOperationLogRepository(db)
+	operationLogRecorder := service.NewOperationLogRecorder(operationLogRepository, accountRepository)
+	engine := router.NewRouter(configConfig, manager, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, assessmentConfigHandler, assessmentBatchHandler, assessmentTestTaskHandler, answerHandler, llmConfigHandler, integrationSecretHandler, questionHandler, questionBatchHandler, questionGenerationHandler, scaleHandler, profileHandler, dashboardHandler, workspaceHandler, operationLogRecorder, client)
 	httpAddr := NewHTTPAddr(configConfig)
 	int2 := NewAsynqConcurrency(configConfig)
 	asynqServer := server.NewServer(redisConnOpt, int2)
@@ -146,8 +148,6 @@ func InitializeApp(configPath string) (*App, error) {
 	suggestService := NewSuggestServiceAdapter(teamTrainingSuggestionRepository, dashboardQueryRepository, assessmentBatchRepository, dimensionRepository, suggestgenGenerator, asynqSuggestEnqueuer, integrationSecretRepository, v, userapiClient)
 	suggestTickHandler := NewSuggestTickHandlerTyped(suggestService)
 	suggestGenerateHandler := NewSuggestGenerateHandlerTyped(suggestService)
-	operationLogRepository := repository.NewOperationLogRepository(db)
-	operationLogRecorder := service.NewOperationLogRecorder(operationLogRepository, accountRepository)
 	operationLogCleanHandler := NewOperationLogCleanHandlerTyped(operationLogRecorder)
 	serveMux := NewMuxAdapter(sessionExtractHandler, personEvaluateHandler, batchTickHandler, batchRunHandler, questionGenerateHandler, testExpireTickHandler, testGradeHandler, suggestTickHandler, suggestGenerateHandler, operationLogCleanHandler)
 	asynqScheduler := scheduler.NewScheduler(redisConnOpt)
@@ -161,6 +161,7 @@ func InitializeApp(configPath string) (*App, error) {
 		AsynqServer: asynqServer,
 		Mux:         serveMux,
 		Scheduler:   asynqScheduler,
+		Recorder:    operationLogRecorder,
 	}
 	return app, nil
 }

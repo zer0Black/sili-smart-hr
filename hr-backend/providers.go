@@ -46,6 +46,8 @@ type App struct {
 	AsynqServer *asynq.Server
 	Mux         *asynq.ServeMux
 	Scheduler   *asynq.Scheduler
+	// Recorder 操作日志异步落库通道：main 起 HTTP 前消费、优雅关闭 flush（03 §4.1）。
+	Recorder *service.OperationLogRecorder
 }
 
 func NewRedisClient(cfg *config.Config) *redis.Client {

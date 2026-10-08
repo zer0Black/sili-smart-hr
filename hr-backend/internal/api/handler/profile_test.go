@@ -445,6 +445,7 @@ func newProfileEngine(t *testing.T, svc *fakeProfileSvc) http.Handler {
 		handler.NewProfileHandler(svc),
 		nil, // dashboardHandler
 		nil, // workspaceHandler
+		nil, // recorder（操作日志记录通道，GET 路由不触达）
 		rdb,
 	)
 }
