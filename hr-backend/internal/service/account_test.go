@@ -44,6 +44,7 @@ type fakeRepo struct {
 	deleteIfNotLastRows   int64 // DeleteIfNotLastEnabled 返回的 RowsAffected
 	deleteIfNotLastCalled bool  // DeleteIfNotLastEnabled 探针
 	deleteIfNotLastID     int64 // DeleteIfNotLastEnabled 接收的 id
+	unscopedID            int64 // FindByIDUnscoped 接收的 id（探针）
 }
 
 func (f *fakeRepo) FindByUsername(_ context.Context, _ string) (*domain.Account, error) {
@@ -51,6 +52,12 @@ func (f *fakeRepo) FindByUsername(_ context.Context, _ string) (*domain.Account,
 }
 
 func (f *fakeRepo) FindByID(_ context.Context, _ int64) (*domain.Account, error) {
+	return f.acc, f.err
+}
+
+// FindByIDUnscoped 探针版本：留存 id 供断言，返回值同 acc/err（软删行语义由调用方数据驱动）。
+func (f *fakeRepo) FindByIDUnscoped(_ context.Context, id int64) (*domain.Account, error) {
+	f.unscopedID = id
 	return f.acc, f.err
 }
 

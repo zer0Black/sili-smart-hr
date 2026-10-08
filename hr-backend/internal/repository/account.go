@@ -15,6 +15,9 @@ import (
 type AccountRepository interface {
 	FindByUsername(ctx context.Context, username string) (*domain.Account, error)
 	FindByID(ctx context.Context, id int64) (*domain.Account, error)
+	// FindByIDUnscoped 按主键取账号，软删行照取（操作日志 operator 现查冗余快照，
+	// 03 §1.4：删号后历史行已落姓名不受影响）。
+	FindByIDUnscoped(ctx context.Context, id int64) (*domain.Account, error)
 	UpdateLastLoginAt(ctx context.Context, id int64, at time.Time) error
 	// ListAccounts 分页列出账号（created_at DESC）。keyword 非空时对 username/name 做字面 LIKE。
 	ListAccounts(ctx context.Context, keyword string, page, pageSize int) ([]domain.Account, int64, error)
@@ -50,6 +53,16 @@ func (r *accountRepository) FindByUsername(ctx context.Context, username string)
 func (r *accountRepository) FindByID(ctx context.Context, id int64) (*domain.Account, error) {
 	var acc domain.Account
 	if err := r.db.WithContext(ctx).First(&acc, id).Error; err != nil {
+		return nil, err
+	}
+	return &acc, nil
+}
+
+// FindByIDUnscoped 与 FindByID 同参，唯一差异 Unscoped 跳过软删过滤：操作日志
+// operator 现查需要读已软删行的姓名（03 §1.4）。
+func (r *accountRepository) FindByIDUnscoped(ctx context.Context, id int64) (*domain.Account, error) {
+	var acc domain.Account
+	if err := r.db.WithContext(ctx).Unscoped().First(&acc, id).Error; err != nil {
 		return nil, err
 	}
 	return &acc, nil
