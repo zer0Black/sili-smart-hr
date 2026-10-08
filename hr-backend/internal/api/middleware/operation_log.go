@@ -76,7 +76,8 @@ func responseCode(body []byte) (int, string) {
 
 // OperationLog 受保护组记录中间件：仅 POST 进入记录路径，其余方法直接放行
 //（specs §5.1.2 步骤1/2）。POST 先注入请求级 OpSink 再透传业务 handler，
-// 响应后组装 PendingLog 经 recorder 非阻塞投递（03 §4.1）。
+// 响应后在 defer 内组装 PendingLog 经 recorder 非阻塞投递（03 §4.1）：
+// defer 保证 panic 路径也落记录，recover 后 re-panic 交外层 Recovery 写 500。
 func OperationLog(recorder service.PendingLogRecorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if !recordedMethods[c.Request.Method] {
@@ -89,44 +90,48 @@ func OperationLog(recorder service.PendingLogRecorder) gin.HandlerFunc {
 		cw := &bodyCaptureWriter{ResponseWriter: c.Writer, buf: &bytes.Buffer{}}
 		c.Writer = cw
 
+		defer func() {
+			r := recover()
+			if recorder != nil {
+				code, msg := responseCode(cw.buf.Bytes())
+				success := r == nil && c.Writer.Status() == http.StatusOK && code == 0
+
+				entry := sink.Snapshot()
+				entry.AccountID, entry.FallbackUsername = operatorFromJWT(c)
+				entry.RequestPath = c.Request.Method + " " + c.Request.URL.Path
+
+				if success {
+					if entry.Module == "" {
+						entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultSuccess)
+					}
+					entry.Result = domain.OpResultSuccess
+				} else {
+					// 失败路径埋点不注入（specs §5.1.2 步骤3），直接走兜底组装，
+					// summary 摘响应 message；panic 与 HTTP 非 200 摘「服务内部错误」。
+					if r != nil || c.Writer.Status() != http.StatusOK {
+						msg = internalErrMsg
+					}
+					entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultFail)
+					entry.Detail, entry.Changes = "", nil
+					if msg != "" {
+						entry.Summary = msg
+					}
+					entry.Result = domain.OpResultFail
+				}
+
+				recorder.Record(entry)
+			}
+			if r != nil {
+				panic(r)
+			}
+		}()
 		c.Next()
-
-		if recorder == nil {
-			return
-		}
-
-		code, msg := responseCode(cw.buf.Bytes())
-		success := c.Writer.Status() == http.StatusOK && code == 0
-
-		entry := sink.Snapshot()
-		entry.AccountID, entry.FallbackUsername = operatorFromJWT(c)
-		entry.RequestPath = c.Request.Method + " " + c.Request.URL.Path
-
-		if success {
-			if entry.Module == "" {
-				entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultSuccess)
-			}
-			entry.Result = domain.OpResultSuccess
-		} else {
-			// 失败路径埋点不注入（specs §5.1.2 步骤3），直接走兜底组装，
-			// summary 摘响应 message；HTTP 非 200 摘「服务内部错误」。
-			if c.Writer.Status() != http.StatusOK {
-				msg = internalErrMsg
-			}
-			entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultFail)
-			entry.Detail, entry.Changes = "", nil
-			if msg != "" {
-				entry.Summary = msg
-			}
-			entry.Result = domain.OpResultFail
-		}
-
-		recorder.Record(entry)
 	}
 }
 
 // OperationLogLogin 登录记录中间件：无 JWT 上下文，操作人取请求 username 原值
-//（specs §5.1.3）。失败摘要统一「凭证校验未通过」反枚举（03 §1.6）。
+//（specs §5.1.3）。失败摘要统一「凭证校验未通过」反枚举（03 §1.6）。组装在
+// defer 内执行，panic 路径也落记录后 re-panic 交外层 Recovery（03 §1.5）。
 func OperationLogLogin(recorder service.PendingLogRecorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		username := peekUsername(c)
@@ -134,27 +139,30 @@ func OperationLogLogin(recorder service.PendingLogRecorder) gin.HandlerFunc {
 		cw := &bodyCaptureWriter{ResponseWriter: c.Writer, buf: &bytes.Buffer{}}
 		c.Writer = cw
 
+		defer func() {
+			r := recover()
+			if recorder != nil {
+				code, _ := responseCode(cw.buf.Bytes())
+				success := r == nil && c.Writer.Status() == http.StatusOK && code == 0
+
+				summary := "登录成功"
+				if !success {
+					summary = loginFailMsg
+				}
+				recorder.Record(service.PendingLog{
+					FallbackName: username,
+					Module:       domain.OpModuleLogin,
+					Target:       "登录",
+					Summary:      summary,
+					Result:       map[bool]string{true: domain.OpResultSuccess, false: domain.OpResultFail}[success],
+					RequestPath:  c.Request.Method + " " + c.Request.URL.Path,
+				})
+			}
+			if r != nil {
+				panic(r)
+			}
+		}()
 		c.Next()
-
-		if recorder == nil {
-			return
-		}
-
-		code, _ := responseCode(cw.buf.Bytes())
-		success := c.Writer.Status() == http.StatusOK && code == 0
-
-		summary := "登录成功"
-		if !success {
-			summary = loginFailMsg
-		}
-		recorder.Record(service.PendingLog{
-			FallbackName: username,
-			Module:       domain.OpModuleLogin,
-			Target:       "登录",
-			Summary:      summary,
-			Result:       map[bool]string{true: domain.OpResultSuccess, false: domain.OpResultFail}[success],
-			RequestPath:  c.Request.Method + " " + c.Request.URL.Path,
-		})
 	}
 }
 

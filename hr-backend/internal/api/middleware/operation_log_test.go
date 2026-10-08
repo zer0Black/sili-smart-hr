@@ -193,23 +193,14 @@ func TestOperationLogLoginMiddleware(t *testing.T) {
 	}
 }
 
-// TestOperationLogMiddlewarePanicRecordedFail 补充：panic 路径中间件在链内
-// 记 fail，摘「服务内部错误」（03 §1.5 HTTP 非 200 口径）。真实 Recovery 在
-// 记录中间件外层，此处用链内 defer 还原 Recover 接住后写 500 的形态。
+// TestOperationLogMiddlewarePanicRecordedFail 补充：panic 路径走真实 Recovery
+// 链（Recovery 在最外层，与生产 router 挂载顺序一致），记录中间件在 defer 内
+// 落 fail 后 re-panic，断言 500 + 摘「服务内部错误」（03 §1.5 HTTP 非 200 口径）。
 func TestOperationLogMiddlewarePanicRecordedFail(t *testing.T) {
 	rec := &fakeRecorder{}
 	gin.SetMode(gin.TestMode)
 	r := gin.New()
-	r.Use(func(c *gin.Context) {
-		defer func() {
-			if err := recover(); err != nil {
-				c.AbortWithStatus(http.StatusInternalServerError)
-				// 已 Abort（index 越界），内层 c.Next() 直接返回不再执行链。
-				middleware.OperationLog(rec)(c)
-			}
-		}()
-		c.Next()
-	})
+	r.Use(middleware.Recovery())
 	r.Use(middleware.OperationLog(rec))
 	r.POST("/api/dimensions/create", func(c *gin.Context) { panic("boom") })
 
@@ -228,6 +219,33 @@ func TestOperationLogMiddlewarePanicRecordedFail(t *testing.T) {
 	}
 	if got.Module != "dimension" {
 		t.Fatalf("Module = %q, want dimension", got.Module)
+	}
+}
+
+// TestOperationLogLoginMiddlewarePanicRecordedFail 补充：登录 handler panic
+// 同样走真实 Recovery 链，落 fail 后 re-panic，摘要维持反枚举口径（03 §1.6）。
+func TestOperationLogLoginMiddlewarePanicRecordedFail(t *testing.T) {
+	rec := &fakeRecorder{}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.Recovery())
+	r.POST("/api/login", middleware.OperationLogLogin(rec), func(c *gin.Context) { panic("boom") })
+
+	if code := serveJSON(r, http.MethodPost, "/api/login", `{"username":"admin"}`); code != http.StatusInternalServerError {
+		t.Fatalf("login panic status = %d, want 500", code)
+	}
+	if len(rec.recorded) != 1 {
+		t.Fatalf("recorded = %d, want 1", len(rec.recorded))
+	}
+	got := rec.recorded[0]
+	if got.Result != "fail" {
+		t.Fatalf("Result = %q, want fail", got.Result)
+	}
+	if got.Summary != "凭证校验未通过" {
+		t.Fatalf("Summary = %q, want 凭证校验未通过", got.Summary)
+	}
+	if got.FallbackName != "admin" {
+		t.Fatalf("FallbackName = %q, want admin", got.FallbackName)
 	}
 }
 
