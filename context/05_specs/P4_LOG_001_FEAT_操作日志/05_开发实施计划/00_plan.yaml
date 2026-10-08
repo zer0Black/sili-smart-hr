@@ -37,7 +37,7 @@ sub_plans:
   - id: "03"
     name: "查询导出接口"
     file: "03_查询导出接口.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"
