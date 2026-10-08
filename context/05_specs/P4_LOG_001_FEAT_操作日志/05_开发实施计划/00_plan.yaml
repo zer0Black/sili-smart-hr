@@ -3,8 +3,8 @@ spec_kind: "business"
 spec_kind_basis: "ID 类型段 FEAT 与进度 type: FEAT 一致；无 RFC 基线（base_on 为 null）；specs 为业务 feature 八章结构（页面清单/页面功能详细说明/非页面功能），模块注册表 00_模块依赖矩阵.md 归类业务域"
 name: "操作日志"
 created_at: "2026-10-07"
-finalized: false
-closeout_result: null
+finalized: true
+closeout_result: "local_merge: codex/P4_LOG_001_操作日志 已合并 main（合并提交 f494009，115 文件 +7365/-135），合并后主仓后端 29 包测试与前端 523 测试全绿；回执 context/04_project_manager/closeout/P4_LOG_001_FEAT_操作日志_merge_f494009.md"
 
 design_inputs:
   api:
