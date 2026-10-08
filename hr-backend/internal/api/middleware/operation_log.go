@@ -107,8 +107,9 @@ func OperationLog(recorder service.PendingLogRecorder) gin.HandlerFunc {
 					entry.Result = domain.OpResultSuccess
 				} else {
 					// 失败路径埋点不注入（specs §5.1.2 步骤3），直接走兜底组装，
-					// summary 摘响应 message；panic 与 HTTP 非 200 摘「服务内部错误」。
-					if r != nil || c.Writer.Status() != http.StatusOK {
+					// summary 摘响应 message；panic 或 body 无可解析 message 摘
+					//「服务内部错误」（03 §1.5：400 形态同记 fail 并摘错误信息）。
+					if r != nil || msg == "" {
 						msg = internalErrMsg
 					}
 					entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultFail)

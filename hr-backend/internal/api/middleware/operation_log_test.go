@@ -113,6 +113,24 @@ func TestOperationLogMiddlewareFallback(t *testing.T) {
 	if fail.Summary != "凭证校验未通过" {
 		t.Fatalf("fail Summary = %q, want 凭证校验未通过", fail.Summary)
 	}
+
+	// 400 形态（binding 失败直返 Fail 400）：同记 fail 并摘 body message，
+	// 不误记「服务内部错误」（03 §1.5）。
+	rec3 := &fakeRecorder{}
+	r3 := newLogEngine(rec3, func(c *gin.Context) {
+		c.JSON(http.StatusBadRequest, gin.H{"code": 1400, "message": "请求参数错误"})
+	})
+	serveJSON(r3, http.MethodPost, "/api/accounts/create", `{}`)
+	if len(rec3.recorded) != 1 {
+		t.Fatalf("400 path recorded = %d, want 1", len(rec3.recorded))
+	}
+	badReq := rec3.recorded[0]
+	if badReq.Result != "fail" {
+		t.Fatalf("400 Result = %q, want fail", badReq.Result)
+	}
+	if badReq.Summary != "请求参数错误" {
+		t.Fatalf("400 Summary = %q, want 请求参数错误", badReq.Summary)
+	}
 }
 
 // TestOperationLogMiddlewareSinkUsed 核心断言：埋点字段优先于路径级兜底。
