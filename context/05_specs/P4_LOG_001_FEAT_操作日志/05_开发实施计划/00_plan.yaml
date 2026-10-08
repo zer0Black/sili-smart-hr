@@ -1,0 +1,58 @@
+feature_id: "P4_LOG_001_FEAT_操作日志"
+spec_kind: "business"
+spec_kind_basis: "ID 类型段 FEAT 与进度 type: FEAT 一致；无 RFC 基线（base_on 为 null）；specs 为业务 feature 八章结构（页面清单/页面功能详细说明/非页面功能），模块注册表 00_模块依赖矩阵.md 归类业务域"
+name: "操作日志"
+created_at: "2026-10-07"
+finalized: false
+closeout_result: null
+
+design_inputs:
+  api:
+    status: "applicable"
+    path: "../03_api_interface.md"
+    basis: "specs §3.1 页面 1（A1 列表/A2 导出两接口）+ §5.3/§5.4 查询与导出接口 + §5.1/§5.2/§5.5 非页面功能（03 §4 承载契约）；本域全 GET，记录通道为中间件内部机制无 HTTP 面"
+  model:
+    status: "applicable"
+    path: "../04_model_interface.md"
+    basis: "specs §5.1.3/§5.3.3/§5.5.3 三处明文 operation_logs 新建表；04 §1.1 结论 applicable（一张新表零既有表变更）"
+
+sub_plans:
+  - id: "01"
+    name: "写通道骨架"
+    file: "01_写通道骨架.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+      - "../04_model_interface.md"
+
+  - id: "02"
+    name: "埋点与节点"
+    file: "02_埋点与节点.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+
+  - id: "03"
+    name: "查询导出接口"
+    file: "03_查询导出接口.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+      - "../04_model_interface.md"
+
+  - id: "04"
+    name: "操作日志页"
+    file: "04_操作日志页.md"
+    status: "pending"
+    input_files:
+      - "../01_功能需求规格说明书.md"
+      - "../03_api_interface.md"
+
+execution_order:
+  - "01"
+  - "02"
+  - "03"
+  - "04"

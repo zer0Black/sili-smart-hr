@@ -1,0 +1,103 @@
+feature_id: P4_LOG_001_FEAT_操作日志
+module_code: LOG
+phase: P4
+type: FEAT
+root_base: null
+base_on: null
+change_group: null
+change_history: []
+dependencies:
+- P1_ACC_001_FEAT_登录与用户管理
+- P2_DIM_001_FEAT_维度与权重配置
+- P2_SYS_001_FEAT_系统参数与大模型配置
+- P2_QBN_001_FEAT_题库管理
+- P2_ASM_001_FEAT_周期批量评估跑批编排
+- P2_TST_001_FEAT_主动测试评估运营
+- P2_TMD_001_FEAT_团队看板
+feature_name: 操作日志
+creator: lixuetao
+created_at: '2026-10-07T09:03:54Z'
+updated_at: '2026-10-08T02:37:28Z'
+stages:
+  specs:
+    status: completed
+    started_at: '2026-10-07T11:54:31Z'
+    completed_at: '2026-10-07T11:54:31Z'
+    check_owner: lixuetao
+  interface:
+    status: completed
+    started_at: '2026-10-07T11:54:31Z'
+    completed_at: '2026-10-07T13:46:21Z'
+    check_owner: lixuetao
+  dev_plan:
+    status: completed
+    started_at: '2026-10-07T13:46:21Z'
+    completed_at: '2026-10-08T02:37:28Z'
+    check_owner: lixuetao
+  dev_exec:
+    status: in_progress
+    started_at: '2026-10-08T02:37:28Z'
+    completed_at: null
+    check_owner: null
+rollback_history:
+- timestamp: '2026-10-07T09:04:11Z'
+  type: dependencies
+  from_stage: specs
+  to_stage: null
+  reason: null
+  check_owner: lixuetao
+  affected_stages: []
+- timestamp: '2026-10-07T09:19:27Z'
+  type: dependencies
+  from_stage: specs
+  to_stage: null
+  reason: null
+  check_owner: lixuetao
+  affected_stages: []
+- timestamp: '2026-10-07T10:56:09Z'
+  type: advance
+  from_stage: specs
+  to_stage: specs
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - specs
+  - interface
+- timestamp: '2026-10-07T11:54:07Z'
+  type: rollback
+  from_stage: interface
+  to_stage: specs
+  reason: 监理模式一自动修复：写接口口径与关键域清单两处规格一致性修订
+  check_owner: lixuetao
+  affected_stages:
+  - specs
+  - interface
+  - dev_plan
+  - dev_exec
+- timestamp: '2026-10-07T11:54:31Z'
+  type: advance
+  from_stage: specs
+  to_stage: specs
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - specs
+  - interface
+- timestamp: '2026-10-07T13:46:21Z'
+  type: advance
+  from_stage: interface
+  to_stage: interface
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - interface
+  - dev_plan
+- timestamp: '2026-10-08T02:37:28Z'
+  type: advance
+  from_stage: dev_plan
+  to_stage: dev_plan
+  reason: null
+  check_owner: lixuetao
+  affected_stages:
+  - dev_plan
+  - dev_exec
