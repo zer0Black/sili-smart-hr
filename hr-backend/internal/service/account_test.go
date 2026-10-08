@@ -591,6 +591,209 @@ func TestListAccounts_Empty(t *testing.T) {
 	}
 }
 
+// withOpSink 构造带埋点 sink 的 ctx 并返回 sink 供 Snapshot 断言。
+func withOpSink(ctx context.Context) (context.Context, *service.OpSink) {
+	sink := &service.OpSink{}
+	return service.WithSink(ctx, sink), sink
+}
+
+// findChange 按字段名查 changes 单项，不存在返回 nil。
+func findChange(changes []domain.ChangeItem, field string) *domain.ChangeItem {
+	for i := range changes {
+		if changes[i].Field == field {
+			return &changes[i]
+		}
+	}
+	return nil
+}
+
+// assertNoPassword 断言 changes 不含密码字段与密码值（specs §5.1.4 规则4）。
+func assertNoPassword(t *testing.T, snap service.PendingLog, plaintext string) {
+	t.Helper()
+	for _, c := range snap.Changes {
+		if strings.Contains(c.Field, "密码") {
+			t.Fatalf("changes 含密码字段: %+v", c)
+		}
+		if plaintext != "" && (strings.Contains(c.Before, plaintext) || strings.Contains(c.After, plaintext)) {
+			t.Fatalf("changes 泄漏密码值: %+v", c)
+		}
+	}
+	if plaintext != "" && (strings.Contains(snap.Detail, plaintext) ||
+		strings.Contains(snap.Summary, plaintext) || strings.Contains(snap.Target, plaintext)) {
+		t.Fatalf("日志字段泄漏密码值: %+v", snap)
+	}
+}
+
+// TestAccountCreateInjectsDetail 验证新增账号走 detail 文本形态（specs §4.1.4 规则3：新增类无变更前后语义），
+// Changes 恒 nil，Detail 含账号名与启用状态中文名。
+func TestAccountCreateInjectsDetail(t *testing.T) {
+	repo := &fakeRepo{err: gorm.ErrRecordNotFound}
+	dec := &fakeDecryptor{pw: "Pass1234"}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSvc(repo, dec).CreateAccount(ctx, "zhangsan", "张三", "c", "kid", true); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != "account" {
+		t.Fatalf("module want account, got %s", snap.Module)
+	}
+	if snap.Target != "账号「zhangsan」" {
+		t.Fatalf("target want 账号「zhangsan」, got %s", snap.Target)
+	}
+	if snap.Summary != "新增账号 张三" {
+		t.Fatalf("summary want 新增账号 张三, got %s", snap.Summary)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("create changes want nil, got %+v", snap.Changes)
+	}
+	if !strings.Contains(snap.Detail, "张三") || !strings.Contains(snap.Detail, "已启用") {
+		t.Fatalf("detail want name+enabled text, got %s", snap.Detail)
+	}
+	assertNoPassword(t, snap, "Pass1234")
+}
+
+// TestAccountUpdateInjectsChanges 验证编辑账号注入变更对比：姓名 old→new 进 changes，
+// 密码字段与密码值永不出现（specs §7.2、§5.1.4 规则4）。
+func TestAccountUpdateInjectsChanges(t *testing.T) {
+	repo := &fakeRepo{
+		acc: &domain.Account{ID: 1, Username: "admin", Name: "旧名", PasswordHash: "h", Enabled: true},
+	}
+	dec := &fakeDecryptor{pw: "NewPass123"}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSvc(repo, dec).UpdateAccount(ctx, 1, "新名字", "c", "kid", true, true); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != "account" {
+		t.Fatalf("module want account, got %s", snap.Module)
+	}
+	if snap.Target != "账号「admin」" {
+		t.Fatalf("target want 账号「admin」, got %s", snap.Target)
+	}
+	c := findChange(snap.Changes, "姓名")
+	if c == nil || c.Before != "旧名" || c.After != "新名字" {
+		t.Fatalf("changes want {姓名 旧名 新名字}, got %+v", snap.Changes)
+	}
+	// 姓名未变不重复、启停未变不进 changes（本用例 enabled 平调 true→true）。
+	if findChange(snap.Changes, "启用状态") != nil {
+		t.Fatalf("enabled 未变化不应进 changes: %+v", snap.Changes)
+	}
+	assertNoPassword(t, snap, "NewPass123")
+}
+
+// TestAccountUpdateInjectsEnabledChange 验证编辑含启停变化时启用状态进 changes（降停放行路径）。
+func TestAccountUpdateInjectsEnabledChange(t *testing.T) {
+	repo := &fakeRepo{
+		acc:        &domain.Account{ID: 1, Username: "admin", Name: "旧名", PasswordHash: "h", Enabled: true},
+		demoteRows: 1,
+	}
+	dec := &fakeDecryptor{}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSvc(repo, dec).UpdateAccount(ctx, 1, "新名", "", "kid", false, false); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	snap := sink.Snapshot()
+	c := findChange(snap.Changes, "启用状态")
+	if c == nil || c.Before != "已启用" || c.After != "已停用" {
+		t.Fatalf("changes want {启用状态 已启用 已停用}, got %+v", snap.Changes)
+	}
+	if findChange(snap.Changes, "姓名") == nil {
+		t.Fatalf("姓名变化应进 changes: %+v", snap.Changes)
+	}
+}
+
+// TestAccountUpdateNoChangeEmptyChanges 验证无字段变化时 changes 为 nil（空对比不落 JSON）。
+func TestAccountUpdateNoChangeEmptyChanges(t *testing.T) {
+	repo := &fakeRepo{
+		acc: &domain.Account{ID: 1, Username: "admin", Name: "同名", PasswordHash: "h", Enabled: true},
+	}
+	dec := &fakeDecryptor{}
+	ctx, sink := withOpSink(context.Background())
+	if _, err := newSvc(repo, dec).UpdateAccount(ctx, 1, "同名", "", "kid", false, true); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if snap := sink.Snapshot(); snap.Changes != nil {
+		t.Fatalf("no-change update should inject nil changes, got %+v", snap.Changes)
+	}
+}
+
+// TestAccountDeleteInjectsDetail 验证删除账号走 detail 文本形态，Changes 恒 nil。
+func TestAccountDeleteInjectsDetail(t *testing.T) {
+	repo := &fakeRepo{
+		acc:                 &domain.Account{ID: 1, Username: "old", Name: "李四", Enabled: false},
+		deleteIfNotLastRows: 1,
+	}
+	dec := &fakeDecryptor{}
+	ctx, sink := withOpSink(context.Background())
+	if err := newSvc(repo, dec).DeleteAccount(ctx, 1); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Module != "account" || snap.Target != "账号「old」" {
+		t.Fatalf("unexpected module/target: %s/%s", snap.Module, snap.Target)
+	}
+	if snap.Summary != "删除账号 李四" || snap.Detail != "删除账号 李四" {
+		t.Fatalf("summary/detail want 删除账号 李四, got %s/%s", snap.Summary, snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("delete changes want nil, got %+v", snap.Changes)
+	}
+}
+
+// TestAccountToggleEnabledInjectsChanges 验证启停注入启用状态变更对比，摘要随方向取启用/停用。
+func TestAccountToggleEnabledInjectsChanges(t *testing.T) {
+	// 停用方向（demote 放行）。
+	repo := &fakeRepo{
+		acc:        &domain.Account{ID: 1, Username: "admin", Name: "王五", Enabled: true},
+		demoteRows: 1,
+	}
+	dec := &fakeDecryptor{}
+	ctx, sink := withOpSink(context.Background())
+	if err := newSvc(repo, dec).ToggleEnabled(ctx, 1, false); err != nil {
+		t.Fatalf("toggle disable: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Summary != "停用账号 王五" {
+		t.Fatalf("summary want 停用账号 王五, got %s", snap.Summary)
+	}
+	if c := findChange(snap.Changes, "启用状态"); c == nil || c.Before != "已启用" || c.After != "已停用" {
+		t.Fatalf("changes want {启用状态 已启用 已停用}, got %+v", snap.Changes)
+	}
+
+	// 启用方向（走 UpdateEnabled）。
+	repo2 := &fakeRepo{acc: &domain.Account{ID: 2, Username: "old", Name: "赵六", Enabled: false}}
+	ctx2, sink2 := withOpSink(context.Background())
+	if err := newSvc(repo2, dec).ToggleEnabled(ctx2, 2, true); err != nil {
+		t.Fatalf("toggle enable: %v", err)
+	}
+	snap2 := sink2.Snapshot()
+	if snap2.Summary != "启用账号 赵六" {
+		t.Fatalf("summary want 启用账号 赵六, got %s", snap2.Summary)
+	}
+	if c := findChange(snap2.Changes, "启用状态"); c == nil || c.Before != "已停用" || c.After != "已启用" {
+		t.Fatalf("changes want {启用状态 已停用 已启用}, got %+v", snap2.Changes)
+	}
+}
+
+// TestAccountResetPasswordInjectsDetail 验证重置密码走 detail 文本形态，Changes 恒 nil，
+// 密码明文与密文均不落任何日志字段（specs §5.1.4 规则4）。
+func TestAccountResetPasswordInjectsDetail(t *testing.T) {
+	repo := &fakeRepo{acc: &domain.Account{ID: 1, Username: "admin", Name: "管理员", PasswordHash: "old", Enabled: true}}
+	dec := &fakeDecryptor{pw: "NewPass123"}
+	ctx, sink := withOpSink(context.Background())
+	if err := newSvc(repo, dec).ResetPassword(ctx, 1, "cipher-text", "kid"); err != nil {
+		t.Fatalf("reset password: %v", err)
+	}
+	snap := sink.Snapshot()
+	if snap.Summary != "重置账号 管理员 密码" || snap.Detail != "重置账号 管理员 密码" {
+		t.Fatalf("summary/detail want 重置账号 管理员 密码, got %s/%s", snap.Summary, snap.Detail)
+	}
+	if snap.Changes != nil {
+		t.Fatalf("reset changes want nil, got %+v", snap.Changes)
+	}
+	assertNoPassword(t, snap, "NewPass123")
+}
+
 // TestListAccounts_RepoError 验证 repo 错误透传（wrap）。
 func TestListAccounts_RepoError(t *testing.T) {
 	repoErr := errors.New("db down")
