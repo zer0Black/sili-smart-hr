@@ -169,6 +169,10 @@ func TestOperationLogListBoundary(t *testing.T) {
 	if got := repo.gotFilter.EndAt.Format("2006-01-02 15:04:05"); got != "2026-09-30 23:59:59" {
 		t.Fatalf("EndAt want 2026-09-30 23:59:59, got %s", got)
 	}
+	// 结束端补满纳秒：落库 created_at 带亚秒，裸 .000 会漏出结束日最后一秒。
+	if ns := repo.gotFilter.EndAt.Nanosecond(); ns != 999999999 {
+		t.Fatalf("EndAt nanosecond = %d, want 999999999", ns)
+	}
 	if repo.gotFilter.Operator != "张" || repo.gotFilter.Module != domain.OpModuleDimension || repo.gotFilter.Result != domain.OpResultSuccess {
 		t.Fatalf("filter 透传不符: %+v", repo.gotFilter)
 	}

@@ -23,7 +23,6 @@ const (
 	recordFlushSize   = 100   // 攒批条数上限
 	recordFlushPeriod = 500 * time.Millisecond // 攒批时间窗
 	retentionDays     = 180   // 日志保留窗口（T5 清理任务消费）
-	cleanBatchSize    = 1000  // 清理单批删除行数（T5 消费）
 )
 
 // PendingLog 是一次待落库操作的事件载荷：中间件/埋点侧只组装业务字段，

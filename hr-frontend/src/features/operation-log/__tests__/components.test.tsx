@@ -60,8 +60,6 @@ void i18n.addResourceBundle('zh', 'operationLog', {
     system_job: '系统任务',
   },
   detail: {
-    title: '操作详情',
-    basicInfo: '基本信息',
     colField: '字段',
     colBefore: '变更前',
     colAfter: '变更后',

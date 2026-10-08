@@ -40,16 +40,6 @@ var fallbackModule = []struct {
 	{"/api/assessment", domain.OpModuleAssessment},
 }
 
-// moduleNames 业务域中文名，兜底 summary 的「{业务域中文}接口调用」素材。
-var moduleNames = map[string]string{
-	domain.OpModuleAccount:      "用户管理",
-	domain.OpModuleDimension:    "维度与权重",
-	domain.OpModuleSystemParams: "系统参数",
-	domain.OpModuleLLMConfig:    "大模型配置",
-	domain.OpModuleQuestionBank: "题库管理",
-	domain.OpModuleAssessment:   "评估运营",
-}
-
 // bodyCaptureWriter 包装 ResponseWriter 捕获响应体，供 Next 后解析 code/message。
 type bodyCaptureWriter struct {
 	gin.ResponseWriter
@@ -101,8 +91,16 @@ func OperationLog(recorder service.PendingLogRecorder) gin.HandlerFunc {
 				entry.RequestPath = c.Request.Method + " " + c.Request.URL.Path
 
 				if success {
+					// 兜底按字段级判定：sink 部分写入（如仅 SetSummary）时
+					// 只补缺失字段，已写字段不覆盖。
 					if entry.Module == "" {
-						entry.Module, entry.Target, entry.Summary = fallbackSemantics(c, domain.OpResultSuccess)
+						entry.Module, _, _ = fallbackSemantics(c, domain.OpResultSuccess)
+					}
+					if entry.Target == "" {
+						_, entry.Target, _ = fallbackSemantics(c, domain.OpResultSuccess)
+					}
+					if entry.Summary == "" {
+						_, _, entry.Summary = fallbackSemantics(c, domain.OpResultSuccess)
 					}
 					entry.Result = domain.OpResultSuccess
 				} else {
@@ -205,5 +203,5 @@ func fallbackSemantics(c *gin.Context, result string) (module, target, summary s
 	if result == domain.OpResultSuccess {
 		outcome = "成功"
 	}
-	return module, "POST " + path, moduleNames[module] + "接口调用：" + outcome
+	return module, "POST " + path, service.OperationLogModuleName(module) + "接口调用：" + outcome
 }

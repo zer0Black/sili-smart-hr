@@ -113,9 +113,12 @@ func main() {
 	a.AsynqServer.Shutdown()
 	a.Scheduler.Shutdown()
 	_ = a.AsynqClient.Close()
-	// 日志通道排空后再关库（03 §4.1 步骤4：flush 剩余记录需 DB 仍可用；
-	// 超时由 shutdownCtx 承载，剩余记录交进程退出丢弃）。
-	if err := a.Recorder.Close(shutdownCtx); err != nil {
+	// 日志通道排空后再关库（03 §4.1 步骤4：flush 剩余记录需 DB 仍可用）。
+	// flush 用独立预算：shutdownCtx 可能已被上面的 HTTP 排空耗尽，复用会让
+	// flush 立即超时；超时后剩余记录交进程退出丢弃（specs §5.1.4 规则2）。
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer flushCancel()
+	if err := a.Recorder.Close(flushCtx); err != nil {
 		slog.Error("operation log recorder flush timeout", "err", err)
 	}
 	if sqlDB, err := a.DB.DB(); err == nil {

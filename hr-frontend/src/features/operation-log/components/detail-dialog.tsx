@@ -21,7 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-import { moduleBadgeTone, moduleI18nKeys } from '../module-meta';
+import { hasChanges, moduleBadgeTone, moduleI18nKeys } from '../module-meta';
 import type { OperationLogItem } from '../types';
 
 /** 三类 Badge 追加语义色的 module（specs §4.1.5：login info / dimension warning / question_bank success）。 */
@@ -85,8 +85,8 @@ export function DetailDialog(props: {
           <dd>{item.target}</dd>
         </dl>
 
-        {/* 变更详情互斥（specs §4.2.5）：有 changes 渲染对比表，否则文本详情，再兜底摘要 */}
-        {item.changes !== null && item.changes.length > 0 ? (
+        {/* 变更详情互斥（specs §4.2.5）：hasChanges 为唯一判据，有对比表否则文本详情再兜底摘要 */}
+        {hasChanges(item) ? (
           <Table>
             <TableHeader>
               <TableRow>
@@ -96,7 +96,7 @@ export function DetailDialog(props: {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {item.changes.map((c) => (
+              {item.changes?.map((c) => (
                 <TableRow key={c.field}>
                   <TableCell>{c.field}</TableCell>
                   <TableCell className="text-destructive line-through">{c.before}</TableCell>

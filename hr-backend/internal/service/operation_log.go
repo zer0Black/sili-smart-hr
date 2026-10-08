@@ -24,7 +24,7 @@ const (
 	exportMaxRows = 10000
 )
 
-// opModuleNames 八类操作类型中文名，与前端 i18n 措辞对齐的导出侧常量。
+// opModuleNames 八类操作类型中文名，与前端 i18n 措辞对齐。
 var opModuleNames = map[string]string{
 	domain.OpModuleLogin:        "登录",
 	domain.OpModuleAccount:      "用户管理",
@@ -34,6 +34,12 @@ var opModuleNames = map[string]string{
 	domain.OpModuleQuestionBank: "题库管理",
 	domain.OpModuleAssessment:   "评估运营",
 	domain.OpModuleSystemJob:    "系统任务",
+}
+
+// OperationLogModuleName 取操作类型中文名（导出 xlsx 与中间件兜底 summary
+// 共用单点，未知名返回空串）。
+func OperationLogModuleName(module string) string {
+	return opModuleNames[module]
 }
 
 // opResultNames 结果两态中文名。
@@ -118,8 +124,10 @@ func validateOpLogQuery(q OperationLogQuery) (repository.OperationLogFilter, err
 			return repository.OperationLogFilter{}, NewError(errcode.BadRequest)
 		}
 		// 自然日边界收拢双闭区间（specs §4.1.2 A：起始 00:00:00、结束 23:59:59）。
+		// 结束端补满纳秒：落库 created_at 带亚秒（SQLite 微秒），裸 23:59:59.000
+		// 会让结束日最后一秒内的行漏出 <= 区间。
 		startAt = time.Date(sd.Year(), sd.Month(), sd.Day(), 0, 0, 0, 0, time.Local)
-		endAt = time.Date(ed.Year(), ed.Month(), ed.Day(), 23, 59, 59, 0, time.Local)
+		endAt = time.Date(ed.Year(), ed.Month(), ed.Day(), 23, 59, 59, 999999999, time.Local)
 	}
 	return repository.OperationLogFilter{
 		Operator: q.Operator,

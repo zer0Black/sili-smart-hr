@@ -222,7 +222,7 @@ func (s *assessmentBatchService) Create(ctx context.Context, p CreateBatchPayloa
 		fmt.Sprintf("批次 %s（%s ~ %s）", batch.BatchNo, start.Format(layoutDate), end.Format(layoutDate)),
 		"手动创建评估批次",
 		fmt.Sprintf("对象 %s %d人，区间 %s ~ %s，批次号 %s",
-			batchTargetModeName(batch.TargetMode), targetCount,
+			targetModeName(batch.TargetMode), targetCount,
 			start.Format(layoutDate), end.Format(layoutDate), batch.BatchNo))
 	return &CreateBatchResult{
 		ID:         batch.ID,
@@ -491,14 +491,6 @@ func validBatchTriggerType(v string) bool {
 		return true
 	}
 	return false
-}
-
-// batchTargetModeName 对象模式中文名（埋点文本用，措辞对齐 i18n assessment.targetAll）。
-func batchTargetModeName(mode string) string {
-	if mode == domain.BatchTargetAll {
-		return "全员"
-	}
-	return "指定人员"
 }
 
 func validBatchStatus(v string) bool {

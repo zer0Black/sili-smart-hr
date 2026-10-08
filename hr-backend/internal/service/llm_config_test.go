@@ -657,8 +657,8 @@ func TestLLMConfigEnableInjectsChanges(t *testing.T) {
 		t.Fatalf("changes want exactly 1 item, got %+v", snap.Changes)
 	}
 	c := snap.Changes[0]
-	if c.Field != "启用状态" || c.Before != "false" || c.After != "true" {
-		t.Fatalf("changes want {启用状态 false true}, got %+v", c)
+	if c.Field != "启用状态" || c.Before != "已停用" || c.After != "已启用" {
+		t.Fatalf("changes want {启用状态 已停用 已启用}, got %+v", c)
 	}
 	if snap.Detail != "" {
 		t.Fatalf("injectOperation 不应写 detail, got %s", snap.Detail)

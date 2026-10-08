@@ -23,11 +23,12 @@ type OperationLogCleanRunner interface {
 }
 
 // NewOperationLogCleanHandler 构造清理 handler：零 payload（test-expire-tick
-// 同款），调 CleanExpired(ctx, time.Now().UTC())，删除条数记 INFO
-//（specs §5.5.2 步骤3），err 透传交 Asynq 重试（§5.5.4 规则2 幂等补偿）。
+// 同款），调 CleanExpired(ctx, time.Now())，删除条数记 INFO（specs §5.5.2
+// 步骤3），err 透传交 Asynq 重试（§5.5.4 规则2 幂等补偿）。now 传 Local 与
+// created_at 落库偏移口径一致：SQLite 文本列字典序比较要求两端偏移格式相同。
 func NewOperationLogCleanHandler(runner OperationLogCleanRunner) asynq.HandlerFunc {
 	return func(ctx context.Context, t *asynq.Task) error {
-		n, err := runner.CleanExpired(ctx, time.Now().UTC())
+		n, err := runner.CleanExpired(ctx, time.Now())
 		if err != nil {
 			return err
 		}

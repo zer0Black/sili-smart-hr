@@ -200,6 +200,11 @@ type fakeManualSubmitter struct {
 func (f *fakeManualSubmitter) SubmitManualBatch(_ context.Context, req pipeline.CreateBatchRequest) (*domain.AssessmentBatch, error) {
 	f.called = true
 	f.gotReq = req
+	// 生产 SubmitManualBatch 把 req.TargetMode 落进返回批次，fake 对齐回传，
+	// 否则埋点读 batch.TargetMode 得空串（值域判断方向不同会显示错中文名）。
+	if f.batch != nil && f.batch.TargetMode == "" && req.TargetMode != "" {
+		f.batch.TargetMode = req.TargetMode
+	}
 	return f.batch, f.err
 }
 

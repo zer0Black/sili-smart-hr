@@ -111,12 +111,13 @@ func (r *operationLogRepository) ListByFilter(ctx context.Context, f OperationLo
 	return list, nil
 }
 
-// DeleteBefore 子查询形态限定单批 1000：DELETE ... WHERE id IN (SELECT id ...
-// LIMIT 1000)，三库通用（PG 不支持 DELETE ... LIMIT，MySQL 8 前子查询 LIMIT 需
-// 再包一层，IN 直嵌子查询在 MySQL 是受限场景例外，故三库都以 IN 子查询落地）。
+// DeleteBefore 子查询形态限定单批 1000：DELETE ... WHERE id IN (SELECT id
+// FROM (SELECT id ... LIMIT 1000) t)。内层派生表不可省：MySQL 对 IN 直嵌
+// LIMIT 子查询报 ERROR 1235（ Restrictions on Subqueries），包装后三库通用
+//（PG 不支持 DELETE ... LIMIT，SQLite 无此限制一并走同形态）。
 func (r *operationLogRepository) DeleteBefore(ctx context.Context, before time.Time) (int64, error) {
 	res := r.db.WithContext(ctx).
-		Where("id IN (SELECT id FROM operation_logs WHERE created_at < ? LIMIT ?)", before, cleanBatchSize).
+		Where("id IN (SELECT id FROM (SELECT id FROM operation_logs WHERE created_at < ? LIMIT ?) AS t)", before, cleanBatchSize).
 		Delete(&domain.OperationLog{})
 	if res.Error != nil {
 		return 0, res.Error

@@ -331,10 +331,11 @@ func (s *llmConfigService) Enable(ctx context.Context, id int64) (*LLMEnableResu
 		}
 		return nil, fmt.Errorf("enable exclusive llm config: %w", err)
 	}
-	// 启停类走变更对比形态（specs §7.2）：启用前恒 false（排他启用语义，同刻仅一启用态）。
+	// 启停类走变更对比形态（specs §7.2）：启用前恒 false（排他启用语义，同刻仅一启用态），
+	// 布尔值经 enabledName 转中文，与 account/dimension 同字段的对比口径一致。
 	injectOperation(ctx, domain.OpModuleLLMConfig, llmTarget(cfg.Name),
 		fmt.Sprintf("启用大模型 %s（排他启用）", cfg.Name),
-		[]domain.ChangeItem{fmtChange("启用状态", false, true)})
+		[]domain.ChangeItem{fmtChange("启用状态", enabledName(false), enabledName(true))})
 	return &LLMEnableResult{ID: id, Enabled: true}, nil
 }
 

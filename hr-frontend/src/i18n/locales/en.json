@@ -1484,8 +1484,6 @@
       "system_job": "System Jobs"
     },
     "detail": {
-      "title": "Operation Detail",
-      "basicInfo": "Basic Info",
       "colField": "Field",
       "colBefore": "Before",
       "colAfter": "After",
