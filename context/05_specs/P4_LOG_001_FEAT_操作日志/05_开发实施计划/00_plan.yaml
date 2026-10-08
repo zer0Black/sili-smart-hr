@@ -46,7 +46,7 @@ sub_plans:
   - id: "04"
     name: "操作日志页"
     file: "04_操作日志页.md"
-    status: "pending"
+    status: "completed"
     input_files:
       - "../01_功能需求规格说明书.md"
       - "../03_api_interface.md"

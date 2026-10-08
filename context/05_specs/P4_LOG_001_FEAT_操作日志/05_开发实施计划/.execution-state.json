@@ -346,7 +346,65 @@
         "recorded_at": "2026-10-08T10:31:25Z"
       },
       "review_failures": 0
+    },
+    "04": {
+      "base_sha": "b9140beb420ba88baeb38086d8b0c34304ec33c8",
+      "plan_digest": "3f36e9073786243b61027bb6c7b476d1dc6cb1448262e40483b2fc7e075ac956",
+      "input_digests": {
+        "../01_功能需求规格说明书.md": "bad2afabb83fef6871ffbcedba5820ccd6a630e803a2e194e2cb78bb1ea75ad4",
+        "../03_api_interface.md": "e48c4ae9f6a1eac6bb4eebad61999683d606f0f3225eed95cab8b77190905646"
+      },
+      "tasks": {
+        "T1": {
+          "key": "P4_LOG_001_FEAT_操作日志/04/T1",
+          "status": "verified",
+          "base_sha": "b9140beb420ba88baeb38086d8b0c34304ec33c8",
+          "head_sha": "e0155175bb01e118d674cbd38a1505cac535e435",
+          "verification": {
+            "path": "execution-evidence/04_T1_e015517.md",
+            "digest": "9e54b39170840140fbe3eb097dccf8ce36678cac9d5aac9efea29599443512ae",
+            "head_sha": "e0155175bb01e118d674cbd38a1505cac535e435",
+            "recorded_at": "2026-10-08T10:40:07Z",
+            "deferred_reason": null
+          }
+        },
+        "T2": {
+          "key": "P4_LOG_001_FEAT_操作日志/04/T2",
+          "status": "verified",
+          "base_sha": "e0155175bb01e118d674cbd38a1505cac535e435",
+          "head_sha": "52cbcf89f86c9e7d8a971a1bcf5448d75e2fd20c",
+          "verification": {
+            "path": "execution-evidence/04_T2_52cbcf8.md",
+            "digest": "d85076c326e259ad9e6a4904adb09d1019c24c0c49d867c54dd59eda7b2432d2",
+            "head_sha": "52cbcf89f86c9e7d8a971a1bcf5448d75e2fd20c",
+            "recorded_at": "2026-10-08T11:02:44Z",
+            "deferred_reason": null
+          }
+        },
+        "T3": {
+          "key": "P4_LOG_001_FEAT_操作日志/04/T3",
+          "status": "verified",
+          "base_sha": "52cbcf89f86c9e7d8a971a1bcf5448d75e2fd20c",
+          "head_sha": "ff08746ba662c76d05a85f3773f340c79704d853",
+          "verification": {
+            "path": "execution-evidence/04_T3_ff08746.md",
+            "digest": "f7dcb8e2fe76a1d0a41f1a856b1e73164d3614b5259983dc13e76ca0fee604ce",
+            "head_sha": "ff08746ba662c76d05a85f3773f340c79704d853",
+            "recorded_at": "2026-10-08T11:08:45Z",
+            "deferred_reason": null
+          }
+        }
+      },
+      "review": {
+        "path": "execution-evidence/04_review_pass.md",
+        "digest": "b227a43d9a64bb9b0f7aefe8968db4d5019792d8fe37b6009a40803b044e9da7",
+        "head_sha": "ff08746ba662c76d05a85f3773f340c79704d853",
+        "base_sha": "b9140beb420ba88baeb38086d8b0c34304ec33c8",
+        "passed": true,
+        "recorded_at": "2026-10-08T11:19:26Z"
+      },
+      "review_failures": 0
     }
   },
-  "updated_at": "2026-10-08T10:31:25Z"
+  "updated_at": "2026-10-08T11:19:26Z"
 }
