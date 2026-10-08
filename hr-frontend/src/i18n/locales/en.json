@@ -1429,5 +1429,68 @@
       "low_freq": "Low frequency",
       "unused": "Unused"
     }
+  },
+  "operationLog": {
+    "page": {
+      "title": "Operation Log",
+      "subtitle": "Unified audit query of platform-wide operation logs"
+    },
+    "validation": {
+      "range": "End date cannot be earlier than start date"
+    },
+    "list": {
+      "title": "Operation Log",
+      "operatorLabel": "Operator",
+      "operatorPlaceholder": "Search by operator",
+      "filterModule": "Operation Type",
+      "filterModuleAll": "All Types",
+      "filterResult": "Result",
+      "filterResultAll": "All",
+      "startDate": "Start date",
+      "endDate": "End date",
+      "query": "Query",
+      "reset": "Reset",
+      "export": "Export Log",
+      "exporting": "Exporting…",
+      "exportFailed": "Export failed, please retry later",
+      "colTime": "Time",
+      "colOperator": "Operator",
+      "colModule": "Type",
+      "colTarget": "Target",
+      "colSummary": "Summary",
+      "colResult": "Result",
+      "colActions": "Actions",
+      "actionDetail": "Detail",
+      "resultSuccess": "Success",
+      "resultFail": "Fail",
+      "loadError": "Failed to load data, please retry",
+      "retry": "Retry",
+      "empty": "No log records",
+      "emptyFiltered": "No matching logs; try adjusting the filters",
+      "total": "{{total}} logs in total",
+      "prevPage": "Previous",
+      "nextPage": "Next",
+      "pageSize": "{{n}} / page",
+      "pageSizeLabel": "Page size"
+    },
+    "module": {
+      "login": "Login",
+      "account": "User Management",
+      "dimension": "Dimensions & Weights",
+      "system_params": "System Parameters",
+      "llm_config": "LLM Config",
+      "question_bank": "Question Bank",
+      "assessment": "Assessment",
+      "system_job": "System Jobs"
+    },
+    "detail": {
+      "title": "Operation Detail",
+      "basicInfo": "Basic Info",
+      "colField": "Field",
+      "colBefore": "Before",
+      "colAfter": "After",
+      "textDetail": "Text Detail",
+      "close": "Close"
+    }
   }
 }
