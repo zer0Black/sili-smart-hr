@@ -33,8 +33,17 @@ func newOpLogTestDB(t *testing.T) *gorm.DB {
 		if tx.Statement == nil || tx.Statement.Dest == nil {
 			return
 		}
-		if log, ok := tx.Statement.Dest.(*domain.OperationLog); ok && log.ID == 0 {
-			log.ID = snowflake.NextID()
+		switch dest := tx.Statement.Dest.(type) {
+		case *domain.OperationLog:
+			if dest.ID == 0 {
+				dest.ID = snowflake.NextID()
+			}
+		case *[]domain.OperationLog:
+			for i := range *dest {
+				if (*dest)[i].ID == 0 {
+					(*dest)[i].ID = snowflake.NextID()
+				}
+			}
 		}
 	})
 	if err := db.AutoMigrate(&domain.OperationLog{}); err != nil {
@@ -68,16 +77,17 @@ func TestOperationLogRepositoryInsert(t *testing.T) {
 	ctx := context.Background()
 	repo := repository.NewOperationLogRepository(db)
 
-	if err := repo.Insert(ctx, &domain.OperationLog{
-		Operator: "张三", Module: domain.OpModuleAccount, Result: domain.OpResultSuccess,
-	}); err != nil {
-		t.Fatalf("Insert: %v", err)
-	}
+	// 批量先落表：空表 rowid 自增从 1 起，量级断言才能区分雪花与 rowid 回填。
 	if err := repo.InsertBatch(ctx, []domain.OperationLog{
 		{Operator: "系统", Module: domain.OpModuleSystemJob, Result: domain.OpResultSuccess},
 		{Operator: "李四", Module: domain.OpModuleLogin, Result: domain.OpResultFail},
 	}); err != nil {
 		t.Fatalf("InsertBatch: %v", err)
+	}
+	if err := repo.Insert(ctx, &domain.OperationLog{
+		Operator: "张三", Module: domain.OpModuleAccount, Result: domain.OpResultSuccess,
+	}); err != nil {
+		t.Fatalf("Insert: %v", err)
 	}
 	if err := repo.InsertBatch(ctx, nil); err != nil {
 		t.Fatalf("InsertBatch(nil): %v", err)
@@ -95,8 +105,9 @@ func TestOperationLogRepositoryInsert(t *testing.T) {
 		t.Fatalf("find: %v", err)
 	}
 	for _, row := range rows {
-		if row.ID == 0 {
-			t.Fatalf("snowflake id not assigned: %+v", row)
+		// 量级断言区分雪花 ID 与 SQLite rowid 自增回填（后者从 1 起）。
+		if row.ID < 1e15 {
+			t.Fatalf("snowflake-scale id expected, got %d: %+v", row.ID, row)
 		}
 	}
 }
