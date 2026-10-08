@@ -44,6 +44,7 @@ func NewRouter(
 	profileHandler *handler.ProfileHandler,
 	dashboardHandler *handler.DashboardHandler,
 	workspaceHandler *handler.WorkspaceHandler,
+	operationLogHandler *handler.OperationLogHandler,
 	recorder service.PendingLogRecorder,
 	rdb *redis.Client,
 ) *gin.Engine {
@@ -194,6 +195,11 @@ func NewRouter(
 	// 工作台域：单接口 JWT 鉴权挂 auth 组，GET 只读聚合实时计算不落库（specs
 	// P2_WRK_001 §2.2/§5.1 / BR1、BR2）。无单独限流（沿用受保护组既有策略）。
 	auth.GET("/workspace", workspaceHandler.Overview)
+	// 操作日志域：两接口 JWT 鉴权挂 auth 组，全 GET 只读不记日志（specs
+	// P4_LOG_001 §2.2/§5.3/§5.4 + 03 §4.5 / BR1、BR3）。/operation-logs 根
+	// 路由与 export 静态子路径不冲突（Gin 静态优先，profiles 先例）。
+	auth.GET("/operation-logs", operationLogHandler.List)
+	auth.GET("/operation-logs/export", operationLogHandler.Export)
 
 	return r
 }

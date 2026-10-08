@@ -352,6 +352,7 @@ func newWorkspaceEngine(t *testing.T, svc *fakeWorkspaceSvc) http.Handler {
 		nil, // profileHandler
 		nil, // dashboardHandler
 		handler.NewWorkspaceHandler(svc),
+		nil, // operationLogHandler
 		nil, // recorder（操作日志记录通道，GET 路由不触达）
 		rdb,
 	)

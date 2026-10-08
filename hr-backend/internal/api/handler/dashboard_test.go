@@ -216,6 +216,7 @@ func newDashboardEngine(t *testing.T, svc *fakeDashboardSvc) http.Handler {
 		nil, // profileHandler
 		handler.NewDashboardHandler(svc),
 		nil, // workspaceHandler
+		nil, // operationLogHandler
 		nil, // recorder（操作日志记录通道，GET 路由不触达）
 		rdb,
 	)

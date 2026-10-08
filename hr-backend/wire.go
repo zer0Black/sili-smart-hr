@@ -143,6 +143,10 @@ func InitializeApp(configPath string) (*App, error) {
 		repository.NewOperationLogRepository,
 		service.NewOperationLogRecorder,
 		NewOperationLogCleanHandlerTyped,
+		// 操作日志查询导出域（specs P4_LOG_001 §5.3/§5.4，03 §3 A1/A2）：
+		// service 复用同一日志仓储 + handler（两 GET 接口挂 auth 组）。
+		service.NewOperationLogService,
+		handler.NewOperationLogHandler,
 		NewAlertWriterAdapter,
 		pipeline.NewAsynqEnqueuer,
 		NewOrchestratorProvider,

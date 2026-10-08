@@ -90,7 +90,7 @@ func newAuthRouter(t *testing.T, svc service.AccountService, setupHandler *handl
 	jwtMgr := jwt.NewManager("router-test-secret", time.Hour)
 	cfg := &config.Config{}
 
-	engine := router.NewRouter(cfg, jwtMgr, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, noopRecorder{}, rdb)
+	engine := router.NewRouter(cfg, jwtMgr, accountHandler, healthHandler, setupHandler, systemHandler, dimensionHandler, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, noopRecorder{}, rdb)
 	return engine, svc.(*fakeAccountSvc), rdb
 }
 

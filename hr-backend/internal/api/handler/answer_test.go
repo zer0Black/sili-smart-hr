@@ -132,6 +132,7 @@ func newAnswerEngine(t *testing.T, svc *fakeAnswerSvc) http.Handler {
 		nil, // profileHandler
 		nil, // dashboardHandler
 		nil, // workspaceHandler
+		nil, // operationLogHandler
 		nil, // recorder（操作日志记录通道，answer 公开路由不记录）
 		rdb,
 	)
